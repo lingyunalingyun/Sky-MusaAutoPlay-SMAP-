@@ -12,6 +12,7 @@ import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -174,6 +175,10 @@ public class HelloController {
     private final List<MusicNote> playlist = new ArrayList<>();
     private File currentFile = null;
     private String currentSongName = "";
+    private String currentArtist = "";
+    private String currentTranscriber = "";
+    private int currentSongBpm = 120;
+    private int currentSongSubdiv = 4;
 
     // 全量曲目库
     private final List<File> allSongFiles = new ArrayList<>();
@@ -620,13 +625,15 @@ public class HelloController {
     /**
      * 写曲谱 JSON 到文件 (SkyStudio 格式)
      */
-    private boolean writeSongToFile(List<MusicNote> notes, File target, String name) {
+    private boolean writeSongToFile(List<MusicNote> notes, File target, String name,
+                                    String author, String transcribedBy, int bpm, int subdiv) {
         JSONObject song = new JSONObject();
         song.put("name", name);
-        song.put("author", "");
-        song.put("transcribedBy", "SkyMusicPlayer");
+        song.put("author", author == null ? "" : author);
+        song.put("transcribedBy", transcribedBy == null || transcribedBy.isEmpty() ? "SkyMusicPlayer" : transcribedBy);
         song.put("isComposed", true);
-        song.put("bpm", 120);
+        song.put("bpm", bpm);
+        song.put("subdiv", subdiv);
         song.put("bitsPerPage", 16);
         song.put("pitchLevel", 0);
         JSONArray arr = new JSONArray();
@@ -648,6 +655,53 @@ public class HelloController {
             updateStatus("状态: 保存失败 " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * 弹三栏对话框: 曲名 / 歌手 / 创谱人.
+     * 返回 String[3] = {name, artist, transcriber}, 取消返回 null.
+     */
+    private String[] showSongMetadataDialog(String title, String defaultName,
+                                            String defaultArtist, String defaultTranscriber) {
+        Dialog<String[]> dlg = new Dialog<>();
+        dlg.setTitle(title);
+        dlg.setHeaderText(null);
+
+        TextField nameField = new TextField(defaultName);
+        TextField artistField = new TextField(defaultArtist == null ? "" : defaultArtist);
+        TextField transcriberField = new TextField(defaultTranscriber == null ? "" : defaultTranscriber);
+        nameField.setPrefColumnCount(28);
+        artistField.setPrefColumnCount(28);
+        transcriberField.setPrefColumnCount(28);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(16, 18, 8, 18));
+        grid.add(new Label("曲名 *:"), 0, 0); grid.add(nameField, 1, 0);
+        grid.add(new Label("歌手:"), 0, 1); grid.add(artistField, 1, 1);
+        grid.add(new Label("创谱人:"), 0, 2); grid.add(transcriberField, 1, 2);
+        dlg.getDialogPane().setContent(grid);
+
+        ButtonType ok = new ButtonType("保存", ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(ok, ButtonType.CANCEL);
+
+        // 曲名空时禁用 OK
+        Node okBtn = dlg.getDialogPane().lookupButton(ok);
+        okBtn.setDisable(defaultName == null || defaultName.trim().isEmpty());
+        nameField.textProperty().addListener((obs, old, val) ->
+                okBtn.setDisable(val == null || val.trim().isEmpty()));
+
+        Platform.runLater(nameField::requestFocus);
+
+        dlg.setResultConverter(b -> b == ok ? new String[]{
+                nameField.getText().trim(),
+                artistField.getText().trim(),
+                transcriberField.getText().trim()
+        } : null);
+
+        Optional<String[]> r = dlg.showAndWait();
+        return r.orElse(null);
     }
 
     private File newSongFile(String songName) {
@@ -678,6 +732,11 @@ public class HelloController {
             updateStatus("状态: 演奏中, 无法创建");
             return;
         }
+        // 新建: 元数据空, BPM/subdiv 用全局默认
+        currentArtist = "";
+        currentTranscriber = "";
+        currentSongBpm = defaultBpm;
+        currentSongSubdiv = defaultSubdiv;
         openEditorWindow(Collections.emptyList(), "新歌曲_" + System.currentTimeMillis(), null);
     }
 
@@ -742,8 +801,12 @@ public class HelloController {
         final double TILE_W = 4000.0;  // 单 Canvas 宽度上限, 远低于 GPU 8192 限制
 
         // FL 风格节拍网格: cellMs = 60000/bpm/subdiv (BPM=拍/分, subdiv=每拍细分数)
-        final int[] bpm = {defaultBpm};
-        final int[] subdiv = {defaultSubdiv};
+        // 编辑现有曲目用其元数据 BPM, 新建用全局默认
+        final int[] bpm = {currentSongBpm};
+        final int[] subdiv = {currentSongSubdiv};
+        // 元数据 (歌手/创谱人) 跟随编辑会话, 保存对话框可改
+        final String[] meta = { currentArtist == null ? "" : currentArtist,
+                                currentTranscriber == null ? "" : currentTranscriber };
         final int BEATS_PER_BAR = 4;   // 固定 4/4
         java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / bpm[0] / subdiv[0]));
         java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / bpm[0]));
@@ -1046,17 +1109,19 @@ public class HelloController {
         Button saveAsBtn = new Button("💾 另存为");
         saveAsBtn.setOnAction(e -> {
             String defaultName = isNew ? songName : songName + "_edited";
-            TextInputDialog d = new TextInputDialog(defaultName);
-            d.setTitle(isNew ? "保存新歌曲" : "另存为");
-            d.setContentText("新曲名:");
-            Optional<String> r = d.showAndWait();
-            if (r.isEmpty() || r.get().trim().isEmpty()) return;
+            String[] result = showSongMetadataDialog(
+                    isNew ? "保存新歌曲" : "另存为",
+                    defaultName, meta[0], meta[1]);
+            if (result == null) return;
+            String name = result[0];
+            String artist = result[1];
+            String transcriber = result[2];
             isEditorPlaying[0] = false;
             ToneGenerator.stopAll();
-            String name = r.get().trim();
             File target = newSongFile(name);
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, target, name)) {
+            if (writeSongToFile(notes, target, name, artist, transcriber, bpm[0], subdiv[0])) {
+                meta[0] = artist; meta[1] = transcriber;
                 refreshLibrary();
                 stage.close();
             }
@@ -1072,7 +1137,7 @@ public class HelloController {
             isEditorPlaying[0] = false;
             ToneGenerator.stopAll();
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, sourceFile, songName)) {
+            if (writeSongToFile(notes, sourceFile, songName, meta[0], meta[1], bpm[0], subdiv[0])) {
                 refreshLibrary();
                 parseJsonMusic(sourceFile);
                 updateStatus("状态: 已保存 " + notes.size() + " 音符");
@@ -1331,6 +1396,10 @@ public class HelloController {
             int noteCount = notes.length();
             this.currentFile = file;
             this.currentSongName = songName;
+            this.currentArtist = songObj.optString("author", "");
+            this.currentTranscriber = songObj.optString("transcribedBy", "");
+            this.currentSongBpm = songObj.optInt("bpm", 120);
+            this.currentSongSubdiv = songObj.optInt("subdiv", 4);
             seekFraction = 0;
             Platform.runLater(() -> {
                 filePathField.setText(songName);
