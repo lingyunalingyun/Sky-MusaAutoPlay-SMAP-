@@ -753,6 +753,9 @@ public class HelloController {
         boolean isNew = (sourceFile == null);
         Stage stage = new Stage();
         stage.setTitle((isNew ? "➕ 新建歌曲: " : "🎼 钢琴卷帘编辑器: ") + songName);
+        try (java.io.InputStream icon = HelloController.class.getResourceAsStream("icon.png")) {
+            if (icon != null) stage.getIcons().add(new javafx.scene.image.Image(icon));
+        } catch (IOException ignored) {}
 
         // 工作副本 (确保不影响主窗口 playlist)
         ObservableList<MusicNote> notes = FXCollections.observableArrayList();
