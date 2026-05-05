@@ -1,4 +1,4 @@
-# Sky Automatic Piano Assistant
+# Sky Automatic Piano Assistant/光遇自动弹琴助手
 
 一款 JavaFX 桌面端《光遇》自动弹琴助手，对标手机端 Sky Studio。支持曲谱播放、键盘模拟、真实音色试听、FL Studio 风格的钢琴卷帘编辑器。
 
