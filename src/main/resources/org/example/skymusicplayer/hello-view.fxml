@@ -40,6 +40,7 @@
             <Button text="⏹ 停止 (F6)" onAction="#onStopPlayClick" maxWidth="Infinity" style="-fx-background-color: #F44336; -fx-text-fill: white;"/>
             <Button text="🔄 刷新曲目库" onAction="#refreshLibrary" maxWidth="Infinity"/>
             <Button text="📁 导入曲谱" onAction="#onImportClick" maxWidth="Infinity"/>
+            <Button text="☁ 在线曲库" onAction="#onCloudSheetsClick" maxWidth="Infinity" style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
             <Button text="➕ 创建歌曲" onAction="#onCreateClick" maxWidth="Infinity" style="-fx-background-color: #FF9800; -fx-text-fill: white;"/>
             <Button text="✏ 编辑曲谱" onAction="#onEditClick" maxWidth="Infinity" style="-fx-background-color: #9C27B0; -fx-text-fill: white;"/>
         </VBox>

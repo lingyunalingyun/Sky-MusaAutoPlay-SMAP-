@@ -35,6 +35,13 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 - **Favorites ★** — persisted to `favorites.json`
 - **Tags** — right-click menu adds tags, persisted to `categories.json`
 
+### ☁ Cloud library (v1.1+)
+- The main window has a **☁ 在线曲库** button that opens a separate window backed by the community site [MUSE](http://musetreehouse.com/sheets.php)
+- Search by title / artist / transcriber / tag, sort (newest / hot / downloads), filter by difficulty, and paginate
+- Click any row to see full details (BPM, note count, uploader, description, tags…)
+- One-click download into your local `songs/` directory; the main library auto-refreshes so the song is immediately playable
+- Uploads are done via the [web upload page](http://musetreehouse.com/pages/sheet_upload.php) after registering an account — the desktop client only downloads
+
 ### UI / system
 - **Dark theme** — toggle in the top-right corner (🌙 / ☀)
 - **Visual keyboard** — main-window 3×5 button grid lights up while playing; click a cell to remap that key
@@ -103,7 +110,8 @@ Drop `.json` or `.txt` Sky Music score files into `songs/` and they appear in th
 │   │   ├── HelloController.java      # Main controller (main window + editor)
 │   │   ├── Launcher.java             # Launcher wrapper (bypasses JavaFX module path)
 │   │   ├── MusicNote.java            # Note model
-│   │   └── ToneGenerator.java        # Real-tone sample player
+│   │   ├── ToneGenerator.java        # Real-tone sample player
+│   │   └── CloudSheetsWindow.java    # Cloud library window (HTTP fetch + download)
 │   └── resources/org/example/skymusicplayer/
 │       ├── hello-view.fxml           # Main window layout
 │       ├── dark.css                  # Dark theme

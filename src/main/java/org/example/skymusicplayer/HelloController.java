@@ -1302,6 +1302,13 @@ public class HelloController {
     }
 
     @FXML
+    protected void onCloudSheetsClick() {
+        Stage owner = (Stage) songListView.getScene().getWindow();
+        java.nio.file.Path songsPath = java.nio.file.Paths.get(SONGS_DIR);
+        CloudSheetsWindow.open(owner, songsPath, this::refreshLibrary);
+    }
+
+    @FXML
     protected void onImportClick() {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("选择要导入的曲谱文件 (可多选)");

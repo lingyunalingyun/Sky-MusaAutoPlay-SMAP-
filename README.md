@@ -33,6 +33,13 @@
 - **收藏 ★** — 持久化到 `favorites.json`
 - **分类标签** — 右键菜单加标签，持久化到 `categories.json`
 
+### ☁ 在线曲库（v1.1+）
+- 主窗口「☁ 在线曲库」按钮 → 打开独立窗口，从社区站点 [缪斯 MUSE](http://musetreehouse.com/sheets.php) 拉取共享曲谱
+- 支持搜索（曲名/原唱/创谱人/标签）+ 排序（最新/最热/下载量）+ 难度筛选 + 分页
+- 选中曲谱查看详情（BPM、音符数、上传者、简介、标签等）
+- 一键下载到 `songs/` 目录，主界面自动刷新即可演奏
+- 上传需到 [缪斯 MUSE 网站](http://musetreehouse.com/pages/sheet_upload.php) 注册账号后操作（客户端只下载不上传）
+
 ### UI / 系统
 - **暗色主题** — 右上角 🌙/☀ 切换
 - **可视化琴键** — 主窗口 3×5 按钮网格，演奏时高亮，点击重映射
@@ -106,7 +113,8 @@ cd Sky-Automatic-Piano-Assistant
 │   │   ├── HelloController.java      # 主控制器 (主窗口 + 编辑器)
 │   │   ├── Launcher.java             # 启动包装 (绕过 JavaFX 模块路径限制)
 │   │   ├── MusicNote.java            # 音符数据
-│   │   └── ToneGenerator.java        # 真实音色播放
+│   │   ├── ToneGenerator.java        # 真实音色播放
+│   │   └── CloudSheetsWindow.java    # 在线曲库窗口 (HTTP 拉取 + 下载)
 │   └── resources/org/example/skymusicplayer/
 │       ├── hello-view.fxml           # 主窗口布局
 │       ├── dark.css                  # 暗色主题
