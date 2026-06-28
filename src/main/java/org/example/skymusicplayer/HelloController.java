@@ -47,6 +47,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,6 +76,15 @@ public class HelloController {
     @FXML private Spinner<Integer> countdownSpinner;
     @FXML private ToggleButton themeToggle;
     @FXML private ToggleButton audioModeToggle;
+    @FXML private Button loginBtn;
+
+    // 登录状态
+    private static final String AUTH_URL = "http://musetreehouse.com";
+    private static final HttpClient AUTH_HTTP = HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+    private String authToken = null;
+    private String authUsername = null;
+    private int authUserId = 0;
 
     private volatile boolean isPreviewing = false;
     private Thread previewThread = null;
@@ -161,7 +174,7 @@ public class HelloController {
         return java.nio.file.Paths.get("").toAbsolutePath();
     }
     private boolean loadingSettings = false;
-    private int defaultBpm = 120;
+    private double defaultBpm = 120.0;
     private int defaultSubdiv = 4;
 
     // 收藏 + 分类
@@ -177,8 +190,9 @@ public class HelloController {
     private String currentSongName = "";
     private String currentArtist = "";
     private String currentTranscriber = "";
-    private int currentSongBpm = 120;
+    private int currentSongGridBpm = 120;
     private int currentSongSubdiv = 4;
+    private double currentPlaybackBpm = 120.0;
 
     // 全量曲目库
     private final List<File> allSongFiles = new ArrayList<>();
@@ -285,8 +299,12 @@ public class HelloController {
             if (obj.has("instrument")) {
                 ToneGenerator.setInstrument(obj.getString("instrument"));
             }
-            if (obj.has("bpm")) defaultBpm = Math.max(30, Math.min(400, obj.getInt("bpm")));
+            if (obj.has("bpm")) defaultBpm = Math.max(1.0, Math.min(999.99, obj.getDouble("bpm")));
             if (obj.has("subdiv")) defaultSubdiv = Math.max(1, Math.min(32, obj.getInt("subdiv")));
+            if (obj.has("authToken")) authToken = obj.getString("authToken");
+            if (obj.has("authUsername")) authUsername = obj.getString("authUsername");
+            if (obj.has("authUserId")) authUserId = obj.getInt("authUserId");
+            Platform.runLater(this::updateLoginButton);
         } catch (Exception ignored) {
         } finally {
             loadingSettings = false;
@@ -302,6 +320,11 @@ public class HelloController {
             obj.put("instrument", ToneGenerator.getInstrument());
             obj.put("bpm", defaultBpm);
             obj.put("subdiv", defaultSubdiv);
+            if (authToken != null) {
+                obj.put("authToken", authToken);
+                obj.put("authUsername", authUsername);
+                obj.put("authUserId", authUserId);
+            }
             Files.writeString(Paths.get(SETTINGS_PATH), obj.toString());
         } catch (IOException ignored) {}
     }
@@ -452,7 +475,17 @@ public class HelloController {
                 updateStatus("状态: 已移除标签 " + t);
             });
         });
-        cm.getItems().addAll(addTag, removeTag);
+        MenuItem uploadItem = new MenuItem("☁ 上传到在线曲库");
+        uploadItem.setOnAction(e -> {
+            int idx = songListView.getSelectionModel().getSelectedIndex();
+            if (idx < 0 || idx >= songFiles.size()) return;
+            if (authToken == null) {
+                showLoginDialog();
+                if (authToken == null) return;
+            }
+            uploadSheet(songFiles.get(idx), songNames.get(idx));
+        });
+        cm.getItems().addAll(addTag, removeTag, new SeparatorMenuItem(), uploadItem);
         return cm;
     }
 
@@ -626,7 +659,7 @@ public class HelloController {
      * 写曲谱 JSON 到文件 (SkyStudio 格式)
      */
     private boolean writeSongToFile(List<MusicNote> notes, File target, String name,
-                                    String author, String transcribedBy, int bpm, int subdiv) {
+                                    String author, String transcribedBy, double bpm, int subdiv) {
         JSONObject song = new JSONObject();
         song.put("name", name);
         song.put("author", author == null ? "" : author);
@@ -735,8 +768,9 @@ public class HelloController {
         // 新建: 元数据空, BPM/subdiv 用全局默认
         currentArtist = "";
         currentTranscriber = "";
-        currentSongBpm = defaultBpm;
+        currentSongGridBpm = 120;
         currentSongSubdiv = defaultSubdiv;
+        currentPlaybackBpm = defaultBpm;
         openEditorWindow(Collections.emptyList(), "新歌曲_" + System.currentTimeMillis(), null);
     }
 
@@ -805,14 +839,16 @@ public class HelloController {
 
         // FL 风格节拍网格: cellMs = 60000/bpm/subdiv (BPM=拍/分, subdiv=每拍细分数)
         // 编辑现有曲目用其元数据 BPM, 新建用全局默认
-        final int[] bpm = {currentSongBpm};
+        final double[] playBpm = {currentPlaybackBpm};
+        final int gridBpm = currentSongGridBpm;
         final int[] subdiv = {currentSongSubdiv};
         // 元数据 (歌手/创谱人) 跟随编辑会话, 保存对话框可改
         final String[] meta = { currentArtist == null ? "" : currentArtist,
                                 currentTranscriber == null ? "" : currentTranscriber };
         final int BEATS_PER_BAR = 4;   // 固定 4/4
-        java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / bpm[0] / subdiv[0]));
-        java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / bpm[0]));
+        // 网格用曲谱文件原始 BPM, 不随播放速度变化
+        java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / gridBpm / subdiv[0]));
+        java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / gridBpm));
         java.util.function.LongSupplier barMsSup = () -> beatMsSup.getAsLong() * BEATS_PER_BAR;
         final int MAX_TILES = 60;      // 防止极端放大爆 Node 数
 
@@ -1059,11 +1095,12 @@ public class HelloController {
             long startPlayhead = playheadRef[0];
             long startWall = System.currentTimeMillis();
             long maxTime = songLen.get();
+            double speed = playBpm[0] / 120.0;
             new Thread(() -> {
                 // -1 起跳避免漏掉时间正好等于 startPlayhead 的音符 (常见: 第 0ms 第一个音)
                 long lastPh = startPlayhead - 1;
                 while (isEditorPlaying[0]) {
-                    long now = startPlayhead + (System.currentTimeMillis() - startWall);
+                    long now = startPlayhead + (long) ((System.currentTimeMillis() - startWall) * speed);
                     if (now > maxTime) break;
                     for (MusicNote n : notes) {
                         if (n.getAbsoluteTime() > lastPh && n.getAbsoluteTime() <= now) {
@@ -1123,7 +1160,7 @@ public class HelloController {
             ToneGenerator.stopAll();
             File target = newSongFile(name);
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, target, name, artist, transcriber, bpm[0], subdiv[0])) {
+            if (writeSongToFile(notes, target, name, artist, transcriber, gridBpm, subdiv[0])) {
                 meta[0] = artist; meta[1] = transcriber;
                 refreshLibrary();
                 stage.close();
@@ -1140,7 +1177,7 @@ public class HelloController {
             isEditorPlaying[0] = false;
             ToneGenerator.stopAll();
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, sourceFile, songName, meta[0], meta[1], bpm[0], subdiv[0])) {
+            if (writeSongToFile(notes, sourceFile, songName, meta[0], meta[1], gridBpm, subdiv[0])) {
                 refreshLibrary();
                 parseJsonMusic(sourceFile);
                 updateStatus("状态: 已保存 " + notes.size() + " 音符");
@@ -1177,33 +1214,21 @@ public class HelloController {
         Label zoomIcon = new Label("🔍");
         zoomIcon.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
 
-        // BPM Spinner + 细分 ComboBox (FL 风格节拍网格)
-        Spinner<Integer> bpmSpinner = new Spinner<>(30, 400, bpm[0]);
+        Spinner<Double> bpmSpinner = new Spinner<>(1.0, 999.99, playBpm[0], 0.01);
         bpmSpinner.setEditable(true);
-        bpmSpinner.setPrefWidth(70);
+        bpmSpinner.setPrefWidth(80);
+        bpmSpinner.getValueFactory().setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Double v) { return v == null ? "120.00" : String.format("%.2f", v); }
+            @Override public Double fromString(String s) { try { return Math.max(1.0, Math.min(999.99, Double.parseDouble(s))); } catch (Exception e) { return 120.0; } }
+        });
         bpmSpinner.valueProperty().addListener((obs, old, val) -> {
             if (val == null) return;
-            bpm[0] = val;
+            playBpm[0] = val;
             defaultBpm = val;
             saveSettings();
-            redraw.run();
         });
         Label bpmLabel = new Label("BPM:");
         bpmLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
-
-        ComboBox<Integer> subdivCombo = new ComboBox<>();
-        subdivCombo.getItems().addAll(1, 2, 3, 4, 6, 8, 12, 16);
-        subdivCombo.setValue(subdiv[0]);
-        subdivCombo.setPrefWidth(60);
-        subdivCombo.valueProperty().addListener((obs, old, val) -> {
-            if (val == null) return;
-            subdiv[0] = val;
-            defaultSubdiv = val;
-            saveSettings();
-            redraw.run();
-        });
-        Label subdivLabel = new Label("细分:");
-        subdivLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
 
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
@@ -1213,7 +1238,7 @@ public class HelloController {
                 new Separator(Orientation.VERTICAL),
                 instLabel, instrumentCombo,
                 new Separator(Orientation.VERTICAL),
-                bpmLabel, bpmSpinner, subdivLabel, subdivCombo,
+                bpmLabel, bpmSpinner,
                 new Separator(Orientation.VERTICAL),
                 zoomIcon, zoomSlider, zoomLabel,
                 toolbarSpacer, saveBtn);
@@ -1223,7 +1248,7 @@ public class HelloController {
         toolbar.setPadding(new Insets(8, 12, 8, 12));
         toolbar.setStyle("-fx-background-color: #2d2d2d;");
 
-        Label hint = new Label("点击网格 → 加/删音符 (按节拍吸附)   |   点击标尺 → 移动播放头   |   点左侧键名 → 试听   |   🔍 横向缩放   |   ♩ BPM/细分 调节拍   |   Ctrl+Z 撤销 / Ctrl+Shift+Z 重做 / Ctrl+S 保存");
+        Label hint = new Label("点击网格 → 加/删音符 (按节拍吸附)   |   点击标尺 → 移动播放头   |   点左侧键名 → 试听   |   🔍 横向缩放   |   ♩ BPM 调节拍   |   Ctrl+Z 撤销 / Ctrl+Shift+Z 重做 / Ctrl+S 保存");
         hint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
         hint.setPadding(new Insets(6, 12, 6, 12));
 
@@ -1305,7 +1330,324 @@ public class HelloController {
     protected void onCloudSheetsClick() {
         Stage owner = (Stage) songListView.getScene().getWindow();
         java.nio.file.Path songsPath = java.nio.file.Paths.get(SONGS_DIR);
-        CloudSheetsWindow.open(owner, songsPath, this::refreshLibrary);
+        CloudSheetsWindow.open(owner, songsPath, this::refreshLibrary, authToken);
+    }
+
+    @FXML
+    protected void onLoginClick() {
+        if (authToken != null) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "当前登录: " + authUsername + "\n确定退出登录？",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setTitle("退出登录");
+            confirm.setHeaderText(null);
+            confirm.showAndWait().ifPresent(btn -> {
+                if (btn == ButtonType.OK) {
+                    authToken = null;
+                    authUsername = null;
+                    authUserId = 0;
+                    updateLoginButton();
+                    saveSettings();
+                    updateStatus("状态: 已退出登录");
+                }
+            });
+            return;
+        }
+        showLoginDialog();
+    }
+
+    private void showLoginDialog() {
+        Stage dialog = new Stage();
+        dialog.setTitle("登录 — 缪斯树屋");
+        dialog.initOwner(songListView.getScene().getWindow());
+        dialog.initModality(javafx.stage.Modality.WINDOW_MODAL);
+        dialog.setResizable(false);
+        try (java.io.InputStream icon = HelloApplication.class.getResourceAsStream("icon.png")) {
+            if (icon != null) dialog.getIcons().add(new javafx.scene.image.Image(icon));
+        } catch (IOException ignored) {}
+
+        Label titleLabel = new Label("缪斯树屋");
+        titleLabel.setStyle("-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #e0e0e0;");
+        Label subtitleLabel = new Label("musetreehouse.com");
+        subtitleLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #888;");
+        VBox header = new VBox(2, titleLabel, subtitleLabel);
+        header.setAlignment(Pos.CENTER);
+        header.setPadding(new Insets(24, 0, 16, 0));
+
+        TextField userField = new TextField();
+        userField.setPromptText("用户名或邮箱");
+        userField.setPrefHeight(36);
+        userField.setStyle("-fx-font-size: 13px; -fx-background-radius: 6; "
+                + "-fx-background-color: #4a4a4a; -fx-text-fill: #e0e0e0; "
+                + "-fx-prompt-text-fill: #888; -fx-border-color: #666; -fx-border-radius: 6;");
+
+        PasswordField passField = new PasswordField();
+        passField.setPromptText("密码");
+        passField.setPrefHeight(36);
+        passField.setStyle(userField.getStyle());
+
+        Label errorLabel = new Label();
+        errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+        errorLabel.setWrapText(true);
+        errorLabel.setMaxWidth(280);
+        errorLabel.setMinHeight(20);
+
+        Button loginButton = new Button("登  录");
+        loginButton.setPrefHeight(38);
+        loginButton.setMaxWidth(Double.MAX_VALUE);
+        loginButton.setStyle("-fx-background-color: #4d8eff; -fx-text-fill: white; "
+                + "-fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 6; -fx-cursor: hand;");
+
+        Button cancelButton = new Button("取消");
+        cancelButton.setPrefHeight(34);
+        cancelButton.setMaxWidth(Double.MAX_VALUE);
+        cancelButton.setStyle("-fx-background-color: transparent; -fx-text-fill: #888; "
+                + "-fx-font-size: 12px; -fx-border-color: #666; -fx-border-radius: 6; "
+                + "-fx-background-radius: 6; -fx-cursor: hand;");
+        cancelButton.setOnAction(e -> dialog.close());
+
+        VBox form = new VBox(12, userField, passField, errorLabel, loginButton, cancelButton);
+        form.setPadding(new Insets(0, 32, 24, 32));
+
+        VBox root = new VBox(header, form);
+        root.setStyle("-fx-background-color: #2d2d2d;");
+
+        Runnable doLogin = () -> {
+            String user = userField.getText().trim();
+            String pass = passField.getText();
+            if (user.isEmpty() || pass.isEmpty()) {
+                errorLabel.setText("请输入账号和密码");
+                return;
+            }
+            errorLabel.setText("登录中...");
+            errorLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+            loginButton.setDisable(true);
+            loginButton.setText("登录中...");
+
+            new Thread(() -> {
+                try {
+                    JSONObject body = new JSONObject();
+                    body.put("username", user);
+                    body.put("password", pass);
+                    HttpRequest req = HttpRequest.newBuilder(URI.create(AUTH_URL + "/api/game_login.php"))
+                            .timeout(java.time.Duration.ofSeconds(15))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                            .build();
+                    HttpResponse<String> resp = AUTH_HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                    System.out.println("[Login] HTTP " + resp.statusCode() + " → " + resp.body());
+                    Platform.runLater(() -> {
+                        if (resp.statusCode() == 200) {
+                            try {
+                                JSONObject json = new JSONObject(resp.body());
+                                if (json.optBoolean("success")) {
+                                    JSONObject u = json.getJSONObject("user");
+                                    authUserId = u.getInt("id");
+                                    authUsername = u.getString("username");
+                                    authToken = u.getString("mid");
+                                    saveSettings();
+                                    updateLoginButton();
+                                    updateStatus("状态: 登录成功 — " + authUsername);
+                                    dialog.close();
+                                } else {
+                                    errorLabel.setText(json.optString("error", "登录失败"));
+                                    errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+                                    loginButton.setDisable(false);
+                                    loginButton.setText("登  录");
+                                }
+                            } catch (Exception parseEx) {
+                                errorLabel.setText("解析响应失败: " + parseEx.getMessage());
+                                errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+                                loginButton.setDisable(false);
+                                loginButton.setText("登  录");
+                            }
+                        } else {
+                            errorLabel.setText("服务器错误 HTTP " + resp.statusCode());
+                            errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+                            loginButton.setDisable(false);
+                            loginButton.setText("登  录");
+                        }
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        errorLabel.setText("网络错误: " + ex.getMessage());
+                        errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+                        loginButton.setDisable(false);
+                        loginButton.setText("登  录");
+                    });
+                }
+            }).start();
+        };
+
+        loginButton.setOnAction(e -> doLogin.run());
+        passField.setOnAction(e -> doLogin.run());
+        userField.setOnAction(e -> passField.requestFocus());
+
+        Scene scene = new Scene(root, 340, 310);
+        scene.setFill(Color.TRANSPARENT);
+        dialog.setScene(scene);
+        Platform.runLater(userField::requestFocus);
+        dialog.showAndWait();
+    }
+
+    private void updateLoginButton() {
+        if (loginBtn == null) return;
+        if (authToken != null && authUsername != null) {
+            loginBtn.setText("👤 " + authUsername);
+            loginBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        } else if (authToken != null) {
+            loginBtn.setText("👤 已登录");
+            loginBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        } else {
+            loginBtn.setText("🔑 登录");
+            loginBtn.setStyle("");
+        }
+    }
+
+    private void uploadSheet(File file, String displayName) {
+        Stage dialog = new Stage();
+        dialog.setTitle("上传曲谱 — " + displayName);
+        dialog.initOwner(songListView.getScene().getWindow());
+        dialog.initModality(javafx.stage.Modality.WINDOW_MODAL);
+        dialog.setResizable(false);
+        try (java.io.InputStream icon = HelloApplication.class.getResourceAsStream("icon.png")) {
+            if (icon != null) dialog.getIcons().add(new javafx.scene.image.Image(icon));
+        } catch (IOException ignored) {}
+
+        String defaultTitle = displayName, defaultArtist = "", defaultTranscriber = "";
+        try {
+            String jsonContent = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            JSONArray arr = new JSONArray(jsonContent);
+            if (arr.length() > 0) {
+                JSONObject song = arr.getJSONObject(0);
+                if (song.has("name")) defaultTitle = song.getString("name");
+                if (song.has("author")) defaultArtist = song.getString("author");
+                if (song.has("transcribedBy")) defaultTranscriber = song.getString("transcribedBy");
+            }
+        } catch (Exception ignored) {}
+
+        Label header = new Label("上传到在线曲库");
+        header.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #e0e0e0;");
+        Label sub = new Label("以 " + authUsername + " 身份上传");
+        sub.setStyle("-fx-font-size: 11px; -fx-text-fill: #888;");
+        VBox headerBox = new VBox(2, header, sub);
+        headerBox.setAlignment(Pos.CENTER);
+        headerBox.setPadding(new Insets(18, 0, 12, 0));
+
+        String fieldStyle = "-fx-font-size: 13px; -fx-background-radius: 6; "
+                + "-fx-background-color: #4a4a4a; -fx-text-fill: #e0e0e0; "
+                + "-fx-prompt-text-fill: #888; -fx-border-color: #666; -fx-border-radius: 6;";
+
+        TextField titleField = new TextField(defaultTitle);
+        titleField.setPromptText("曲名");
+        titleField.setStyle(fieldStyle);
+        TextField artistField = new TextField(defaultArtist);
+        artistField.setPromptText("原唱 / 作曲");
+        artistField.setStyle(fieldStyle);
+        TextField transField = new TextField(defaultTranscriber);
+        transField.setPromptText("创谱人");
+        transField.setStyle(fieldStyle);
+
+        ComboBox<String> diffCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "★ 简单", "★★ 普通", "★★★ 中等", "★★★★ 困难", "★★★★★ 大师"));
+        diffCombo.getSelectionModel().select(2);
+        diffCombo.setMaxWidth(Double.MAX_VALUE);
+
+        TextField tagsField = new TextField();
+        tagsField.setPromptText("标签（逗号分隔）");
+        tagsField.setStyle(fieldStyle);
+        TextField descField = new TextField();
+        descField.setPromptText("简介（可选）");
+        descField.setStyle(fieldStyle);
+
+        Label errorLabel = new Label();
+        errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 11px;");
+        errorLabel.setWrapText(true);
+        errorLabel.setMinHeight(20);
+
+        Button uploadBtn = new Button("☁ 上传");
+        uploadBtn.setPrefHeight(38);
+        uploadBtn.setMaxWidth(Double.MAX_VALUE);
+        uploadBtn.setStyle("-fx-background-color: #4d8eff; -fx-text-fill: white; "
+                + "-fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 6; -fx-cursor: hand;");
+
+        VBox form = new VBox(10, titleField, artistField, transField, diffCombo, tagsField, descField, errorLabel, uploadBtn);
+        form.setPadding(new Insets(0, 28, 20, 28));
+
+        VBox root = new VBox(headerBox, form);
+        root.setStyle("-fx-background-color: #2d2d2d;");
+
+        uploadBtn.setOnAction(ev -> {
+            String title = titleField.getText().trim();
+            if (title.isEmpty()) { errorLabel.setText("曲名不能为空"); return; }
+            uploadBtn.setDisable(true);
+            uploadBtn.setText("上传中...");
+            errorLabel.setText("");
+
+            int difficulty = diffCombo.getSelectionModel().getSelectedIndex() + 1;
+            String artist = artistField.getText().trim();
+            String trans = transField.getText().trim();
+            String tags = tagsField.getText().trim();
+            String desc = descField.getText().trim();
+
+            new Thread(() -> {
+                try {
+                    String boundary = "----SMP" + System.currentTimeMillis();
+                    byte[] fileBytes = Files.readAllBytes(file.toPath());
+                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+
+                    for (String[] kv : new String[][]{
+                            {"user_id", String.valueOf(authUserId)},
+                            {"mid", authToken},
+                            {"title", title}, {"artist", artist},
+                            {"transcribed_by", trans}, {"difficulty", String.valueOf(difficulty)},
+                            {"tags", tags}, {"description", desc}
+                    }) {
+                        bos.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + kv[0] + "\"\r\n\r\n" + kv[1] + "\r\n").getBytes(StandardCharsets.UTF_8));
+                    }
+                    bos.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + file.getName() + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                    bos.write(fileBytes);
+                    bos.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                    byte[] bodyBytes = bos.toByteArray();
+
+                    HttpRequest req = HttpRequest.newBuilder(URI.create(AUTH_URL + "/api/sheets/upload.php"))
+                            .timeout(java.time.Duration.ofSeconds(30))
+                            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                            .POST(HttpRequest.BodyPublishers.ofByteArray(bodyBytes))
+                            .build();
+                    HttpResponse<String> resp = AUTH_HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                    System.out.println("[Upload] HTTP " + resp.statusCode() + " → " + resp.body());
+                    Platform.runLater(() -> {
+                        try {
+                            JSONObject json = new JSONObject(resp.body());
+                            if ("ok".equals(json.optString("status"))) {
+                                updateStatus("状态: 上传成功 — " + title);
+                                dialog.close();
+                            } else {
+                                errorLabel.setText(json.optString("msg", "上传失败"));
+                                uploadBtn.setDisable(false);
+                                uploadBtn.setText("☁ 上传");
+                            }
+                        } catch (Exception ex) {
+                            errorLabel.setText("响应解析失败: " + resp.body());
+                            uploadBtn.setDisable(false);
+                            uploadBtn.setText("☁ 上传");
+                        }
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        errorLabel.setText("网络错误: " + ex.getMessage());
+                        uploadBtn.setDisable(false);
+                        uploadBtn.setText("☁ 上传");
+                    });
+                }
+            }).start();
+        });
+
+        Scene scene = new Scene(root, 360, 420);
+        dialog.setScene(scene);
+        Platform.runLater(titleField::requestFocus);
+        dialog.showAndWait();
     }
 
     @FXML
@@ -1408,7 +1750,8 @@ public class HelloController {
             this.currentSongName = songName;
             this.currentArtist = songObj.optString("author", "");
             this.currentTranscriber = songObj.optString("transcribedBy", "");
-            this.currentSongBpm = songObj.optInt("bpm", 120);
+            this.currentSongGridBpm = songObj.optInt("bpm", 120);
+            this.currentPlaybackBpm = defaultBpm;
             this.currentSongSubdiv = songObj.optInt("subdiv", 4);
             seekFraction = 0;
             Platform.runLater(() -> {

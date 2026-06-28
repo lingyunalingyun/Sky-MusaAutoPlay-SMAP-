@@ -43,6 +43,8 @@
             <Button text="☁ 在线曲库" onAction="#onCloudSheetsClick" maxWidth="Infinity" style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
             <Button text="➕ 创建歌曲" onAction="#onCreateClick" maxWidth="Infinity" style="-fx-background-color: #FF9800; -fx-text-fill: white;"/>
             <Button text="✏ 编辑曲谱" onAction="#onEditClick" maxWidth="Infinity" style="-fx-background-color: #9C27B0; -fx-text-fill: white;"/>
+            <Separator/>
+            <Button fx:id="loginBtn" text="🔑 登录" onAction="#onLoginClick" maxWidth="Infinity"/>
         </VBox>
     </VBox>
 

@@ -76,6 +76,10 @@ public class CloudSheetsWindow {
     }
 
     public static void open(Stage owner, Path songsDir, Runnable onDownloaded) {
+        open(owner, songsDir, onDownloaded, null);
+    }
+
+    public static void open(Stage owner, Path songsDir, Runnable onDownloaded, String authToken) {
         Stage stage = new Stage();
         stage.setTitle("☁ 在线曲库 — 缪斯 MUSE");
         try (InputStream icon = CloudSheetsWindow.class.getResourceAsStream("icon.png")) {
