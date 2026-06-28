@@ -6,7 +6,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 $AppName = "SkyMusicPlayer"
-$AppVersion = "1.0"
+$AppVersion = "1.2"
 $MainClass = "org.example.skymusicplayer.Launcher"
 $IconPath = "$ScriptDir\icon.ico"
 $JdkHome = "C:\Program Files\Java\jdk-26"
