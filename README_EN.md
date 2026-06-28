@@ -20,7 +20,7 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 - Editor dropdown switches instruments live; selection persisted to `settings.json`
 
 ### Piano roll editor (FL Studio style)
-- **Beat grid** — BPM (30–400) × subdivisions per beat (1, 2, 3, 4, 6, 8, 12, 16). Three-tier grid lines: cell, beat, bar
+- **Beat grid** — BPM grid + playback speed multiplier (1.00–999.99). Beat and bar grid lines
 - **Note blocks** strictly equal `cellMs × pxMs` so they always line up 1:1 with the grid at any zoom
 - **Horizontal zoom** — 0.5x – 8x, multi-Canvas tiling supports very long songs without hitting GPU texture limits
 - **Undo / redo** — Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y), up to 50 steps
@@ -36,11 +36,16 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 - **Tags** — right-click menu adds tags, persisted to `categories.json`
 
 ### ☁ Cloud library (v1.1+)
-- The main window has a **☁ 在线曲库** button that opens a separate window backed by the community site [MUSE](http://musetreehouse.com/sheets.php)
+- The main window has a **☁ 在线曲库** button that opens a separate window backed by the community site [Muse Treehouse](https://musetreehouse.com/sheets.php)
 - Search by title / artist / transcriber / tag, sort (newest / hot / downloads), filter by difficulty, and paginate
 - Click any row to see full details (BPM, note count, uploader, description, tags…)
 - One-click download into your local `songs/` directory; the main library auto-refreshes so the song is immediately playable
-- Uploads are done via the [web upload page](http://musetreehouse.com/pages/sheet_upload.php) after registering an account — the desktop client only downloads
+- Once logged in, right-click any song to upload it to the cloud library; you can also upload via the [web upload page](https://musetreehouse.com/pages/sheet_upload.php)
+
+### 🔑 Account login (v1.2+)
+- **🔑 Login** button at the bottom of the left panel — sign in with your [Muse Treehouse](https://musetreehouse.com) account
+- Once logged in, right-click any song → **☁ Upload to cloud library** to share your scores with the community
+- Login state is persisted automatically — no need to sign in again on next launch
 
 ### UI / system
 - **Dark theme** — toggle in the top-right corner (🌙 / ☀)
@@ -93,7 +98,7 @@ Drop `.json` or `.txt` Sky Music score files into `songs/` and they appear in th
 - Click the grid to add/remove notes (snapped to the BPM cell)
 - Click the ruler to move the playhead
 - Click a left-side key label to audition that note
-- Adjust BPM / subdivision / zoom sliders for the grid you want
+- Adjust BPM / zoom sliders for the grid you want
 - 💾 保存 overwrites the source file; 💾 另存为 creates a new file (only shown when editing an existing song)
 
 ### Key remapping
