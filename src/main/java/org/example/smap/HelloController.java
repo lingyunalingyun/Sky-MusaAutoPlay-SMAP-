@@ -1,4 +1,4 @@
-package org.example.skymusicplayer;
+package org.example.smap;
 
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
@@ -663,7 +663,7 @@ public class HelloController {
         JSONObject song = new JSONObject();
         song.put("name", name);
         song.put("author", author == null ? "" : author);
-        song.put("transcribedBy", transcribedBy == null || transcribedBy.isEmpty() ? "SkyMusicPlayer" : transcribedBy);
+        song.put("transcribedBy", transcribedBy == null || transcribedBy.isEmpty() ? "SMAP" : transcribedBy);
         song.put("isComposed", true);
         song.put("bpm", bpm);
         song.put("subdiv", subdiv);
@@ -840,17 +840,17 @@ public class HelloController {
         // FL 风格节拍网格: cellMs = 60000/bpm/subdiv (BPM=拍/分, subdiv=每拍细分数)
         // 编辑现有曲目用其元数据 BPM, 新建用全局默认
         final double[] playBpm = {currentPlaybackBpm};
-        final int gridBpm = currentSongGridBpm;
+        final int[] gridBpm = {currentSongGridBpm};
         final int[] subdiv = {currentSongSubdiv};
         // 元数据 (歌手/创谱人) 跟随编辑会话, 保存对话框可改
         final String[] meta = { currentArtist == null ? "" : currentArtist,
                                 currentTranscriber == null ? "" : currentTranscriber };
         final int BEATS_PER_BAR = 4;   // 固定 4/4
-        // 网格用曲谱文件原始 BPM, 不随播放速度变化
-        java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / gridBpm / subdiv[0]));
-        java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / gridBpm));
+        java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / gridBpm[0] / subdiv[0]));
+        java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / gridBpm[0]));
         java.util.function.LongSupplier barMsSup = () -> beatMsSup.getAsLong() * BEATS_PER_BAR;
-        final int MAX_TILES = 60;      // 防止极端放大爆 Node 数
+        final int MAX_TILES = 500;
+        final ScrollPane[] scrollRef = {null};
 
         final long[] playheadRef = {0L};
         final boolean[] isEditorPlaying = {false};
@@ -897,19 +897,32 @@ public class HelloController {
             gridPane.setMinSize(totalW, TOTAL_H);
             gridPane.setMaxSize(totalW, TOTAL_H);
 
-            // 节拍尺寸 (snapshot 一次, 整次 redraw 用同一组值)
             long cellMs = cellMsSup.getAsLong();
             long beatMs = beatMsSup.getAsLong();
             long barMs = barMsSup.getAsLong();
-            // 音符方块宽度严格 = 1 cell × pxMs → 与节拍网格 1:1 对齐
             double noteWidth = cellMs * pxMs;
+
+            double viewLeft = 0, viewRight = totalW;
+            if (scrollRef[0] != null) {
+                try {
+                    double vpW = scrollRef[0].getViewportBounds().getWidth();
+                    double hval = scrollRef[0].getHvalue();
+                    double scrollableW = Math.max(0, totalW - vpW);
+                    viewLeft = hval * scrollableW;
+                    viewRight = viewLeft + vpW;
+                } catch (Exception ignored) {}
+            }
 
             for (int i = 0; i < tiles.size(); i++) {
                 Canvas tile = tiles.get(i);
                 double tileX0 = i * TILE_W;
                 double w = tile.getWidth();
                 GraphicsContext g = tile.getGraphicsContext2D();
-                // 整体背景
+                if (tileX0 + w < viewLeft - TILE_W || tileX0 > viewRight + TILE_W) {
+                    g.setFill(Color.web("#181818"));
+                    g.fillRect(0, 0, w, TOTAL_H);
+                    continue;
+                }
                 g.setFill(Color.web("#181818"));
                 g.fillRect(0, 0, w, TOTAL_H);
                 // 交替行: 5 键一组用更深背景突出分组 (K0-4 / K5-9 / K10-14)
@@ -1059,9 +1072,11 @@ public class HelloController {
 
         // ScrollPane 包 gridPane (内含多个 tile Canvas)
         ScrollPane gridScroll = new ScrollPane(gridPane);
+        scrollRef[0] = gridScroll;
         gridScroll.setPannable(true);
         gridScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
         gridScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        gridScroll.hvalueProperty().addListener((obs, old, val) -> redraw.run());
         gridScroll.setStyle("-fx-background: #1e1e1e; -fx-background-color: #1e1e1e;");
         gridScroll.setPrefViewportWidth(900);
         gridScroll.setMinWidth(200);
@@ -1095,7 +1110,7 @@ public class HelloController {
             long startPlayhead = playheadRef[0];
             long startWall = System.currentTimeMillis();
             long maxTime = songLen.get();
-            double speed = playBpm[0] / 120.0;
+            double speed = 1.0;
             new Thread(() -> {
                 // -1 起跳避免漏掉时间正好等于 startPlayhead 的音符 (常见: 第 0ms 第一个音)
                 long lastPh = startPlayhead - 1;
@@ -1160,7 +1175,7 @@ public class HelloController {
             ToneGenerator.stopAll();
             File target = newSongFile(name);
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, target, name, artist, transcriber, gridBpm, subdiv[0])) {
+            if (writeSongToFile(notes, target, name, artist, transcriber, gridBpm[0], subdiv[0])) {
                 meta[0] = artist; meta[1] = transcriber;
                 refreshLibrary();
                 stage.close();
@@ -1177,7 +1192,7 @@ public class HelloController {
             isEditorPlaying[0] = false;
             ToneGenerator.stopAll();
             notes.sort((a, b) -> Long.compare(a.getAbsoluteTime(), b.getAbsoluteTime()));
-            if (writeSongToFile(notes, sourceFile, songName, meta[0], meta[1], gridBpm, subdiv[0])) {
+            if (writeSongToFile(notes, sourceFile, songName, meta[0], meta[1], gridBpm[0], subdiv[0])) {
                 refreshLibrary();
                 parseJsonMusic(sourceFile);
                 updateStatus("状态: 已保存 " + notes.size() + " 音符");
@@ -1200,15 +1215,16 @@ public class HelloController {
         Label instLabel = new Label("音色:");
         instLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
 
-        // 横向缩放: 0.5x – 8x (tile 拼接, 不再受单 Canvas 上限限制)
-        Slider zoomSlider = new Slider(0.5, 8.0, 1.0);
+        double logR = Math.log(32.0);
+        Slider zoomSlider = new Slider(-logR, logR, 0);
         zoomSlider.setPrefWidth(140);
         zoomSlider.setShowTickMarks(false);
         Label zoomLabel = new Label("1.0x");
         zoomLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px; -fx-min-width: 40;");
         zoomSlider.valueProperty().addListener((obs, old, val) -> {
-            pxPerMs[0] = basePxPerMs * val.doubleValue();
-            zoomLabel.setText(String.format("%.1fx", val.doubleValue()));
+            double zoom = Math.exp(val.doubleValue());
+            pxPerMs[0] = basePxPerMs * zoom;
+            zoomLabel.setText(String.format("%.1fx", zoom));
             redraw.run();
         });
         Label zoomIcon = new Label("🔍");
@@ -1222,10 +1238,17 @@ public class HelloController {
             @Override public Double fromString(String s) { try { return Math.max(1.0, Math.min(999.99, Double.parseDouble(s))); } catch (Exception e) { return 120.0; } }
         });
         bpmSpinner.valueProperty().addListener((obs, old, val) -> {
-            if (val == null) return;
+            if (val == null || old == null || val.equals(old)) return;
+            double scale = old / val;
+            pushUndo.run();
+            for (MusicNote n : notes) {
+                n.setAbsoluteTime(Math.round(n.getAbsoluteTime() * scale));
+            }
             playBpm[0] = val;
+            gridBpm[0] = (int) Math.round(val);
             defaultBpm = val;
             saveSettings();
+            redraw.run();
         });
         Label bpmLabel = new Label("BPM:");
         bpmLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
@@ -1758,7 +1781,7 @@ public class HelloController {
                 filePathField.setText(songName);
                 progressSlider.setValue(0);
             });
-            updateStatus("状态: 就绪 - " + songName + " (" + noteCount + " 音符)");
+            updateStatus("状态: 就绪 - " + noteCount + " 音符");
         } catch (Exception e) { updateStatus("状态: 解析失败"); }
     }
 

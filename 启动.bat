@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-title SkyMusicPlayer
+title SMAP
 
 :: Validate existing JAVA_HOME
 if defined JAVA_HOME (
@@ -32,7 +32,7 @@ echo [INFO] Auto-detected JAVA_HOME=%JAVA_HOME%
 
 :start
 echo ====================================
-echo   SkyMusicPlayer
+echo   SMAP (Sky-MusaAutoPlay)
 echo ====================================
 echo.
 echo NOTE: If Sky game runs as Administrator,
