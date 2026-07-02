@@ -1,4 +1,4 @@
-package org.example.skymusicplayer;
+package org.example.smap;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -21,7 +21,7 @@ public class ToneGenerator {
             "Winter Piano", "Xylophone", "Electric Guitar", "Bassoon", "Orff"
     };
 
-    private static final String RES_PATH = "/org/example/skymusicplayer/instruments/";
+    private static final String RES_PATH = "/org/example/smap/instruments/";
     private static final int KEYS = 15;
     private static final int POLYPHONY = 4;
 

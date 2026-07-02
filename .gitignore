@@ -43,7 +43,7 @@ build/
 # 用户曲谱库 (体积大且第三方版权)
 songs/
 # 构建生成的 songs.zip (build_exe 脚本临时打包)
-src/main/resources/org/example/skymusicplayer/songs.zip
+src/main/resources/org/example/smap/songs.zip
 # jpackage 输出
 build/
 dist/

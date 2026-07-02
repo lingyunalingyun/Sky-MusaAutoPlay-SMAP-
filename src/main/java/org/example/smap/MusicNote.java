@@ -1,4 +1,4 @@
-package org.example.skymusicplayer;
+package org.example.smap;
 
 public class MusicNote {
     private String key;

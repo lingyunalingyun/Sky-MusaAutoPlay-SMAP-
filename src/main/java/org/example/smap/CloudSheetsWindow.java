@@ -1,4 +1,4 @@
-package org.example.skymusicplayer;
+package org.example.smap;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -81,7 +81,7 @@ public class CloudSheetsWindow {
 
     public static void open(Stage owner, Path songsDir, Runnable onDownloaded, String authToken) {
         Stage stage = new Stage();
-        stage.setTitle("☁ 在线曲库 — 缪斯 MUSE");
+        stage.setTitle("☁ 在线曲库 — SMAP");
         try (InputStream icon = CloudSheetsWindow.class.getResourceAsStream("icon.png")) {
             if (icon != null) stage.getIcons().add(new Image(icon));
         } catch (IOException ignored) {}
