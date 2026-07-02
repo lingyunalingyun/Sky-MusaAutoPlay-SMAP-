@@ -4,7 +4,7 @@
 <?import javafx.geometry.Insets?>
 
 <StackPane xmlns:fx="http://javafx.com/fxml"
-           fx:controller="org.example.skymusicplayer.HelloController"
+           fx:controller="org.example.smap.HelloController"
            prefWidth="900" prefHeight="500">
 
 <HBox spacing="15"> <padding>
@@ -12,14 +12,16 @@
 </padding>
 
     <VBox spacing="12" alignment="TOP_CENTER" prefWidth="240">
-        <Label text="Sky 自动弹奏" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+        <Label text="光遇-Musa自动演奏" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
         <TextField fx:id="filePathField" promptText="当前未选定曲目" editable="false"/>
         <Label fx:id="statusLabel" text="状态: 等待中..." wrapText="true" alignment="CENTER" textAlignment="CENTER" prefHeight="40"/>
         <Slider fx:id="progressSlider" min="0" max="1" value="0" maxWidth="Infinity"/>
 
         <HBox spacing="6" alignment="CENTER_LEFT">
-            <Label text="速度 (F4-/F5+):" style="-fx-font-size: 12px;"/>
-            <Slider fx:id="speedSlider" min="0.5" max="2.0" value="1.0" blockIncrement="0.1" HBox.hgrow="ALWAYS"/>
+            <Label text="速度:" style="-fx-font-size: 12px;" minWidth="32"/>
+            <Slider fx:id="speedSlider" min="0.5" max="2.0" value="1.0" blockIncrement="0.1" HBox.hgrow="ALWAYS">
+                <tooltip><Tooltip text="F4 减速 / F5 加速"/></tooltip>
+            </Slider>
             <Label fx:id="speedLabel" text="1.0x" style="-fx-font-size: 12px;" prefWidth="38"/>
         </HBox>
 

@@ -1,4 +1,4 @@
-# Sky Automatic Piano Assistant / 光遇自动弹琴助手
+# SMAP — Sky-MusaAutoPlay / 光遇自动弹琴助手
 
 [**中文**](README.md) · English
 
@@ -22,7 +22,7 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 ### Piano roll editor (FL Studio style)
 - **Beat grid** — BPM grid + playback speed multiplier (1.00–999.99). Beat and bar grid lines
 - **Note blocks** strictly equal `cellMs × pxMs` so they always line up 1:1 with the grid at any zoom
-- **Horizontal zoom** — 0.5x – 8x, multi-Canvas tiling supports very long songs without hitting GPU texture limits
+- **Horizontal zoom** — logarithmic scale centered at 1.0x, up to 32x (long songs at very high zoom may be limited by Canvas tile count)
 - **Undo / redo** — Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y), up to 50 steps
 - **Quick save** — Ctrl+S
 - **Save dialog** — name / artist / transcriber fields persisted into the song JSON
@@ -67,7 +67,7 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 
 ### Option 1: Pre-built Windows binary
 
-Grab `SkyMusicPlayer-vX.Y-win64.zip` from the [Releases page](https://github.com/lingyunalingyun/Sky-Automatic-Piano-Assistant/releases), extract anywhere writable (Desktop, Documents…), and double-click `SkyMusicPlayer.exe`. The bundled JRE means you do not need to install Java.
+Grab `SMAP-vX.Y-win64.zip` from the [Releases page](https://github.com/lingyunalingyun/Sky-Automatic-Piano-Assistant/releases), extract anywhere writable (Desktop, Documents…), and double-click `SMAP.exe`. The bundled JRE means you do not need to install Java.
 
 On first launch, the app unpacks `songs/` next to the `.exe` and creates `key_config.json` / `settings.json` etc. there. The whole folder is portable — move it freely, your config and library follow.
 
@@ -110,14 +110,14 @@ Drop `.json` or `.txt` Sky Music score files into `songs/` and they appear in th
 ```
 .
 ├── src/main/
-│   ├── java/org/example/skymusicplayer/
+│   ├── java/org/example/smap/
 │   │   ├── HelloApplication.java     # JavaFX entry point
 │   │   ├── HelloController.java      # Main controller (main window + editor)
 │   │   ├── Launcher.java             # Launcher wrapper (bypasses JavaFX module path)
 │   │   ├── MusicNote.java            # Note model
 │   │   ├── ToneGenerator.java        # Real-tone sample player
 │   │   └── CloudSheetsWindow.java    # Cloud library window (HTTP fetch + download)
-│   └── resources/org/example/skymusicplayer/
+│   └── resources/org/example/smap/
 │       ├── hello-view.fxml           # Main window layout
 │       ├── dark.css                  # Dark theme
 │       ├── icon.png                  # Window icon

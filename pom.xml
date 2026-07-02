@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.example</groupId>
-    <artifactId>SkyMusicPlayer</artifactId>
+    <artifactId>SMAP</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <name>SkyMusicPlayer</name>
+    <name>SMAP</name>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -64,7 +64,7 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>org.example.skymusicplayer.Launcher</mainClass>
+                    <mainClass>org.example.smap.Launcher</mainClass>
                 </configuration>
             </plugin>
         </plugins>

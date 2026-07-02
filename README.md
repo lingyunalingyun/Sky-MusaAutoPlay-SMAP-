@@ -1,4 +1,4 @@
-# Sky Automatic Piano Assistant / 光遇自动弹琴助手
+# SMAP — Sky-MusaAutoPlay / 光遇自动弹琴助手
 
 中文 · [**English**](README_EN.md)
 
@@ -22,7 +22,7 @@
 ### 钢琴卷帘编辑器（FL 风格）
 - **节拍网格** — BPM 网格 + 播放倍速 (1.00–999.99)，beat 中线 / bar 主线
 - **音符方块** 严格 = `cellMs × pxMs`，任何缩放下与节拍 1:1 对齐
-- **横向缩放** — 0.5x – 8x，多 Canvas tile 拼接，长歌也能放大
+- **横向缩放** — 对数刻度，中点 1.0x，最大 32x（长曲目高倍缩放时受 Canvas tile 数量限制，可能无法达到最大值）
 - **撤销/重做** — Ctrl+Z / Ctrl+Shift+Z（或 Ctrl+Y），最多 50 步
 - **快捷保存** — Ctrl+S
 - **底部按键映射** — 3×5 GridPane 显示键号+键名，播放时同步亮起，点击试听
@@ -113,14 +113,14 @@ cd Sky-Automatic-Piano-Assistant
 ```
 .
 ├── src/main/
-│   ├── java/org/example/skymusicplayer/
+│   ├── java/org/example/smap/
 │   │   ├── HelloApplication.java     # JavaFX 入口
 │   │   ├── HelloController.java      # 主控制器 (主窗口 + 编辑器)
 │   │   ├── Launcher.java             # 启动包装 (绕过 JavaFX 模块路径限制)
 │   │   ├── MusicNote.java            # 音符数据
 │   │   ├── ToneGenerator.java        # 真实音色播放
 │   │   └── CloudSheetsWindow.java    # 在线曲库窗口 (HTTP 拉取 + 下载)
-│   └── resources/org/example/skymusicplayer/
+│   └── resources/org/example/smap/
 │       ├── hello-view.fxml           # 主窗口布局
 │       ├── dark.css                  # 暗色主题
 │       └── instruments/              # 10 套乐器 wav (15 键 × 10 套)
