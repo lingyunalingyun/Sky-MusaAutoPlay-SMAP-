@@ -21,6 +21,7 @@ import javafx.scene.control.cell.ChoiceBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.GridPane;
@@ -63,6 +64,9 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 public class HelloController {
+
+    static final String APP_VERSION = "1.3";
+    private static final String GITHUB_REPO = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
 
     @FXML private TextField filePathField;
     @FXML private Label statusLabel;
@@ -270,6 +274,7 @@ public class HelloController {
         loadSettings();
         refreshLibrary();
         registerGlobalHotkeys();
+        checkForUpdates();
     }
 
     /**
@@ -847,6 +852,21 @@ public class HelloController {
         // 元数据 (歌手/创谱人) 跟随编辑会话, 保存对话框可改
         final String[] meta = { currentArtist == null ? "" : currentArtist,
                                 currentTranscriber == null ? "" : currentTranscriber };
+
+        if (!notes.isEmpty()) {
+            long g = 0;
+            for (MusicNote n : notes) {
+                long t = Math.round(n.getAbsoluteTime() / 5.0) * 5;
+                if (t > 0) g = (g == 0) ? t : gcd(g, t);
+            }
+            if (g >= 5) {
+                double bpm = 60000.0 / ((double) g * subdiv[0]);
+                while (bpm < 30) bpm *= 2;
+                gridBpm[0] = (int) Math.round(bpm);
+                playBpm[0] = bpm;
+            }
+        }
+
         final int BEATS_PER_BAR = 4;   // 固定 4/4
         java.util.function.LongSupplier cellMsSup = () -> Math.max(5L, Math.round(60000.0 / gridBpm[0] / subdiv[0]));
         java.util.function.LongSupplier beatMsSup = () -> Math.max(20L, Math.round(60000.0 / gridBpm[0]));
@@ -1001,42 +1021,144 @@ public class HelloController {
                     g.strokeLine(localPhx, 0, localPhx, TOTAL_H);
                 }
             }
+
+            long phMs = playheadRef[0];
+            long cell = cellMsSup.getAsLong();
+            Set<Integer> activeKeys = new HashSet<>();
+            for (MusicNote n : notes) {
+                if (Math.abs(n.getAbsoluteTime() - phMs) < cell) {
+                    int ki = parseKeyIndex(n.getKey());
+                    if (ki >= 0) activeKeys.add(ki);
+                }
+            }
+            for (int ki = 0; ki < mapButtons.length; ki++) {
+                if (mapButtons[ki] == null) continue;
+                mapButtons[ki].setStyle(activeKeys.contains(ki) ? MAP_FLASH_STYLE : MAP_DEFAULT_STYLE);
+            }
         };
 
-        // 鼠标点击 (Pane 接收, e.getX() 是 Pane 相对): ruler → 移动播放头; 行内 → 加/删音符
+        // 鼠标交互: 左键放置/拖拽, 右键删除, 中键拖动视图
+        final MusicNote[] dragNote = {null};
+        final boolean[] isDragging = {false};
+        final double[] mouseDownX = {0}, mouseDownY = {0};
+        final boolean[] isPanning = {false};
+        final double[] panStartScreenX = {0}, panStartHval = {0};
+
         gridPane.setOnMousePressed(e -> {
-            if (isEditorPlaying[0]) return;
             double x = e.getX();
             double y = e.getY();
             long cellMs = cellMsSup.getAsLong();
             long t = Math.max(0L, Math.min((long) (x / pxPerMs[0]), songLen.get()));
             long snapT = (t / cellMs) * cellMs;
+
+            if (e.getButton() == MouseButton.MIDDLE) {
+                isPanning[0] = true;
+                panStartScreenX[0] = e.getScreenX();
+                panStartHval[0] = scrollRef[0].getHvalue();
+                e.consume();
+                return;
+            }
+
             if (y < RULER_H) {
                 playheadRef[0] = snapT;
                 redraw.run();
                 return;
             }
+
             int row = (int) ((y - RULER_H) / ROW_H);
             if (row < 0 || row >= KEYS) return;
             int keyIdx = (KEYS - 1) - row;
             String keyName = "1Key" + keyIdx;
-            MusicNote toRemove = null;
-            for (MusicNote n : notes) {
-                if (n.getKey().equals(keyName) && Math.abs(n.getAbsoluteTime() - snapT) < cellMs) {
-                    toRemove = n; break;
+
+            if (e.getButton() == MouseButton.SECONDARY) {
+                if (isEditorPlaying[0]) return;
+                MusicNote toRemove = null;
+                for (MusicNote n : notes) {
+                    if (n.getKey().equals(keyName) && Math.abs(n.getAbsoluteTime() - snapT) < cellMs) {
+                        toRemove = n; break;
+                    }
+                }
+                if (toRemove != null) {
+                    pushUndo.run();
+                    notes.remove(toRemove);
+                    redraw.run();
+                }
+                return;
+            }
+
+            if (e.getButton() == MouseButton.PRIMARY) {
+                if (isEditorPlaying[0]) return;
+                mouseDownX[0] = x;
+                mouseDownY[0] = y;
+                isDragging[0] = false;
+                dragNote[0] = null;
+
+                for (MusicNote n : notes) {
+                    if (n.getKey().equals(keyName) && Math.abs(n.getAbsoluteTime() - snapT) < cellMs) {
+                        dragNote[0] = n;
+                        break;
+                    }
+                }
+
+                if (dragNote[0] == null) {
+                    pushUndo.run();
+                    notes.add(new MusicNote(keyName, snapT));
+                    ToneGenerator.init();
+                    ToneGenerator.play(keyIdx);
+                    flashMapKey.accept(keyIdx);
+                    redraw.run();
                 }
             }
-            if (toRemove != null) {
-                pushUndo.run();
-                notes.remove(toRemove);
-            } else {
-                pushUndo.run();
-                notes.add(new MusicNote(keyName, snapT));
-                ToneGenerator.init();
-                ToneGenerator.play(keyIdx);
-                flashMapKey.accept(keyIdx);
+        });
+
+        gridPane.setOnMouseDragged(e -> {
+            if (e.isMiddleButtonDown()) {
+                double dx = e.getScreenX() - panStartScreenX[0];
+                double contentW = gridPane.getPrefWidth();
+                double viewportW = scrollRef[0].getViewportBounds().getWidth();
+                double scrollRange = contentW - viewportW;
+                if (scrollRange > 0) {
+                    scrollRef[0].setHvalue(Math.max(0, Math.min(1, panStartHval[0] - dx / scrollRange)));
+                }
+                e.consume();
+                return;
             }
-            redraw.run();
+
+            if (e.isPrimaryButtonDown() && dragNote[0] != null && !isEditorPlaying[0]) {
+                double dx = Math.abs(e.getX() - mouseDownX[0]);
+                double dy = Math.abs(e.getY() - mouseDownY[0]);
+                if (!isDragging[0] && (dx > 5 || dy > 5)) {
+                    isDragging[0] = true;
+                    pushUndo.run();
+                }
+                if (isDragging[0]) {
+                    long cellMs = cellMsSup.getAsLong();
+                    long newT = Math.max(0L, (long) (e.getX() / pxPerMs[0]));
+                    long snapT = (newT / cellMs) * cellMs;
+                    int newRow = Math.max(0, Math.min(KEYS - 1, (int) ((e.getY() - RULER_H) / ROW_H)));
+                    int newKeyIdx = (KEYS - 1) - newRow;
+                    dragNote[0].setAbsoluteTime(snapT);
+                    dragNote[0].setKey("1Key" + newKeyIdx);
+                    redraw.run();
+                }
+            }
+        });
+
+        gridPane.setOnMouseReleased(e -> {
+            if (e.getButton() == MouseButton.MIDDLE) {
+                isPanning[0] = false;
+                return;
+            }
+            if (e.getButton() == MouseButton.PRIMARY && isDragging[0] && dragNote[0] != null) {
+                int idx = parseKeyIndex(dragNote[0].getKey());
+                if (idx >= 0) {
+                    ToneGenerator.init();
+                    ToneGenerator.play(idx);
+                    flashMapKey.accept(idx);
+                }
+            }
+            dragNote[0] = null;
+            isDragging[0] = false;
         });
 
         // 左侧键盘: 顶 = K14 (高音), 底 = K0 (低音)
@@ -1075,7 +1197,7 @@ public class HelloController {
         // ScrollPane 包 gridPane (内含多个 tile Canvas)
         ScrollPane gridScroll = new ScrollPane(gridPane);
         scrollRef[0] = gridScroll;
-        gridScroll.setPannable(true);
+        gridScroll.setPannable(false);
         gridScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
         gridScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         gridScroll.hvalueProperty().addListener((obs, old, val) -> redraw.run());
@@ -1273,7 +1395,7 @@ public class HelloController {
         toolbar.setPadding(new Insets(8, 12, 8, 12));
         toolbar.setStyle("-fx-background-color: #2d2d2d;");
 
-        Label hint = new Label("点击网格 → 加/删音符 (按节拍吸附)   |   点击标尺 → 移动播放头   |   点左侧键名 → 试听   |   🔍 横向缩放   |   ♩ BPM 调节拍   |   Ctrl+Z 撤销 / Ctrl+Shift+Z 重做 / Ctrl+S 保存");
+        Label hint = new Label("左键放置  右键删除  长按拖动音符  中键拖动视图   |   Space 播放/暂停  R 从头播放   |   Ctrl+Z 撤销  Ctrl+S 保存");
         hint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
         hint.setPadding(new Insets(6, 12, 6, 12));
 
@@ -1294,7 +1416,27 @@ public class HelloController {
             mapBtn.setOnAction(e -> {
                 ToneGenerator.init();
                 ToneGenerator.play(keyIdx);
-                flashMapKey.accept(keyIdx);
+                if (!isEditorPlaying[0]) {
+                    long snapT = (playheadRef[0] / cellMsSup.getAsLong()) * cellMsSup.getAsLong();
+                    String keyName = "1Key" + keyIdx;
+                    MusicNote existing = null;
+                    long cell = cellMsSup.getAsLong();
+                    for (MusicNote n : notes) {
+                        if (n.getKey().equals(keyName) && Math.abs(n.getAbsoluteTime() - snapT) < cell) {
+                            existing = n; break;
+                        }
+                    }
+                    pushUndo.run();
+                    if (existing != null) {
+                        notes.remove(existing);
+                    } else {
+                        notes.add(new MusicNote(keyName, snapT));
+                    }
+                    redraw.run();
+                } else {
+                    flashMapKey.accept(keyIdx);
+                }
+                if (scrollRef[0] != null) scrollRef[0].requestFocus();
             });
             mapButtons[idx] = mapBtn;
             mapGrid.add(mapBtn, col, row);
@@ -1328,8 +1470,47 @@ public class HelloController {
 
         Scene scene = new Scene(root, 1200, 700);
         scene.addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
-            if (!ke.isControlDown()) return;
             KeyCode k = ke.getCode();
+            if (k == KeyCode.SPACE) {
+                playBtn.fire();
+                ke.consume();
+                return;
+            }
+            if (k == KeyCode.LEFT && !isEditorPlaying[0]) {
+                playheadRef[0] = Math.max(0, playheadRef[0] - cellMsSup.getAsLong());
+                redraw.run();
+                ke.consume();
+                return;
+            }
+            if (k == KeyCode.RIGHT && !isEditorPlaying[0]) {
+                playheadRef[0] = playheadRef[0] + cellMsSup.getAsLong();
+                redraw.run();
+                ke.consume();
+                return;
+            }
+            if (!ke.isControlDown() && !isEditorPlaying[0]) {
+                int awtCode = ke.getCode().getCode();
+                for (int ki = 0; ki < 15; ki++) {
+                    Integer mapped = keyMap.get("1Key" + ki);
+                    if (mapped != null && mapped == awtCode) {
+                        mapButtons[ki].fire();
+                        ke.consume();
+                        return;
+                    }
+                }
+            }
+            if (k == KeyCode.R && !ke.isControlDown()) {
+                isEditorPlaying[0] = false;
+                ToneGenerator.stopAll();
+                playheadRef[0] = 0;
+                redraw.run();
+                PauseTransition rDelay = new PauseTransition(Duration.millis(80));
+                rDelay.setOnFinished(ev -> playBtn.fire());
+                rDelay.play();
+                ke.consume();
+                return;
+            }
+            if (!ke.isControlDown()) return;
             if (k == KeyCode.Z) {
                 if (ke.isShiftDown()) doRedo.run(); else doUndo.run();
                 ke.consume();
@@ -1341,11 +1522,80 @@ public class HelloController {
                 ke.consume();
             }
         });
+
+        scene.addEventFilter(javafx.scene.input.InputMethodEvent.ANY, ime -> {
+            if (!isEditorPlaying[0] && !(scene.getFocusOwner() instanceof TextInputControl)) {
+                StringBuilder sb = new StringBuilder();
+                if (ime.getComposed() != null)
+                    for (javafx.scene.input.InputMethodTextRun run : ime.getComposed()) sb.append(run.getText());
+                if (ime.getCommitted() != null) sb.append(ime.getCommitted());
+                String text = sb.toString();
+                if (!text.isEmpty()) {
+                    int awtCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(
+                            Character.toUpperCase(text.charAt(0)));
+                    if (awtCode != java.awt.event.KeyEvent.VK_UNDEFINED) {
+                        for (int ki = 0; ki < 15; ki++) {
+                            Integer mapped = keyMap.get("1Key" + ki);
+                            if (mapped != null && mapped == awtCode) {
+                                mapButtons[ki].fire();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            ime.consume();
+        });
+
+        scene.addEventFilter(KeyEvent.KEY_TYPED, ke -> {
+            if (isEditorPlaying[0]) return;
+            if (scene.getFocusOwner() instanceof TextInputControl) return;
+            String ch = ke.getCharacter();
+            if (ch == null || ch.isEmpty()) return;
+            int awtCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(
+                    Character.toUpperCase(ch.charAt(0)));
+            if (awtCode == java.awt.event.KeyEvent.VK_UNDEFINED) return;
+            for (int ki = 0; ki < 15; ki++) {
+                Integer mapped = keyMap.get("1Key" + ki);
+                if (mapped != null && mapped == awtCode) {
+                    mapButtons[ki].fire();
+                    ke.consume();
+                    return;
+                }
+            }
+        });
+
+        bpmSpinner.getEditor().inputMethodRequestsProperty().set(null);
+        gridScroll.setFocusTraversable(true);
+
         stage.setScene(scene);
         stage.setMinWidth(900);
         stage.setMinHeight(640);
         stage.setOnCloseRequest(e -> { isEditorPlaying[0] = false; ToneGenerator.stopAll(); });
-        stage.setOnShown(e -> Platform.runLater(redraw));
+
+        Runnable switchToEnglishIME = () -> Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(150);
+                new ProcessBuilder("powershell", "-NoProfile", "-Command",
+                        "Add-Type 'using System;using System.Runtime.InteropServices;" +
+                        "public class W{[DllImport(\"user32.dll\")]public static extern IntPtr GetForegroundWindow();" +
+                        "[DllImport(\"user32.dll\")]public static extern bool PostMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);}';"+
+                        "$h=[W]::GetForegroundWindow();[W]::PostMessageW($h,0x0050,[IntPtr]::Zero,[IntPtr]::new(0x04090409))")
+                        .redirectErrorStream(true).start().waitFor();
+            } catch (Exception ignored) {}
+        });
+
+        stage.focusedProperty().addListener((obs, old, focused) -> {
+            if (focused) {
+                gridScroll.requestFocus();
+                switchToEnglishIME.run();
+            }
+        });
+        stage.setOnShown(e -> {
+            gridScroll.requestFocus();
+            switchToEnglishIME.run();
+            Platform.runLater(redraw);
+        });
         stage.show();
 
         Platform.runLater(redraw);
@@ -2194,9 +2444,64 @@ public class HelloController {
         };
     }
 
-    /**
-     * "1KeyN" → N (-1 表示无效)
-     */
+    private void checkForUpdates() {
+        Thread.ofVirtual().start(() -> {
+            try {
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create("https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest"))
+                        .header("Accept", "application/vnd.github+json")
+                        .timeout(java.time.Duration.ofSeconds(8))
+                        .GET().build();
+                HttpResponse<String> resp = HttpClient.newHttpClient()
+                        .send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() != 200) return;
+                JSONObject rel = new JSONObject(resp.body());
+                String tag = rel.optString("tag_name", "").replaceFirst("^v", "");
+                if (tag.isEmpty() || tag.equals(APP_VERSION)) return;
+                if (compareVersions(tag, APP_VERSION) <= 0) return;
+                String name = rel.optString("name", "v" + tag);
+                String url = rel.optString("html_url", "");
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("发现新版本");
+                    alert.setHeaderText("SMAP " + name + " 已发布");
+                    alert.setContentText("当前版本: v" + APP_VERSION + "\n最新版本: v" + tag
+                            + (url.isEmpty() ? "" : "\n\n前往 GitHub 下载最新版本？"));
+                    if (!url.isEmpty()) {
+                        ButtonType goBtn = new ButtonType("前往下载", ButtonBar.ButtonData.OK_DONE);
+                        ButtonType later = new ButtonType("稍后再说", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(goBtn, later);
+                        alert.showAndWait().ifPresent(bt -> {
+                            if (bt == goBtn) {
+                                try { java.awt.Desktop.getDesktop().browse(URI.create(url)); } catch (Exception ignored) {}
+                            }
+                        });
+                    } else {
+                        alert.showAndWait();
+                    }
+                });
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private static int compareVersions(String a, String b) {
+        String[] pa = a.split("\\.");
+        String[] pb = b.split("\\.");
+        int len = Math.max(pa.length, pb.length);
+        for (int i = 0; i < len; i++) {
+            int va = i < pa.length ? Integer.parseInt(pa[i]) : 0;
+            int vb = i < pb.length ? Integer.parseInt(pb[i]) : 0;
+            if (va != vb) return Integer.compare(va, vb);
+        }
+        return 0;
+    }
+
+    private static long gcd(long a, long b) {
+        a = Math.abs(a); b = Math.abs(b);
+        while (b != 0) { long t = b; b = a % b; a = t; }
+        return a;
+    }
+
     private static int parseKeyIndex(String keyName) {
         if (keyName == null || !keyName.startsWith("1Key")) return -1;
         try { return Integer.parseInt(keyName.substring(4)); }

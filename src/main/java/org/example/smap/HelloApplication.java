@@ -20,7 +20,7 @@ public class HelloApplication extends Application {
         Scene scene = new Scene(fxmlLoader.load(), 900, 500);
 
         // 3. 设置窗口标题 + 图标
-        stage.setTitle("SMAP — Sky-MusaAutoPlay");
+        stage.setTitle("SMAP v" + HelloController.APP_VERSION + " — Sky-MusaAutoPlay");
         try (InputStream icon = HelloApplication.class.getResourceAsStream("icon.png")) {
             if (icon != null) stage.getIcons().add(new Image(icon));
         } catch (IOException ignored) {}
