@@ -77,6 +77,8 @@ public class HelloController {
     @FXML private ToggleButton themeToggle;
     @FXML private ToggleButton audioModeToggle;
     @FXML private Button loginBtn;
+    @FXML private Button playBtn;
+    @FXML private Button pauseBtn;
 
     // 登录状态
     private static final String AUTH_URL = "http://musetreehouse.com";
@@ -1678,7 +1680,9 @@ public class HelloController {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("选择要导入的曲谱文件 (可多选)");
         chooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("所有支持格式", "*.json", "*.txt", "*.mid", "*.midi"),
                 new FileChooser.ExtensionFilter("曲谱文件", "*.json", "*.txt"),
+                new FileChooser.ExtensionFilter("MIDI 文件", "*.mid", "*.midi"),
                 new FileChooser.ExtensionFilter("所有文件", "*.*")
         );
         Window window = songListView.getScene().getWindow();
@@ -1690,18 +1694,98 @@ public class HelloController {
 
         int imported = 0, failed = 0;
         for (File src : files) {
-            try {
-                Files.copy(src.toPath(), new File(target, src.getName()).toPath(),
-                        StandardCopyOption.REPLACE_EXISTING);
-                imported++;
-            } catch (IOException e) {
-                failed++;
+            String lower = src.getName().toLowerCase();
+            if (lower.endsWith(".mid") || lower.endsWith(".midi")) {
+                if (importMidiFile(src)) imported++; else failed++;
+            } else {
+                try {
+                    Files.copy(src.toPath(), new File(target, src.getName()).toPath(),
+                            StandardCopyOption.REPLACE_EXISTING);
+                    imported++;
+                } catch (IOException e) {
+                    failed++;
+                }
             }
         }
         refreshLibrary();
         updateStatus(failed == 0
                 ? "状态: 已导入 " + imported + " 个曲谱"
                 : "状态: 导入 " + imported + " 个，失败 " + failed + " 个");
+    }
+
+    private boolean importMidiFile(File midiFile) {
+        try {
+            MidiImporter importer = new MidiImporter(midiFile);
+            List<MidiImporter.TrackInfo> tracks = importer.analyzeTracks();
+
+            if (tracks.isEmpty()) {
+                new Alert(Alert.AlertType.WARNING, "MIDI 文件中没有音符数据", ButtonType.OK).showAndWait();
+                return false;
+            }
+
+            Dialog<ButtonType> dlg = new Dialog<>();
+            dlg.setTitle("导入 MIDI");
+            dlg.setHeaderText(midiFile.getName());
+
+            List<CheckBox> trackChecks = new ArrayList<>();
+            VBox trackBox = new VBox(4);
+            trackBox.getChildren().add(new Label("选择音轨:"));
+            for (MidiImporter.TrackInfo ti : tracks) {
+                CheckBox cb = new CheckBox(ti.name() + "  (" + ti.noteCount() + " 音符)");
+                cb.setSelected(true);
+                trackChecks.add(cb);
+                trackBox.getChildren().add(cb);
+            }
+
+            Spinner<Integer> octaveSpinner = new Spinner<>(-4, 4, 0);
+            octaveSpinner.setPrefWidth(70);
+            HBox octaveRow = new HBox(8, new Label("八度偏移:"), octaveSpinner);
+            octaveRow.setAlignment(Pos.CENTER_LEFT);
+
+            String baseName = midiFile.getName().replaceFirst("(?i)\\.(midi?)$", "");
+            TextField nameField = new TextField(baseName);
+            HBox nameRow = new HBox(8, new Label("曲名:"), nameField);
+            nameRow.setAlignment(Pos.CENTER_LEFT);
+            HBox.setHgrow(nameField, Priority.ALWAYS);
+
+            Label bpmHint = new Label(String.format("检测 BPM: %.1f", importer.getInitialBpm()));
+            bpmHint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+
+            VBox content = new VBox(10, trackBox, new Separator(), octaveRow, nameRow, bpmHint);
+            content.setPadding(new Insets(12));
+            dlg.getDialogPane().setContent(content);
+
+            ButtonType importType = new ButtonType("导入", ButtonBar.ButtonData.OK_DONE);
+            dlg.getDialogPane().getButtonTypes().addAll(importType, ButtonType.CANCEL);
+
+            Optional<ButtonType> result = dlg.showAndWait();
+            if (result.isEmpty() || result.get() != importType) return false;
+
+            Set<Integer> selected = new HashSet<>();
+            for (int i = 0; i < trackChecks.size(); i++) {
+                if (trackChecks.get(i).isSelected()) selected.add(tracks.get(i).index());
+            }
+            if (selected.isEmpty()) {
+                updateStatus("状态: 未选择任何音轨");
+                return false;
+            }
+
+            List<MusicNote> notes = importer.convert(selected, octaveSpinner.getValue());
+            if (notes.isEmpty()) {
+                updateStatus("状态: 转换后无音符");
+                return false;
+            }
+
+            String songName = nameField.getText().trim();
+            if (songName.isEmpty()) songName = baseName;
+            double bpm = importer.getInitialBpm();
+            File target = newSongFile(songName);
+            return writeSongToFile(notes, target, songName, "", "SMAP MIDI Import",
+                    (int) Math.round(bpm), 4);
+        } catch (Exception e) {
+            updateStatus("状态: MIDI 导入失败 — " + e.getMessage());
+            return false;
+        }
     }
 
     @FXML
@@ -1850,6 +1934,10 @@ public class HelloController {
         stopPreview();
         isPlaying = true;
         isPaused = false;
+        Platform.runLater(() -> {
+            playBtn.setText("⏹ 停止 (F1)");
+            playBtn.setStyle("-fx-background-color: #F44336; -fx-text-fill: white; -fx-font-weight: bold;");
+        });
 
         new Thread(() -> {
             try {
@@ -1858,7 +1946,7 @@ public class HelloController {
                 for (int i = countdownSecs; i >= 1; i--) {
                     if (!isPlaying) return;
                     if (skipCountdown) { skipCountdown = false; break; }
-                    updateStatus("状态: 即将开始... " + i + "  (F1 跳过)");
+                    updateStatus("状态: 即将开始... " + i);
                     Thread.sleep(1000);
                 }
                 skipCountdown = false;
@@ -1875,7 +1963,7 @@ public class HelloController {
 
                 Robot robot = new Robot();
                 long lastSrcMs = startMs;
-                updateStatus("状态: 正在演奏 ▶ (" + String.format("%.1fx", speedSlider.getValue()) + ")  F2 暂停 / F4-F5 速度 / F6 停止");
+                updateStatus("状态: 正在演奏 ▶ (" + String.format("%.1fx", speedSlider.getValue()) + ")  F1 停止 / F2 暂停 / F3↑F4↓速度 / F5←F6→跳转");
 
                 for (Map.Entry<Long, List<MusicNote>> entry : chords.entrySet()) {
                     if (!isPlaying) break;
@@ -1922,8 +2010,10 @@ public class HelloController {
                     Platform.runLater(() -> progressSlider.setValue(1.0));
                 }
                 isPlaying = false;
+                Platform.runLater(this::resetPlayButtons);
             } catch (Exception e) {
                 isPlaying = false;
+                Platform.runLater(this::resetPlayButtons);
                 updateStatus("状态: 播放出错");
             }
         }).start();
@@ -1938,7 +2028,21 @@ public class HelloController {
         stopPreview();
         ToneGenerator.stopAll();
         updateStatus("状态: 已停止");
-        Platform.runLater(() -> progressSlider.setValue(0));
+        Platform.runLater(() -> {
+            progressSlider.setValue(0);
+            resetPlayButtons();
+        });
+    }
+
+    @FXML
+    protected void onTogglePlayClick() {
+        if (isPlaying) onStopPlayClick(); else onStartPlayClick();
+    }
+
+    @FXML
+    protected void onTogglePauseClick() {
+        if (!isPlaying) return;
+        if (isPaused) hotkeyResume(); else hotkeyPause();
     }
 
     @FXML
@@ -1947,29 +2051,44 @@ public class HelloController {
     @FXML
     protected void onResumeClick() { hotkeyResume(); }
 
-    // ============ 全局热键 F1-F5 ============
+    // ============ 全局热键 F1-F6 ============
 
-    private void hotkeyStartOrSkip() {
+    private void hotkeyTogglePlay() {
         if (isPlaying) {
-            // 在倒计时中 → 跳过
-            skipCountdown = true;
+            Platform.runLater(this::onStopPlayClick);
         } else {
-            // 未播放 → 设跳过标志后启动
             skipCountdown = true;
             Platform.runLater(this::onStartPlayClick);
+        }
+    }
+
+    private void hotkeyTogglePause() {
+        if (!isPlaying) return;
+        if (isPaused) {
+            hotkeyResume();
+        } else {
+            hotkeyPause();
         }
     }
 
     private void hotkeyPause() {
         if (!isPlaying || isPaused) return;
         isPaused = true;
-        updateStatus("状态: ⏸ 已暂停  (F3 继续)");
+        updateStatus("状态: ⏸ 已暂停  (F2 继续)");
+        Platform.runLater(() -> {
+            pauseBtn.setText("▶ 继续 (F2)");
+            pauseBtn.setStyle("-fx-background-color: #03A9F4; -fx-text-fill: white;");
+        });
     }
 
     private void hotkeyResume() {
         if (!isPlaying || !isPaused) return;
         isPaused = false;
         updateStatus("状态: 正在演奏 ▶ (" + String.format("%.1fx", speedSlider.getValue()) + ")");
+        Platform.runLater(() -> {
+            pauseBtn.setText("⏸ 暂停 (F2)");
+            pauseBtn.setStyle("-fx-background-color: #607D8B; -fx-text-fill: white;");
+        });
     }
 
     private void hotkeySpeedDown() {
@@ -1992,8 +2111,36 @@ public class HelloController {
         });
     }
 
-    private void hotkeyStop() {
-        Platform.runLater(this::onStopPlayClick);
+    private void hotkeySeekNotes(int offset) {
+        if (playlist.isEmpty()) return;
+        List<MusicNote> sorted = new ArrayList<>(playlist);
+        sorted.sort(java.util.Comparator.comparingLong(MusicNote::getAbsoluteTime));
+        long maxMs = sorted.get(sorted.size() - 1).getAbsoluteTime();
+        if (maxMs <= 0) return;
+
+        double currentFrac = progressSlider.getValue();
+        long currentMs = (long) (maxMs * currentFrac);
+
+        int idx = 0;
+        for (int i = 0; i < sorted.size(); i++) {
+            if (sorted.get(i).getAbsoluteTime() <= currentMs) idx = i;
+            else break;
+        }
+
+        int targetIdx = Math.max(0, Math.min(sorted.size() - 1, idx + offset));
+        double targetFrac = (double) sorted.get(targetIdx).getAbsoluteTime() / maxMs;
+        seekFraction = targetFrac;
+        Platform.runLater(() -> {
+            if (!progressSlider.isValueChanging()) progressSlider.setValue(targetFrac);
+        });
+
+        if (isPlaying) {
+            isPlaying = false;
+            isPaused = false;
+            skipCountdown = true;
+            Platform.runLater(this::onStartPlayClick);
+        }
+        updateStatus("状态: 第 " + (targetIdx + 1) + "/" + sorted.size() + " 个音符");
     }
 
     private void registerGlobalHotkeys() {
@@ -2013,12 +2160,12 @@ public class HelloController {
             @Override
             public void nativeKeyPressed(com.github.kwhat.jnativehook.keyboard.NativeKeyEvent e) {
                 switch (e.getKeyCode()) {
-                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F1 -> hotkeyStartOrSkip();
-                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F2 -> hotkeyPause();
-                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F3 -> hotkeyResume();
+                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F1 -> hotkeyTogglePlay();
+                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F2 -> hotkeyTogglePause();
+                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F3 -> hotkeySpeedUp();
                     case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F4 -> hotkeySpeedDown();
-                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F5 -> hotkeySpeedUp();
-                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F6 -> hotkeyStop();
+                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F5 -> hotkeySeekNotes(-10);
+                    case com.github.kwhat.jnativehook.keyboard.NativeKeyEvent.VC_F6 -> hotkeySeekNotes(10);
                 }
             }
         });
@@ -2054,6 +2201,13 @@ public class HelloController {
         if (keyName == null || !keyName.startsWith("1Key")) return -1;
         try { return Integer.parseInt(keyName.substring(4)); }
         catch (NumberFormatException e) { return -1; }
+    }
+
+    private void resetPlayButtons() {
+        playBtn.setText("▶ 开始 (F1)");
+        playBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
+        pauseBtn.setText("⏸ 暂停 (F2)");
+        pauseBtn.setStyle("-fx-background-color: #607D8B; -fx-text-fill: white;");
     }
 
     private void updateStatus(String msg) {
