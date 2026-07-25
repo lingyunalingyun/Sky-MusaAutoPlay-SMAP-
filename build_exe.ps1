@@ -5,7 +5,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 $AppName = "SMAP"
-$AppVersion = "1.2"
+$AppVersion = "1.3"
 $MainClass = "org.example.smap.Launcher"
 $IconPath = "$ScriptDir\icon.ico"
 $JdkHome = "C:\Users\lingy\jdk21\jdk-21.0.11+10"
