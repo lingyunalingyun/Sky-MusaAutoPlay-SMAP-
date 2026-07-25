@@ -20,7 +20,7 @@
         <HBox spacing="6" alignment="CENTER_LEFT">
             <Label text="速度:" style="-fx-font-size: 12px;" minWidth="32"/>
             <Slider fx:id="speedSlider" min="0.5" max="2.0" value="1.0" blockIncrement="0.1" HBox.hgrow="ALWAYS">
-                <tooltip><Tooltip text="F4 减速 / F5 加速"/></tooltip>
+                <tooltip><Tooltip text="F4 减速 / F3 加速"/></tooltip>
             </Slider>
             <Label fx:id="speedLabel" text="1.0x" style="-fx-font-size: 12px;" prefWidth="38"/>
         </HBox>
@@ -34,12 +34,8 @@
         </HBox>
 
         <VBox spacing="8">
-            <Button text="▶ 开始演奏 (F1)" onAction="#onStartPlayClick" maxWidth="Infinity" style="-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;"/>
-            <HBox spacing="6">
-                <Button text="⏸ 暂停 (F2)" onAction="#onPauseClick" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #607D8B; -fx-text-fill: white;"/>
-                <Button text="▶ 继续 (F3)" onAction="#onResumeClick" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #03A9F4; -fx-text-fill: white;"/>
-            </HBox>
-            <Button text="⏹ 停止 (F6)" onAction="#onStopPlayClick" maxWidth="Infinity" style="-fx-background-color: #F44336; -fx-text-fill: white;"/>
+            <Button fx:id="playBtn" text="▶ 开始 (F1)" onAction="#onTogglePlayClick" maxWidth="Infinity" style="-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;"/>
+            <Button fx:id="pauseBtn" text="⏸ 暂停 (F2)" onAction="#onTogglePauseClick" maxWidth="Infinity" style="-fx-background-color: #607D8B; -fx-text-fill: white;"/>
             <Button text="🔄 刷新曲目库" onAction="#refreshLibrary" maxWidth="Infinity"/>
             <Button text="📁 导入曲谱" onAction="#onImportClick" maxWidth="Infinity"/>
             <Button text="☁ 在线曲库" onAction="#onCloudSheetsClick" maxWidth="Infinity" style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
