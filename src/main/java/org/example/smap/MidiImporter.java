@@ -10,6 +10,8 @@ public class MidiImporter {
     private static final int[] SKY_MIDI = {
         60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84
     };
+    // C 大调白键的音级(pitch class)
+    private static final Set<Integer> WHITE_PC = Set.of(0, 2, 4, 5, 7, 9, 11);
 
     public record TrackInfo(int index, String name, int noteCount) {}
 
@@ -60,6 +62,10 @@ public class MidiImporter {
     }
 
     public List<MusicNote> convert(Set<Integer> trackIndices, int octaveShift) {
+        return convert(trackIndices, octaveShift, 0);
+    }
+
+    public List<MusicNote> convert(Set<Integer> trackIndices, int octaveShift, int semitoneShift) {
         int resolution = seq.getResolution();
         boolean ppq = seq.getDivisionType() == Sequence.PPQ;
 
@@ -88,6 +94,7 @@ public class MidiImporter {
         for (int ti : trackIndices) {
             if (ti < 0 || ti >= tracks.length) continue;
             Track track = tracks[ti];
+            int prevRaw = Integer.MIN_VALUE; // 该轨上一个音(含移调), 用于方向感知吸附
             for (int i = 0; i < track.size(); i++) {
                 MidiEvent ev = track.get(i);
                 if (ev.getMessage() instanceof ShortMessage sm
@@ -96,8 +103,11 @@ public class MidiImporter {
                     long ms = ppq
                             ? tickToMs(ev.getTick(), resolution, tempos)
                             : (long) (ev.getTick() * 1000.0 / (fps * resolution));
-                    int skyKey = toSkyKey(sm.getData1(), octaveShift);
+                    int raw = sm.getData1() + octaveShift * 12 + semitoneShift;
+                    int dir = (prevRaw == Integer.MIN_VALUE) ? 0 : Integer.compare(raw, prevRaw);
+                    int skyKey = toSkyKey(raw, dir);
                     notes.add(new MusicNote("1Key" + skyKey, ms));
+                    prevRaw = raw;
                 }
             }
         }
@@ -108,16 +118,72 @@ public class MidiImporter {
         return notes;
     }
 
-    private static int toSkyKey(int midiNote, int octaveShift) {
-        int n = midiNote + octaveShift * 12;
+    /** 收集选中音轨的全部 NOTE_ON 音高。 */
+    private List<Integer> pitchesOf(Set<Integer> trackIndices) {
+        List<Integer> ps = new ArrayList<>();
+        Track[] tracks = seq.getTracks();
+        for (int ti : trackIndices) {
+            if (ti < 0 || ti >= tracks.length) continue;
+            Track t = tracks[ti];
+            for (int i = 0; i < t.size(); i++) {
+                if (t.get(i).getMessage() instanceof ShortMessage sm
+                        && sm.getCommand() == ShortMessage.NOTE_ON && sm.getData2() > 0)
+                    ps.add(sm.getData1());
+            }
+        }
+        return ps;
+    }
+
+    /**
+     * 自动检测最佳移调(半音, 含八度)。
+     * 先选让最多音落在 C 大调白键上的音级对齐(最小移动), 再把中位音居中到 C5 附近以减少八度折叠。
+     */
+    public int suggestShift(Set<Integer> trackIndices) {
+        List<Integer> ps = pitchesOf(trackIndices);
+        if (ps.isEmpty()) return 0;
+        int bestS = 0, bestW = -1;
+        for (int s = 0; s < 12; s++) {
+            int w = 0;
+            for (int p : ps) if (WHITE_PC.contains(((p + s) % 12 + 12) % 12)) w++;
+            if (w > bestW) { bestW = w; bestS = s; }
+        }
+        if (bestS > 6) bestS -= 12; // 规范到最小移动方向
+        List<Integer> sorted = new ArrayList<>(ps);
+        Collections.sort(sorted);
+        int median = sorted.get(sorted.size() / 2);
+        int oct = Math.round((72f - (median + bestS)) / 12f); // 中位音居中到 C5(72)
+        return bestS + oct * 12;
+    }
+
+    /** 给定移调(半音)后, 落在 C 大调白键上的音符比例 0~1。 */
+    public double whiteRatioAfter(Set<Integer> trackIndices, int semitoneShift) {
+        List<Integer> ps = pitchesOf(trackIndices);
+        if (ps.isEmpty()) return 0;
+        int w = 0;
+        for (int p : ps) if (WHITE_PC.contains(((p + semitoneShift) % 12 + 12) % 12)) w++;
+        return (double) w / ps.size();
+    }
+
+    /**
+     * 把 MIDI 音高映射到光遇 15 白键(索引 0~14)。
+     * 先折叠八度进 C4~C6; 白键直接用; 黑键按旋律方向吸附:
+     * 上行→上方白键, 下行/首音→下方白键(经过音听感更顺, 不再机械最近邻忽高忽低)。
+     * @param n   已含 octaveShift 的 MIDI 音高
+     * @param dir 相对上一个音的方向: >0 上行, <0 下行, 0 首音/同音
+     */
+    private static int toSkyKey(int n, int dir) {
         while (n < SKY_MIDI[0]) n += 12;
         while (n > SKY_MIDI[SKY_MIDI.length - 1]) n -= 12;
-        int best = 0, bestDist = Math.abs(n - SKY_MIDI[0]);
-        for (int i = 1; i < SKY_MIDI.length; i++) {
-            int d = Math.abs(n - SKY_MIDI[i]);
-            if (d < bestDist) { bestDist = d; best = i; }
+        if (!WHITE_PC.contains(((n % 12) + 12) % 12)) {
+            int cand = (dir > 0) ? n + 1 : n - 1; // 上行取上白键, 否则取下白键
+            if (cand < SKY_MIDI[0] || cand > SKY_MIDI[SKY_MIDI.length - 1]
+                    || !WHITE_PC.contains(((cand % 12) + 12) % 12)) {
+                cand = (n + 1 <= SKY_MIDI[SKY_MIDI.length - 1]) ? n + 1 : n - 1; // 边界回退
+            }
+            n = cand;
         }
-        return best;
+        for (int i = 0; i < SKY_MIDI.length; i++) if (SKY_MIDI[i] == n) return i;
+        return 0; // 理论不达
     }
 
     private static long tickToMs(long tick, int resolution, List<long[]> tempos) {

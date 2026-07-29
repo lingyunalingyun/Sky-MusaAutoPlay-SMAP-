@@ -22,6 +22,7 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.GridPane;
@@ -492,7 +493,35 @@ public class HelloController {
             }
             uploadSheet(songFiles.get(idx), songNames.get(idx));
         });
-        cm.getItems().addAll(addTag, removeTag, new SeparatorMenuItem(), uploadItem);
+        MenuItem deleteItem = new MenuItem("🗑 删除曲谱");
+        deleteItem.setStyle("-fx-text-fill: #c0392b;");
+        deleteItem.setOnAction(e -> {
+            int idx = songListView.getSelectionModel().getSelectedIndex();
+            if (idx < 0 || idx >= songFiles.size()) return;
+            File file = songFiles.get(idx);
+            String name = songNames.get(idx);
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "确定删除曲谱「" + name + "」？\n此操作会从磁盘永久删除文件，无法撤销。",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setTitle("删除曲谱");
+            confirm.setHeaderText(null);
+            confirm.initOwner(songListView.getScene().getWindow());
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            String fname = file.getName();
+            if (!file.delete()) {
+                new Alert(Alert.AlertType.ERROR, "删除失败，文件可能被占用", ButtonType.OK).showAndWait();
+                return;
+            }
+            favorites.remove(fname);
+            tagsByFile.remove(fname);
+            saveFavorites();
+            saveCategories();
+            refreshLibrary();
+            updateFilterOptions();
+            updateStatus("状态: 已删除曲谱「" + name + "」");
+        });
+        cm.getItems().addAll(addTag, removeTag, new SeparatorMenuItem(), uploadItem,
+                new SeparatorMenuItem(), deleteItem);
         return cm;
     }
 
@@ -837,7 +866,7 @@ public class HelloController {
         };
 
         final int KEYS = 15;
-        final double ROW_H = 24;       // 每键行高
+        final double ROW_H = 28;       // 每键行高 (固定)
         final double RULER_H = 24;     // 顶部时间标尺
         final double KEY_W = 92;       // 左侧键盘宽度
         final double GRID_H = ROW_H * KEYS;
@@ -1341,7 +1370,7 @@ public class HelloController {
 
         double logR = Math.log(32.0);
         Slider zoomSlider = new Slider(-logR, logR, 0);
-        zoomSlider.setPrefWidth(140);
+        zoomSlider.setPrefWidth(200);
         zoomSlider.setShowTickMarks(false);
         Label zoomLabel = new Label("1.0x");
         zoomLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px; -fx-min-width: 40;");
@@ -1350,6 +1379,14 @@ public class HelloController {
             pxPerMs[0] = basePxPerMs * zoom;
             zoomLabel.setText(String.format("%.1fx", zoom));
             redraw.run();
+        });
+        // Ctrl + 滚轮缩放: 步进式, 比拖 slider 可靠 (在卷帘上滚动)
+        gridScroll.addEventFilter(ScrollEvent.SCROLL, ev -> {
+            if (ev.isControlDown()) {
+                double step = ev.getDeltaY() > 0 ? 0.25 : -0.25;
+                zoomSlider.setValue(Math.max(-logR, Math.min(logR, zoomSlider.getValue() + step)));
+                ev.consume();
+            }
         });
         Label zoomIcon = new Label("🔍");
         zoomIcon.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11px;");
@@ -1395,7 +1432,7 @@ public class HelloController {
         toolbar.setPadding(new Insets(8, 12, 8, 12));
         toolbar.setStyle("-fx-background-color: #2d2d2d;");
 
-        Label hint = new Label("左键放置  右键删除  长按拖动音符  中键拖动视图   |   Space 播放/暂停  R 从头播放   |   Ctrl+Z 撤销  Ctrl+S 保存");
+        Label hint = new Label("左键放置  右键删除  长按拖动音符  中键拖动视图   |   Ctrl+滚轮 缩放  Space 播放/暂停  R 从头播放   |   Ctrl+Z 撤销  Ctrl+S 保存");
         hint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
         hint.setPadding(new Insets(6, 12, 6, 12));
 
@@ -1450,7 +1487,6 @@ public class HelloController {
 
         VBox root = new VBox(toolbar, body, hint, mapPanel);
         root.setStyle("-fx-background-color: #171717;");
-        VBox.setVgrow(body, Priority.ALWAYS);
 
         // 撤销/重做 (定义在 redraw 之后才能 capture)
         Runnable doUndo = () -> {
@@ -1992,6 +2028,26 @@ public class HelloController {
             HBox octaveRow = new HBox(8, new Label("八度偏移:"), octaveSpinner);
             octaveRow.setAlignment(Pos.CENTER_LEFT);
 
+            CheckBox autoAlign = new CheckBox("🎯 自动移调对齐 C 大调 (减少走音, 推荐)");
+            autoAlign.setSelected(true);
+            Label alignHint = new Label();
+            alignHint.setStyle("-fx-text-fill: #2a7; -fx-font-size: 11px;");
+            octaveSpinner.disableProperty().bind(autoAlign.selectedProperty());
+            // 依当前选中音轨刷新自动移调提示
+            Runnable refreshHint = () -> {
+                if (!autoAlign.isSelected()) { alignHint.setText(""); return; }
+                Set<Integer> sel = new HashSet<>();
+                for (int i = 0; i < trackChecks.size(); i++)
+                    if (trackChecks.get(i).isSelected()) sel.add(tracks.get(i).index());
+                if (sel.isEmpty()) { alignHint.setText("未选择音轨"); return; }
+                int sh = importer.suggestShift(sel);
+                double wr = importer.whiteRatioAfter(sel, sh);
+                alignHint.setText(String.format("自动移调 %+d 半音, 白键率 %.0f%%", sh, wr * 100));
+            };
+            autoAlign.selectedProperty().addListener((o, a, b) -> refreshHint.run());
+            for (CheckBox cb : trackChecks) cb.selectedProperty().addListener((o, a, b) -> refreshHint.run());
+            refreshHint.run();
+
             String baseName = midiFile.getName().replaceFirst("(?i)\\.(midi?)$", "");
             TextField nameField = new TextField(baseName);
             HBox nameRow = new HBox(8, new Label("曲名:"), nameField);
@@ -2001,7 +2057,7 @@ public class HelloController {
             Label bpmHint = new Label(String.format("检测 BPM: %.1f", importer.getInitialBpm()));
             bpmHint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
 
-            VBox content = new VBox(10, trackBox, new Separator(), octaveRow, nameRow, bpmHint);
+            VBox content = new VBox(10, trackBox, new Separator(), autoAlign, alignHint, octaveRow, nameRow, bpmHint);
             content.setPadding(new Insets(12));
             dlg.getDialogPane().setContent(content);
 
@@ -2020,7 +2076,9 @@ public class HelloController {
                 return false;
             }
 
-            List<MusicNote> notes = importer.convert(selected, octaveSpinner.getValue());
+            int semi = autoAlign.isSelected() ? importer.suggestShift(selected) : 0;
+            int oct = autoAlign.isSelected() ? 0 : octaveSpinner.getValue();
+            List<MusicNote> notes = importer.convert(selected, oct, semi);
             if (notes.isEmpty()) {
                 updateStatus("状态: 转换后无音符");
                 return false;
