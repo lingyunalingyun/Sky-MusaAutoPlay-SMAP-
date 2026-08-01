@@ -1,0 +1,55 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace SMAP_WPF;
+
+/// <summary>个人信息窗口: 头像 + 用户名 + 个人主页 / 退出账号。</summary>
+public class ProfileWindow : ChromeWindow
+{
+    public bool LoggedOut { get; private set; }
+
+    public ProfileWindow(Window owner) : base("个人信息", 640)
+    {
+        Owner = owner;
+
+        var body = new StackPanel { Margin = new Thickness(24, 20, 24, 22) };
+
+        // 头像 + 用户名
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 24) };
+        var avatar = new Grid { Width = 100, Height = 100 };
+        avatar.Children.Add(new System.Windows.Shapes.Ellipse { Fill = new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a)), Stroke = B("BtnBorder"), StrokeThickness = 1 });
+        avatar.Children.Add(new TextBlock
+        {
+            Text = (CloudApi.Username ?? "?").Substring(0, 1).ToUpper(),
+            FontSize = 40, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(0xb0, 0xb0, 0xc0)),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        });
+        top.Children.Add(avatar);
+        top.Children.Add(new TextBlock
+        {
+            Text = CloudApi.Username ?? "用户名",
+            FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = B("TextFg"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 0, 0)
+        });
+        body.Children.Add(top);
+
+        // 个人主页 / 退出账号
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        var home = Neutral("个人主页"); home.Width = 280;
+        home.Click += (_, __) => Open("http://musetreehouse.com");
+        var logout = Neutral("退出账号"); logout.Width = 280; logout.Margin = new Thickness(24, 0, 0, 0);
+        logout.Click += (_, __) => { CloudApi.Logout(); LoggedOut = true; Close(); };
+        btns.Children.Add(home);
+        btns.Children.Add(logout);
+        body.Children.Add(btns);
+
+        SetBody(body);
+    }
+
+    static void Open(string url)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+}

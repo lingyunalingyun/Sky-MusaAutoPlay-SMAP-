@@ -51,6 +51,11 @@ public partial class EditorWindow : Window
         System.Threading.Tasks.Task.Run(AudioEngine.Init);   // 后台预热音频, 避免首次点击卡顿
     }
 
+    // 自定义标题栏
+    void Title_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); }
+    void Min_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => WindowState = WindowState.Minimized;
+    void Close_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => Close();
+
     void Instrument_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (InstrumentCombo.SelectedItem is string name)
@@ -131,7 +136,7 @@ public partial class EditorWindow : Window
             Title = $"钢琴卷帘编辑器 - {_doc.Name}";
             StatusToast($"已保存: {System.IO.Path.GetFileName(path)}");
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "保存失败"); }
+        catch (Exception ex) { MsgBox.Info(this, ex.Message, "保存失败"); }
     }
 
     void EditInfo_Click(object sender, RoutedEventArgs e)

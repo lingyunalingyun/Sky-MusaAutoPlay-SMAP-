@@ -88,7 +88,14 @@ public class AboutWindow : Window
         body.Children.Add(_langBtn);
 
         _logBtn = Neutral(); _logBtn.Margin = new Thickness(0, 10, 0, 0);
-        _logBtn.Click += (_, __) => MessageBox.Show(this, "日志上传功能开发中。", "Log");
+        _logBtn.Click += async (_, __) =>
+        {
+            _logBtn.IsEnabled = false;
+            var old = _logBtn.Content; _logBtn.Content = "上传中...";
+            var err = await CloudApi.UploadLogAsync(Logger.Recent(3));
+            _logBtn.Content = old; _logBtn.IsEnabled = true;
+            MsgBox.Info(this, err == null ? "日志已上传，感谢反馈！" : "上传失败: " + err, Lang.S("about.log"));
+        };
         body.Children.Add(_logBtn);
 
         Grid.SetRow(body, 1);
@@ -141,10 +148,10 @@ public class AboutWindow : Window
         btn.IsEnabled = true;
         if (r is { } rel)
         {
-            if (MessageBox.Show(this, $"v{rel.Tag}\n{Lang.S("about.version")}: v{UpdateChecker.AppVersion}\n\nGitHub?", Lang.S("about.check"), MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (MsgBox.Confirm(this, $"发现新版本 v{rel.Tag}\n当前 v{UpdateChecker.AppVersion}\n\n前往 GitHub 下载?", Lang.S("about.check")))
                 Open(rel.Url.Length > 0 ? rel.Url : Repo);
         }
-        else MessageBox.Show(this, Lang.S("about.latest"), Lang.S("about.check"));
+        else MsgBox.Info(this, Lang.S("about.latest"), Lang.S("about.check"));
     }
 
     string LoadLastCheck()

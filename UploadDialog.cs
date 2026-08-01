@@ -8,16 +8,11 @@ using System.Windows.Media;
 namespace SMAP_WPF;
 
 /// <summary>上传曲谱对话框: 标题/作者/创谱人/难度/标签/简介, 默认值取自曲谱文件首对象。</summary>
-public class UploadDialog : Window
+public class UploadDialog : ChromeWindow
 {
-    public UploadDialog(Window owner, string filePath, string displayName)
+    public UploadDialog(Window owner, string filePath, string displayName) : base("上传曲谱 — " + displayName, 400)
     {
-        Title = "上传曲谱 — " + displayName;
-        Width = 380; Owner = owner;
-        SizeToContent = SizeToContent.Height;   // 高度随内容自适应, 避免上传按钮被截断
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x2d, 0x2d, 0x2d));
+        Owner = owner;
 
         // 从曲谱文件读默认曲名/作者/创谱人
         string dTitle = displayName, dArtist = "", dTrans = "";
@@ -68,7 +63,7 @@ public class UploadDialog : Window
         panel.Children.Add(Labeled("简介（可选）", descBox));
         panel.Children.Add(error);
         panel.Children.Add(upload);
-        Content = panel;
+        SetBody(panel);
     }
 
     static TextBox Field(string val) => new()

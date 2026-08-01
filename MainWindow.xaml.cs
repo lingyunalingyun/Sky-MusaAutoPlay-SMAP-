@@ -148,10 +148,9 @@ public partial class MainWindow : Window
     {
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) return;
-        var res = MessageBox.Show(
+        if (MsgBox.Confirm(this,
             $"当前版本: v{UpdateChecker.AppVersion}\n最新版本: v{rel.Tag}\n\n前往 GitHub 下载最新版本?",
-            $"发现新版本 — SMAP {rel.Name}", MessageBoxButton.YesNo, MessageBoxImage.Information);
-        if (res == MessageBoxResult.Yes && rel.Url.Length > 0)
+            $"发现新版本 — SMAP {rel.Name}") && rel.Url.Length > 0)
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true });
     }
 
@@ -234,7 +233,7 @@ public partial class MainWindow : Window
         {
             if (Selected is not { } s) return;
             var tags = LibraryMeta.TagsOf(s.FileName).ToList();
-            if (tags.Count == 0) { MessageBox.Show("此曲目暂无标签"); return; }
+            if (tags.Count == 0) { MsgBox.Info(this, "此曲目暂无标签"); return; }
             var tag = InputBox.Choose(this, "移除标签", s.Name, "选择要移除的标签:", tags);
             if (tag == null) return;
             LibraryMeta.RemoveTag(s.FileName, tag);
@@ -261,9 +260,9 @@ public partial class MainWindow : Window
         delete.Click += (_, __) =>
         {
             if (Selected is not { } s) return;
-            if (MessageBox.Show($"确定删除曲谱「{s.Name}」?\n将从磁盘永久删除, 无法撤销。", "删除曲谱", MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
+            if (!MsgBox.Confirm(this, $"确定删除曲谱「{s.Name}」?\n将从磁盘永久删除, 无法撤销。", "删除曲谱")) return;
             try { System.IO.File.Delete(s.File); }
-            catch (Exception ex) { MessageBox.Show("删除失败: " + ex.Message); return; }
+            catch (Exception ex) { MsgBox.Info(this, "删除失败: " + ex.Message); return; }
             LibraryMeta.Forget(s.FileName);
             RefreshLibrary();
             StatusText.Text = $"状态: 已删除「{s.Name}」";
@@ -634,9 +633,10 @@ public partial class MainWindow : Window
     {
         if (CloudApi.LoggedIn)
         {
-            if (MessageBox.Show($"当前已登录: {CloudApi.Username}\n是否退出登录?", "账号", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            var pw = new ProfileWindow(this);
+            pw.ShowDialog();
+            if (pw.LoggedOut)
             {
-                CloudApi.Logout();
                 UpdateLoginButton();
                 StatusText.Text = "状态: 已退出登录";
             }
@@ -692,7 +692,7 @@ public partial class MainWindow : Window
     {
         var importer = new MidiImporter(path);
         var tracks = importer.AnalyzeTracks();
-        if (tracks.Count == 0) { MessageBox.Show("MIDI 文件中没有音符数据", System.IO.Path.GetFileName(path)); return false; }
+        if (tracks.Count == 0) { MsgBox.Info(this, "MIDI 文件中没有音符数据", System.IO.Path.GetFileName(path)); return false; }
 
         var baseName = System.IO.Path.GetFileNameWithoutExtension(path);
         var win = new MidiImportDialog(importer, tracks, baseName) { Owner = this };

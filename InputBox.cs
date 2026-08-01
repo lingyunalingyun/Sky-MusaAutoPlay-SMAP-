@@ -40,12 +40,7 @@ public static class InputBox
 
     static (Window win, Button ok) Build(Window owner, string title, string header, string prompt, UIElement field)
     {
-        var win = new Window
-        {
-            Title = title, Width = 360, Height = 200, Owner = owner,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ResizeMode = ResizeMode.NoResize, Background = Bg
-        };
+        var win = new ChromeWindow(title, 360) { Owner = owner };
         var ok = new Button { Content = "确定", Width = 80, Height = 30, IsDefault = true };
         var cancel = new Button { Content = "取消", Width = 80, Height = 30, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
         var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
@@ -56,7 +51,7 @@ public static class InputBox
         panel.Children.Add(new TextBlock { Text = prompt, Foreground = Label, Margin = new Thickness(0, 0, 0, 4) });
         panel.Children.Add(field);
         panel.Children.Add(btns);
-        win.Content = panel;
+        win.SetBody(panel);
         return (win, ok);
     }
 }
