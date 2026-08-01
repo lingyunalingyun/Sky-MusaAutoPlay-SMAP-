@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>SMAP_Installer</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyName>SMAP-Setup</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+
+  <!-- 打包时把 SMAP 发布产物 zip 放到 Payload\app.zip, 会嵌进安装器; 无则安装器仍能编译(运行时报缺payload) -->
+  <ItemGroup>
+    <EmbeddedResource Include="Payload\app.zip" Condition="Exists('Payload\app.zip')">
+      <LogicalName>app.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

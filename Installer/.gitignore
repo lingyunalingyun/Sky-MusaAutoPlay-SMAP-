@@ -1,0 +1,8 @@
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+# 打包中间产物
+_smap_publish/
+_setup_out/
+Payload/app.zip

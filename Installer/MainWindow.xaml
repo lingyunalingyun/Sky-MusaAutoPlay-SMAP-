@@ -1,0 +1,160 @@
+<Window x:Class="SMAP_Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SMAP 安装引导" Height="480" Width="760"
+        Icon="/Assets/logo.png"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <!-- 向导按钮: 圆角深色带描边 -->
+        <Style x:Key="WizBtn" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Foreground" Value="#eaeaea"/>
+            <Setter Property="Background" Value="#2c2c2c"/>
+            <Setter Property="BorderBrush" Value="#4a4a4a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="#383838"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="bd" Property="Opacity" Value="0.5"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#e6e6e6"/></Style>
+    </Window.Resources>
+
+    <Border Background="#141416" CornerRadius="14" BorderBrush="#33335a" BorderThickness="1" Margin="6">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Border Grid.Row="0" Height="34" CornerRadius="13,13,0,0" MouseLeftButtonDown="Title_MouseDown">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#1b1b3c" Offset="0"/><GradientStop Color="#242150" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <Ellipse Width="13" Height="13" Fill="#e8e8f5"/>
+                        <TextBlock Text="SMAP 安装引导" Foreground="White" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Ellipse Width="14" Height="14" Fill="#c9c9c9" Margin="5,0" Cursor="Hand" MouseLeftButtonDown="Min_Click"/>
+                        <Ellipse Width="14" Height="14" Fill="#e6b52a" Margin="5,0" Cursor="Hand" MouseLeftButtonDown="Min_Click"/>
+                        <Ellipse Width="14" Height="14" Fill="#e0483b" Margin="5,0" Cursor="Hand" MouseLeftButtonDown="CloseDot_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 步骤区 -->
+            <Grid Grid.Row="1" Margin="24,18,24,20">
+
+                <!-- 步骤1: 欢迎 -->
+                <Grid x:Name="Step1">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Border Width="150" Height="150" CornerRadius="75" Background="#1e1e2a" HorizontalAlignment="Center">
+                            <Image Source="/Assets/logo.png" Width="150" Height="150"/>
+                        </Border>
+                        <TextBlock Text="欢迎安装 - SMAP - 软件" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,24,0,0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
+                        <Button Content="退出安装" Style="{StaticResource WizBtn}" Width="300" Click="Close_Click"/>
+                        <Button Content="进入安装" Style="{StaticResource WizBtn}" Width="300" Margin="24,0,0,0" Click="Next_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 步骤2: 协议 -->
+                <Grid x:Name="Step2" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <Border Width="72" Height="72" CornerRadius="36" Background="#1e1e2a"><Image Source="/Assets/logo.png" Width="72" Height="72"/></Border>
+                        <TextBlock Text="阅读我们的协议！" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="#1c1c1c" BorderBrush="#3a3a3a" BorderThickness="1" CornerRadius="10" Margin="0,14,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="6">
+                            <TextBlock x:Name="LicenseText" Foreground="#cfcfcf" TextWrapping="Wrap" Padding="14" LineHeight="22"/>
+                        </ScrollViewer>
+                    </Border>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                        <Button Content="我不同意，停止安装" Style="{StaticResource WizBtn}" Width="300" Click="Close_Click"/>
+                        <Button Content="我同意所有协议，下一步" Style="{StaticResource WizBtn}" Width="300" Margin="24,0,0,0" Click="Next_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 步骤3: 选路径 -->
+                <Grid x:Name="Step3" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+                        <Border Width="72" Height="72" CornerRadius="36" Background="#1e1e2a"><Image Source="/Assets/logo.png" Width="72" Height="72"/></Border>
+                        <TextBlock Text="选择你的安装方式" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Bottom">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,14">
+                            <TextBlock Text="安装路径:" VerticalAlignment="Center" FontSize="14"/>
+                            <Border Background="#1c1c1c" BorderBrush="#3a3a3a" BorderThickness="1" CornerRadius="8" Height="40" Width="470" Margin="10,0,0,0">
+                                <Grid>
+                                    <TextBox x:Name="PathBox" Text="D:\SMAP" Background="Transparent" Foreground="#e6e6e6" BorderThickness="0"
+                                             VerticalContentAlignment="Center" Padding="12,0,44,0" CaretBrush="#e6e6e6"/>
+                                    <Button Content="…" Width="30" Height="30" HorizontalAlignment="Right" Margin="0,0,5,0" Style="{StaticResource WizBtn}" Click="Browse_Click"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Button Content="上一步" Style="{StaticResource WizBtn}" Width="300" Click="Prev_Click"/>
+                            <Button Content="开始安装" Style="{StaticResource WizBtn}" Width="300" Margin="24,0,0,0" Click="Install_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 步骤4: 进度 -->
+                <Grid x:Name="Step4" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <Border Width="72" Height="72" CornerRadius="36" Background="#1e1e2a"><Image Source="/Assets/logo.png" Width="72" Height="72"/></Border>
+                        <TextBlock Text="请耐心等待……" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="#1c1c1c" BorderBrush="#3a3a3a" BorderThickness="1" CornerRadius="10" Margin="0,14,0,0">
+                        <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto" Margin="8">
+                            <TextBlock x:Name="LogText" Foreground="#bdbdbd" TextWrapping="Wrap" FontSize="12" Padding="8"/>
+                        </ScrollViewer>
+                    </Border>
+                    <Grid x:Name="ProgBar" Grid.Row="2" Margin="0,14,0,0" Height="30">
+                        <Border Background="#2a2a2a" CornerRadius="6"/>
+                        <Border x:Name="ProgFill" Background="#2e9e3f" CornerRadius="6" HorizontalAlignment="Left" Width="0"/>
+                        <TextBlock x:Name="ProgText" Text="0%" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </Grid>
+                </Grid>
+
+                <!-- 步骤5: 完成 -->
+                <Grid x:Name="Step5" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Border Width="150" Height="150" CornerRadius="75" Background="#1e1e2a"><Image Source="/Assets/logo.png" Width="150" Height="150"/></Border>
+                        <TextBlock Text="安装完成！感谢你的使用！" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,24,0,0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
+                        <Button Content="立刻打开" Style="{StaticResource WizBtn}" Width="300" Click="OpenApp_Click"/>
+                        <Button Content="关闭窗口" Style="{StaticResource WizBtn}" Width="300" Margin="24,0,0,0" Click="Close_Click"/>
+                    </StackPanel>
+                </Grid>
+
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
