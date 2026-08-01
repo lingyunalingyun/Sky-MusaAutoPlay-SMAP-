@@ -1,0 +1,87 @@
+<Window x:Class="SMAP_WPF.EditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SMAP_WPF"
+        Title="钢琴卷帘编辑器" Height="640" Width="1160"
+        Icon="/Assets/logo.png" Background="#171717">
+    <Window.Resources>
+        <!-- 深色按钮: 默认 hover 会变浅色使文字看不清, 自定义模板改成变暗 -->
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#e8e8e8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.62"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#2d2d2d" Padding="8,6">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="◁" Width="36" Height="32" Click="StepLeft_Click" ToolTip="左一格"
+                        Foreground="#e0e0e0" Background="#3a3a3a" BorderThickness="0"/>
+                <Button x:Name="PlayBtn" Content="▶" Width="46" Height="32" Margin="6,0,0,0" Click="Play_Click"
+                        Background="#4CAF50" Foreground="White" FontWeight="Bold" FontSize="15" BorderThickness="0" ToolTip="暂停/开始"/>
+                <Button Content="▷" Width="36" Height="32" Margin="6,0,0,0" Click="StepRight_Click" ToolTip="右一格"
+                        Foreground="#e0e0e0" Background="#3a3a3a" BorderThickness="0"/>
+                <Button Content="⏮" Width="36" Height="32" Margin="6,0,0,0" Click="Home_Click" ToolTip="回到开头"
+                        Foreground="#e0e0e0" Background="#3a3a3a" BorderThickness="0"/>
+                <Border Width="1" Background="#444" Margin="10,2"/>
+                <TextBlock Text="音色:" Foreground="#aaa" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox x:Name="InstrumentCombo" Width="120" Height="26" VerticalContentAlignment="Center"
+                          SelectionChanged="Instrument_Changed"/>
+                <Border Width="1" Background="#444" Margin="10,2"/>
+                <TextBlock Text="BPM:" Foreground="#aaa" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox x:Name="BpmBox" Text="120" Width="60" Height="26" VerticalContentAlignment="Center"/>
+                <Border Width="1" Background="#444" Margin="10,2"/>
+                <TextBlock Text="网格:" Foreground="#aaa" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox x:Name="GridCombo" Width="118" Height="26" VerticalContentAlignment="Center"
+                          ToolTip="网格细分。三连音选 1/3；三十二分选 1/8"/>
+                <Border Width="1" Background="#444" Margin="10,2"/>
+                <TextBlock x:Name="InfoText" Foreground="#ccc" VerticalAlignment="Center"/>
+                <Border Width="1" Background="#444" Margin="10,2"/>
+                <Button Content="💾 保存" Height="28" Padding="10,0" Click="Save_Click"
+                        Background="#2196F3" Foreground="White" BorderThickness="0"/>
+                <Button Content="另存为" Height="28" Padding="10,0" Margin="6,0,0,0" Click="SaveAs_Click"
+                        Foreground="#e0e0e0" Background="#3a3a3a" BorderThickness="0"/>
+                <Button Content="ℹ 编辑信息" Height="28" Padding="10,0" Margin="6,0,0,0" Click="EditInfo_Click"
+                        Foreground="#e0e0e0" Background="#3a3a3a" BorderThickness="0"/>
+            </StackPanel>
+        </Border>
+        <!-- 底部光遇琴键面板: 点击试听 / 播放时对应键高亮 -->
+        <Border DockPanel.Dock="Bottom" Background="#1f1f1f" Padding="8" BorderBrush="#333" BorderThickness="0,1,0,0">
+            <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="🎮 光遇按键映射 (点击试听 / 播放时同步亮起)" Foreground="#aaa" FontSize="11"
+                           HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                <UniformGrid x:Name="MapGrid" Rows="3" Columns="5" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+        <!-- 底部快捷键提示 -->
+        <TextBlock DockPanel.Dock="Bottom" Foreground="#888" FontSize="11" Padding="10,4" TextTrimming="CharacterEllipsis"
+                   Text="键盘 Y U I O P/H J K L ;/N M , . / 写谱 · ←→ 移游标(有选区则移音符) · 左键放置 · 右键删除 · 中键拖视图 · Ctrl+左键框选 · Shift+X删除 · Ctrl+C/V/X · Ctrl+Z/Y 撤销/重做 · Ctrl+S 保存 · Space 播放"/>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel x:Name="KeyLane" Grid.Column="0" Background="#171717" Width="92"/>
+            <ScrollViewer x:Name="Scroll" Grid.Column="1" Background="#1e1e1e"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <local:PianoRoll x:Name="Roll" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
