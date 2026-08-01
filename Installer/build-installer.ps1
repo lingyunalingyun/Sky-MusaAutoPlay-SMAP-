@@ -1,7 +1,7 @@
 # Build SMAP installer: publish SMAP -> zip into Payload\app.zip -> publish installer (embeds payload) as single-file exe.
 $ErrorActionPreference = "Stop"
 $inst       = $PSScriptRoot
-$smapCsproj = Join-Path (Split-Path $inst) "SMAP-WPF\SMAP-WPF.csproj"
+$smapCsproj = Join-Path (Split-Path $inst) "SMAP-WPF.csproj"   # Installer/ 在 SMAP-WPF 仓库内, 父目录即项目根
 $pubDir     = Join-Path $inst "_smap_publish"
 $payload    = Join-Path $inst "Payload\app.zip"
 $outDir     = Join-Path $inst "_setup_out"
