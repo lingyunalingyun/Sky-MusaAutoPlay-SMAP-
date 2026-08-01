@@ -1,55 +1,23 @@
-### Maven / build ###
+# ===== WPF / .NET =====
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+
+# ===== Java (JAVA version/) =====
 target/
-out/
-build/
-!**/src/main/**/target/
-!**/src/test/**/target/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### Maven wrapper ###
-!.mvn/wrapper/maven-wrapper.jar
-.kotlin
-
-### IntelliJ IDEA ###
+# ===== IDE =====
 .idea/
-*.iws
-*.iml
-*.ipr
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
-.vscode/
-
-### macOS ###
-.DS_Store
-
-### 项目特定排除 ###
-# 用户曲谱库 (体积大且第三方版权)
+# ===== 用户数据 / 运行时(不进仓库) =====
 songs/
-# 构建生成的 songs.zip (build_exe 脚本临时打包)
-src/main/resources/org/example/smap/songs.zip
-# jpackage 输出
+categories.json
+favorites.json
+settings.json
+key_config.json
+
+# ===== 本地大文件 / 临时(不进仓库) =====
+_skystudio_extract/
 build/
 dist/
-# 原始 APK 文件
-_skystudio_extract/
-# 用户运行时状态
-favorites.json
-categories.json
-settings.json
