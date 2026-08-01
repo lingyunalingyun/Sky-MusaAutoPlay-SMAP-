@@ -5,18 +5,13 @@ using System.Windows.Media;
 namespace SMAP_WPF;
 
 /// <summary>缪斯树屋登录对话框。成功后 CloudApi 写入登录态, DialogResult=true。</summary>
-public class LoginDialog : Window
+public class LoginDialog : ChromeWindow
 {
-    public LoginDialog(Window owner)
+    public LoginDialog(Window owner) : base("登录 — 缪斯树屋", 360)
     {
-        Title = "登录 — 缪斯树屋";
-        Width = 340; Owner = owner;
-        SizeToContent = SizeToContent.Height;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x2d, 0x2d, 0x2d));
+        Owner = owner;
 
-        var title = new TextBlock { Text = "缪斯树屋", FontSize = 22, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)), HorizontalAlignment = HorizontalAlignment.Center };
+        var title = new TextBlock { Text = "缪斯树屋", FontSize = 22, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
         var sub = new TextBlock { Text = "musetreehouse.com", FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 16) };
 
         var user = MakeText();
@@ -46,7 +41,7 @@ public class LoginDialog : Window
         panel.Children.Add(error);
         panel.Children.Add(login);
         panel.Children.Add(cancel);
-        Content = panel;
+        SetBody(panel);
         Loaded += (_, __) => user.Focus();
     }
 

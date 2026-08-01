@@ -24,6 +24,7 @@ public class CloudSheet
     public string Uploader { get; set; } = "";
     public string Description { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
+    public string UploadTime { get; set; } = "";
     public bool Recommended { get; set; }
 
     public string Stars => new string('★', Math.Clamp(Difficulty, 0, 5));
@@ -131,7 +132,8 @@ public static class CloudApi
                         Recommended = it.TryGetProperty("is_recommended", out var r) && r.ValueKind == JsonValueKind.True,
                         Uploader = GetStr(it, "uploader"),
                         Description = GetStr(it, "description"),
-                        DownloadUrl = GetStr(it, "download_url")
+                        DownloadUrl = GetStr(it, "download_url"),
+                        UploadTime = GetStr(it, "created_at")
                     });
             return new(true, null, GetInt(root, "total"), Math.Max(1, GetInt(root, "pages")), items);
         }
@@ -182,6 +184,21 @@ public static class CloudApi
             var root = doc.RootElement;
             if (root.TryGetProperty("status", out var st) && st.GetString() == "ok") return null;
             return root.TryGetProperty("msg", out var m) ? m.GetString() : "上传失败";
+        }
+        catch (Exception ex) { return "网络错误: " + ex.Message; }
+    }
+
+    /// <summary>上传客户端日志到缪斯树屋(存 game_logs 表); 成功返回 null, 失败返回错误信息。允许匿名。</summary>
+    public static async Task<string?> UploadLogAsync(string log)
+    {
+        try
+        {
+            var body = JsonSerializer.Serialize(new { mid = Mid ?? "", username = Username ?? "", version = UpdateChecker.AppVersion, log });
+            using var resp = await Http.PostAsync(Base + "/api/game_log.php", new StringContent(body, Encoding.UTF8, "application/json"));
+            var text = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.TryGetProperty("status", out var st) && st.GetString() == "ok") return null;
+            return doc.RootElement.TryGetProperty("msg", out var m) ? m.GetString() : "上传失败";
         }
         catch (Exception ex) { return "网络错误: " + ex.Message; }
     }

@@ -8,7 +8,7 @@ using System.Windows.Media;
 namespace SMAP_WPF;
 
 /// <summary>MIDI 导入对话框: 选音轨 + 自动移调对齐 C 大调(带白键率提示) + 手动八度 + 曲名。</summary>
-public class MidiImportDialog : Window
+public class MidiImportDialog : ChromeWindow
 {
     public List<(int key, double ms)>? ResultNotes;
     public string ResultName = "";
@@ -22,16 +22,10 @@ public class MidiImportDialog : Window
     readonly TextBox _octaveBox;
     readonly TextBox _nameBox;
 
-    public MidiImportDialog(MidiImporter importer, List<MidiImporter.TrackInfo> tracks, string baseName)
+    public MidiImportDialog(MidiImporter importer, List<MidiImporter.TrackInfo> tracks, string baseName) : base("导入 MIDI", 420)
     {
         _importer = importer;
         _tracks = tracks;
-
-        Title = "导入 MIDI";
-        Width = 420; Height = 480;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x24));
 
         var panel = new StackPanel { Margin = new Thickness(16) };
         panel.Children.Add(Header(baseName));
@@ -120,7 +114,7 @@ public class MidiImportDialog : Window
         btns.Children.Add(ok); btns.Children.Add(cancel);
         panel.Children.Add(btns);
 
-        Content = panel;
+        SetBody(panel);
         RefreshOctaveEnabled();
         RefreshHint();
     }
@@ -148,12 +142,12 @@ public class MidiImportDialog : Window
     void OnImport(object sender, RoutedEventArgs e)
     {
         var sel = SelectedTracks();
-        if (sel.Count == 0) { MessageBox.Show("请至少选择一个音轨"); return; }
+        if (sel.Count == 0) { MsgBox.Info(this, "请至少选择一个音轨"); return; }
 
         int semi = _autoAlign.IsChecked == true ? _importer.SuggestShift(sel) : 0;
         int oct = _autoAlign.IsChecked == true ? 0 : (int.TryParse(_octaveBox.Text, out int o) ? o : 0);
         var notes = _importer.Convert(sel, oct, semi);
-        if (notes.Count == 0) { MessageBox.Show("转换后无音符"); return; }
+        if (notes.Count == 0) { MsgBox.Info(this, "转换后无音符"); return; }
 
         ResultName = string.IsNullOrWhiteSpace(_nameBox.Text) ? "MIDI 导入" : _nameBox.Text.Trim();
         ResultBpm = (int)Math.Round(_importer.InitialBpm());

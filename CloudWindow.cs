@@ -1,155 +1,340 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace SMAP_WPF;
 
-/// <summary>在线曲库浏览窗口: 搜索/排序/难度筛选/翻页/下载到本地曲库。</summary>
+/// <summary>在线曲库浏览窗口: 自定义圆角标题栏 + 胶囊工具栏(搜索/排序/难度/刷新) + 圆角列表 + 页码跳转 + 下载。跟随主题。</summary>
 public class CloudWindow : Window
 {
     const int PerPage = 20;
     readonly Action _onDownloaded;
 
-    readonly TextBox _search = new() { Height = 28, Width = 200, VerticalContentAlignment = VerticalAlignment.Center, Background = new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
-    readonly ComboBox _sort = new() { Height = 28, Width = 100, ItemsSource = new[] { "最新", "最热", "下载最多" }, SelectedIndex = 0 };
-    readonly ComboBox _diff = new() { Height = 28, Width = 110, ItemsSource = new[] { "全部难度", "★", "★★", "★★★", "★★★★", "★★★★★" }, SelectedIndex = 0 };
-    readonly ListView _list = new() { Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25)), Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)) };
-    readonly Button _download = new() { Content = "↓ 下载到本地曲库", Height = 32, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Background = new SolidColorBrush(Color.FromRgb(0x21, 0x96, 0xF3)), IsEnabled = false, Padding = new Thickness(10, 0, 10, 0) };
-    readonly Button _prev = new() { Content = "← 上一页", Height = 28, Padding = new Thickness(8, 0, 8, 0) };
-    readonly Button _next = new() { Content = "下一页 →", Height = 28, Padding = new Thickness(8, 0, 8, 0) };
-    readonly TextBlock _pageLbl = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xbb, 0xbb, 0xbb)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
-    readonly TextBlock _status = new() { Foreground = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99)), VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBox _search = new();
+    readonly TextBox _pageBox = new();
+    readonly ComboBox _diff = new();
+    readonly ListView _list = new();
+    readonly TextBlock _totalLbl = new();
+    Button _prev = null!, _next = null!, _download = null!;
+    readonly Brush _green = new SolidColorBrush(Color.FromRgb(0x12, 0x79, 0x5a));
 
+    int _sortMode = 1;          // 0=A-Z 1=上传时间 2=点赞 3=下载量
     int _page = 1, _pages = 1;
+
+    Brush B(string k) => (Brush)Application.Current.Resources[k];
 
     public CloudWindow(Window owner, Action onDownloaded)
     {
         _onDownloaded = onDownloaded;
-        Title = "在线曲库 — 缪斯树屋";
+        Owner = owner;
+        Title = "SMAP - 云端曲库";
+        Width = 1180; Height = 720;
         Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/logo.png"));
-        Width = 860; Height = 600; Owner = owner;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x1e, 0x1e, 0x1e));
+        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
+        ResizeMode = ResizeMode.CanResizeWithGrip; WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        BuildColumns();
-        StyleItems();
+        var root = new Border { Background = B("WindowBg"), CornerRadius = new CornerRadius(14), BorderBrush = B("WindowBorder"), BorderThickness = new Thickness(1), Margin = new Thickness(6) };
+        var grid = new Grid { Margin = new Thickness(10) };
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 标题栏
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 工具栏
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // 列表
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 底部
 
-        var search = new Button { Content = "🔍 搜索", Height = 28, Padding = new Thickness(8, 0, 8, 0) };
-        var refresh = new Button { Content = "🔄 刷新", Height = 28, Padding = new Thickness(8, 0, 8, 0) };
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        foreach (var c in new UIElement[] { _search, search, _sort, _diff, refresh })
-        { if (c is FrameworkElement fe) fe.Margin = new Thickness(0, 0, 8, 0); toolbar.Children.Add(c); }
-
-        search.Click += (_, __) => { _page = 1; Load(); };
-        refresh.Click += (_, __) => Load();
-        _search.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) { _page = 1; Load(); } };
-        _sort.SelectionChanged += (_, __) => { _page = 1; Load(); };
-        _diff.SelectionChanged += (_, __) => { _page = 1; Load(); };
-        _list.SelectionChanged += (_, __) => _download.IsEnabled = _list.SelectedItem is CloudSheet;
-        _list.MouseDoubleClick += (_, __) => DoDownload();
-        _download.Click += (_, __) => DoDownload();
-        _prev.Click += (_, __) => { if (_page > 1) { _page--; Load(); } };
-        _next.Click += (_, __) => { if (_page < _pages) { _page++; Load(); } };
-
-        var pager = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        pager.Children.Add(_download);
-        pager.Children.Add(new FrameworkElement { Width = 20 });
-        pager.Children.Add(_prev);
-        pager.Children.Add(_pageLbl);
-        pager.Children.Add(_next);
-        pager.Children.Add(new FrameworkElement { Width = 16 });
-        pager.Children.Add(_status);
-
-        var root = new DockPanel { Margin = new Thickness(14) };
-        DockPanel.SetDock(toolbar, Dock.Top);
-        DockPanel.SetDock(pager, Dock.Bottom);
-        root.Children.Add(toolbar);
-        root.Children.Add(pager);
-        root.Children.Add(_list);
+        grid.Children.Add(TitleBar());
+        grid.Children.Add(Toolbar());
+        grid.Children.Add(ListArea());
+        grid.Children.Add(BottomBar());
+        root.Child = grid;
         Content = root;
 
-        Loaded += (_, __) => Load();
+        BuildComplete();   // 高亮默认排序并首次加载
     }
 
-    void BuildColumns()
+    // ---- 标题栏 ----
+    UIElement TitleBar()
     {
+        var bar = new Border { Height = 34, CornerRadius = new CornerRadius(9), Background = B("TitleGrad") };
+        Grid.SetRow(bar, 0);
+        bar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
+        var g = new Grid();
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        left.Children.Add(new System.Windows.Shapes.Ellipse { Width = 13, Height = 13, Fill = new SolidColorBrush(Color.FromRgb(0xe8, 0xe8, 0xf5)) });
+        left.Children.Add(new TextBlock { Text = "SMAP - 云端曲库", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        var dots = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        dots.Children.Add(Dot(0xc9c9c9, () => WindowState = WindowState.Minimized));
+        dots.Children.Add(Dot(0xe6b52a, () => WindowState = WindowState.Minimized));
+        dots.Children.Add(Dot(0xe0483b, Close));
+        g.Children.Add(left); g.Children.Add(dots);
+        bar.Child = g;
+        return bar;
+    }
+    System.Windows.Shapes.Ellipse Dot(int rgb, Action onClick)
+    {
+        var e = new System.Windows.Shapes.Ellipse { Width = 14, Height = 14, Margin = new Thickness(5, 0, 0, 0), Cursor = Cursors.Hand, Fill = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb)) };
+        e.MouseLeftButtonDown += (_, __) => onClick();
+        return e;
+    }
+
+    // ---- 工具栏 ----
+    UIElement Toolbar()
+    {
+        var dock = new DockPanel { Margin = new Thickness(4, 14, 4, 0), LastChildFill = false };
+        Grid.SetRow(dock, 1);
+
+        // 左: 搜索
+        StyleBox(_search); _search.Width = 300; _search.Height = 32;
+        _search.KeyDown += (_, e) => { if (e.Key == Key.Enter) { _page = 1; Load(); } };
+        var searchBtn = Btn("🔍 搜索"); searchBtn.Click += (_, __) => { _page = 1; Load(); };
+        var lp = new StackPanel { Orientation = Orientation.Horizontal };
+        lp.Children.Add(Wrap(_search)); lp.Children.Add(Gap()); lp.Children.Add(searchBtn);
+        DockPanel.SetDock(lp, Dock.Left); dock.Children.Add(lp);
+
+        // 右(从右往左): 刷新 / 难度 / 排序胶囊
+        var rp = new StackPanel { Orientation = Orientation.Horizontal };
+        string[] sorts = { "A-Z", "上传时间", "点赞", "下载量" };
+        for (int i = 0; i < 4; i++)
+        {
+            int idx = i;
+            var pill = Btn(sorts[i]);
+            pill.Click += (_, __) => SetSort(idx);
+            _sortPillsList[i] = pill;
+            rp.Children.Add(pill); rp.Children.Add(Gap());
+        }
+        _diff.ItemsSource = new[] { "全部难度", "★", "★★", "★★★", "★★★★", "★★★★★" };
+        _diff.SelectedIndex = 0; _diff.Height = 32; _diff.Width = 96; _diff.Foreground = B("TextFg"); _diff.Background = B("ComboBg");
+        StyleCombo(_diff);
+        _diff.SelectionChanged += (_, __) => { _page = 1; Load(); };
+        rp.Children.Add(_diff); rp.Children.Add(Gap());
+        var refresh = Btn("🔄 刷新"); refresh.Click += (_, __) => Load();
+        rp.Children.Add(refresh);
+        DockPanel.SetDock(rp, Dock.Right); dock.Children.Add(rp);
+
+        return dock;
+    }
+    readonly Button[] _sortPillsList = new Button[4];
+
+    // ---- 列表 ----
+    UIElement ListArea()
+    {
+        var border = new Border { Background = B("ListBg"), CornerRadius = new CornerRadius(12), BorderBrush = B("ListBorder"), BorderThickness = new Thickness(1), Margin = new Thickness(4, 14, 4, 0) };
+        Grid.SetRow(border, 2);
+
+        _list.Background = Brushes.Transparent; _list.Foreground = B("TextFg"); _list.BorderThickness = new Thickness(0); _list.Margin = new Thickness(6);
         var gv = new GridView();
-        gv.Columns.Add(Col("曲名", "Title", 220));
+        gv.Columns.Add(Col("曲名", "Title", 200));
         gv.Columns.Add(Col("作者", "Artist", 120));
         gv.Columns.Add(Col("创谱", "TranscribedBy", 90));
         gv.Columns.Add(Col("难度", "Stars", 90));
         gv.Columns.Add(Col("BPM", "Bpm", 55));
-        gv.Columns.Add(Col("↓", "Downloads", 50));
-        gv.Columns.Add(Col("♥", "Likes", 45));
+        gv.Columns.Add(Col("下载量", "Downloads", 65));
+        gv.Columns.Add(Col("点赞数", "Likes", 65));
         gv.Columns.Add(Col("上传者", "Uploader", 100));
+        gv.Columns.Add(Col("上传时间", "UploadTime", 150));
         _list.View = gv;
+        StyleHeaders();
+        StyleItems();
+        _list.SelectionChanged += (_, __) =>
+        {
+            bool sel = _list.SelectedItem is CloudSheet;
+            _download.IsEnabled = sel;
+            _download.Background = sel ? _green : B("NeutralBtnBg");
+            _download.Foreground = sel ? Brushes.White : B("SubTextFg");
+        };
+        _list.MouseDoubleClick += (_, __) => DoDownload();
+
+        border.Child = _list;
+        return border;
     }
 
-    static GridViewColumn Col(string header, string path, double width) =>
-        new() { Header = header, DisplayMemberBinding = new System.Windows.Data.Binding(path), Width = width };
-
-    // 自绘 ListViewItem 模板: 选中=深蓝白字 / 悬停=深灰(默认浅蓝高亮会让浅色文字看不见)
-    void StyleItems()
+    // ---- 底部: 翻页 + 下载 ----
+    UIElement BottomBar()
     {
-        var sel = new SolidColorBrush(Color.FromRgb(0x2d, 0x5a, 0x88));
-        var light = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0));
+        var grid = new Grid { Margin = new Thickness(4, 14, 4, 0) };
+        Grid.SetRow(grid, 3);
 
-        var border = new System.Windows.FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, new System.Windows.TemplateBindingExtension(Control.BackgroundProperty));
-        border.SetValue(Border.PaddingProperty, new Thickness(2, 3, 2, 3));
-        var presenter = new System.Windows.FrameworkElementFactory(typeof(GridViewRowPresenter));
-        presenter.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, new System.Windows.TemplateBindingExtension(Control.ForegroundProperty));
-        border.AppendChild(presenter);
-        var tmpl = new ControlTemplate(typeof(ListViewItem)) { VisualTree = border };
+        var pager = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        _prev = Btn("← 上一页"); _prev.Click += (_, __) => { if (_page > 1) { _page--; Load(); } };
+        _next = Btn("下一页 →"); _next.Click += (_, __) => { if (_page < _pages) { _page++; Load(); } };
+        StyleBox(_pageBox); _pageBox.Width = 54; _pageBox.Height = 30; _pageBox.HorizontalContentAlignment = HorizontalAlignment.Center; _pageBox.Text = "1";
+        _pageBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) Jump(); };
+        var jump = Btn("跳转"); jump.Click += (_, __) => Jump();
+        _totalLbl.Foreground = B("TextFg"); _totalLbl.VerticalAlignment = VerticalAlignment.Center;
 
-        var style = new Style(typeof(ListViewItem));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, light));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-        style.Setters.Add(new Setter(Control.TemplateProperty, tmpl));
-        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        pager.Children.Add(_prev); pager.Children.Add(Gap());
+        pager.Children.Add(new TextBlock { Text = "第", Foreground = B("TextFg"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) });
+        pager.Children.Add(Wrap(_pageBox));
+        pager.Children.Add(_totalLbl);
+        pager.Children.Add(Gap()); pager.Children.Add(jump);
+        pager.Children.Add(Gap()); pager.Children.Add(_next);
+        grid.Children.Add(pager);
 
-        var selTrig = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
-        selTrig.Setters.Add(new Setter(Control.BackgroundProperty, sel));
-        selTrig.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-        style.Triggers.Add(selTrig);
+        // 默认灰(不可选), 选中后变绿
+        _download = Btn("↓ 下载到本地", B("NeutralBtnBg"), B("SubTextFg"));
+        _download.FontWeight = FontWeights.Bold; _download.IsEnabled = false; _download.Height = 38;
+        _download.HorizontalAlignment = HorizontalAlignment.Right; _download.VerticalAlignment = VerticalAlignment.Center;
+        _download.Click += (_, __) => DoDownload();
+        grid.Children.Add(_download);
 
-        var hoverTrig = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hoverTrig.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33))));
-        style.Triggers.Add(hoverTrig);
+        return grid;
+    }
 
-        _list.ItemContainerStyle = style;
+    void BuildComplete() => SetSort(_sortMode);   // 初始高亮默认排序
+
+    void Jump()
+    {
+        if (int.TryParse(_pageBox.Text.Trim(), out int p)) { _page = Math.Clamp(p, 1, _pages); Load(); }
+    }
+
+    void SetSort(int mode)
+    {
+        _sortMode = mode;
+        for (int i = 0; i < 4; i++)
+        {
+            bool on = i == mode;
+            _sortPillsList[i].Background = on ? new SolidColorBrush(Color.FromRgb(0x2d, 0x5a, 0x88)) : B("NeutralBtnBg");
+            _sortPillsList[i].Foreground = on ? Brushes.White : B("TextFg");
+        }
+        _page = 1;
+        Load();
     }
 
     async void Load()
     {
-        _status.Text = "加载中...";
-        string sort = _sort.SelectedIndex switch { 1 => "hot", 2 => "downloads", _ => "newest" };
-        int diff = _diff.SelectedIndex;   // 0=全部, 1..5=难度
+        _totalLbl.Text = "/… 加载中";
+        string sort = _sortMode switch { 2 => "hot", 3 => "downloads", _ => "newest" };  // A-Z/上传时间 都取 newest
+        int diff = _diff.SelectedIndex;   // 0=全部, 1..5
         var r = await CloudApi.ListAsync(_search.Text, sort, diff, _page, PerPage);
-        if (!r.Ok) { _status.Text = r.Err ?? "加载失败"; return; }
+        if (!r.Ok) { _totalLbl.Text = r.Err ?? "加载失败"; return; }
 
+        var items = r.Items;
+        if (_sortMode == 0) items = items.OrderBy(s => s.Title, StringComparer.CurrentCulture).ToList();   // A-Z 客户端排当前页
         _pages = r.Pages;
-        _list.ItemsSource = r.Items;
-        _pageLbl.Text = $"第 {_page}/{_pages} 页";
+        _list.ItemsSource = items;
+        _pageBox.Text = _page.ToString();
+        _totalLbl.Text = $"/{_pages}页";
         _prev.IsEnabled = _page > 1;
         _next.IsEnabled = _page < _pages;
-        _status.Text = $"总数 {r.Total}, 本页 {r.Items.Count} 首";
     }
 
     async void DoDownload()
     {
         if (_list.SelectedItem is not CloudSheet s) return;
         _download.IsEnabled = false;
-        _status.Text = "下载中: " + s.Title;
-        var path = await CloudApi.DownloadAsync(s, SongLibrary.SongsDir, err => _status.Text = err);
-        _download.IsEnabled = true;
-        if (path != null)
-        {
-            _status.Text = "✓ 已下载: " + System.IO.Path.GetFileName(path);
-            s.Downloads++;
-            _list.Items.Refresh();
-            _onDownloaded();
-        }
+        var old = _download.Content;
+        _download.Content = "下载中...";
+        var path = await CloudApi.DownloadAsync(s, SongLibrary.SongsDir, err => MsgBox.Info(this, err, "下载"));
+        _download.Content = old;
+        _download.IsEnabled = _list.SelectedItem is CloudSheet;
+        if (path != null) { s.Downloads++; _list.Items.Refresh(); _onDownloaded(); }
     }
+
+    // ---- 小工具 ----
+    Button Btn(string text, Brush? bg = null, Brush? fg = null) => new()
+    {
+        Content = text, Height = 32, Cursor = Cursors.Hand, FontSize = 13,
+        Background = bg ?? B("NeutralBtnBg"), Foreground = fg ?? B("TextFg"),
+        BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1),
+        Padding = new Thickness(12, 0, 12, 0), Template = BtnTpl()
+    };
+    static FrameworkElement Gap() => new() { Width = 8 };
+    void StyleBox(TextBox b) { b.Background = B("BoxBg"); b.Foreground = B("TextFg"); b.CaretBrush = B("TextFg"); b.BorderThickness = new Thickness(0); b.VerticalContentAlignment = VerticalAlignment.Center; b.Padding = new Thickness(10, 0, 10, 0); }
+    Border Wrap(TextBox b) => new() { Background = B("BoxBg"), BorderBrush = B("BoxBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = b };
+
+    static GridViewColumn Col(string header, string path, double width) =>
+        new() { Header = header, DisplayMemberBinding = new System.Windows.Data.Binding(path), Width = width };
+
+    void StyleHeaders()
+    {
+        var st = new Style(typeof(GridViewColumnHeader));
+        st.Setters.Add(new Setter(FrameworkElement.HeightProperty, 32.0));
+        st.Setters.Add(new Setter(Control.TemplateProperty, (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+@"<ControlTemplate TargetType='GridViewColumnHeader' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <Border x:Name='bd' Background='{DynamicResource PanelBg}' BorderBrush='{DynamicResource ListBorder}' BorderThickness='0,0,1,0'>
+    <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextElement.Foreground='{DynamicResource TextFg}'/>
+  </Border>
+  <ControlTemplate.Triggers>
+    <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Background' Value='#3a3a46'/></Trigger>
+  </ControlTemplate.Triggers>
+</ControlTemplate>")));
+        _list.Resources.Add(typeof(GridViewColumnHeader), st);
+    }
+
+    void StyleItems()
+    {
+        var border = new System.Windows.FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new System.Windows.TemplateBindingExtension(Control.BackgroundProperty));
+        border.SetValue(Border.PaddingProperty, new Thickness(2, 3, 2, 3));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(5));
+        var presenter = new System.Windows.FrameworkElementFactory(typeof(GridViewRowPresenter));
+        presenter.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, new System.Windows.TemplateBindingExtension(Control.ForegroundProperty));
+        border.AppendChild(presenter);
+        var tmpl = new ControlTemplate(typeof(ListViewItem)) { VisualTree = border };
+
+        var style = new Style(typeof(ListViewItem));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, B("TextFg")));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+        style.Setters.Add(new Setter(Control.TemplateProperty, tmpl));
+        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        var selTrig = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
+        selTrig.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Theme.ListSel)));
+        style.Triggers.Add(selTrig);
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Theme.ListHover)));
+        style.Triggers.Add(hover);
+        _list.ItemContainerStyle = style;
+    }
+
+    // 圆角深色下拉(跟随主题, DynamicResource 解析到 App 资源)
+    void StyleCombo(ComboBox cb)
+    {
+        cb.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+@"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <Grid>
+    <ToggleButton Focusable='False' ClickMode='Press' Background='{DynamicResource ComboBg}' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
+      <ToggleButton.Template>
+        <ControlTemplate TargetType='ToggleButton'>
+          <Border Background='{TemplateBinding Background}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
+            <Grid TextElement.Foreground='{DynamicResource TextFg}'>
+              <ContentPresenter Margin='10,0,24,0' HorizontalAlignment='Left' VerticalAlignment='Center' Content='{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}'/>
+              <Path Data='M0,0 L4,4 L8,0 Z' Fill='#999' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0'/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </ToggleButton.Template>
+    </ToggleButton>
+    <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'>
+      <Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
+        <StackPanel IsItemsHost='True' Margin='2'/>
+      </Border>
+    </Popup>
+  </Grid>
+</ControlTemplate>");
+        cb.ItemContainerStyle = (Style)System.Windows.Markup.XamlReader.Parse(
+@"<Style TargetType='ComboBoxItem' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <Setter Property='Foreground' Value='{DynamicResource TextFg}'/>
+  <Setter Property='Padding' Value='10,6'/>
+  <Setter Property='Template'>
+    <Setter.Value>
+      <ControlTemplate TargetType='ComboBoxItem'>
+        <Border x:Name='bd' Background='Transparent' CornerRadius='5' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='bd' Property='Background' Value='#2d5a88'/><Setter Property='Foreground' Value='White'/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>");
+    }
+
+    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
+    static ControlTemplate BtnTpl() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        $@"<ControlTemplate TargetType='Button' {XmlNs}>
+            <Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8' Padding='{{TemplateBinding Padding}}'>
+              <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
+            </Border>
+            <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
+          </ControlTemplate>");
 }
