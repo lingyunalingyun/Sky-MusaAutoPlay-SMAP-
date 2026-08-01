@@ -720,10 +720,10 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---- 全局热键 F1 开始/停止, F2 暂停 (光遇里也能控制) ----
+    // ---- 全局热键 (光遇里也能控制): F1开始停止 F2暂停 F3减速 F4加速 F5后退5s F6前进10s ----
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-    const int HK_START = 1, HK_PAUSE = 2;
+    const int HK_START = 1, HK_PAUSE = 2, HK_SLOW = 3, HK_FAST = 4, HK_BACK = 5, HK_FWD = 6;
     IntPtr _hwnd;
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -732,6 +732,10 @@ public partial class MainWindow : Window
         _hwnd = new WindowInteropHelper(this).Handle;
         RegisterHotKey(_hwnd, HK_START, 0, 0x70);   // F1
         RegisterHotKey(_hwnd, HK_PAUSE, 0, 0x71);   // F2
+        RegisterHotKey(_hwnd, HK_SLOW, 0, 0x72);    // F3 减速
+        RegisterHotKey(_hwnd, HK_FAST, 0, 0x73);    // F4 加速
+        RegisterHotKey(_hwnd, HK_BACK, 0, 0x74);    // F5 后退 5s
+        RegisterHotKey(_hwnd, HK_FWD, 0, 0x75);     // F6 前进 10s
         HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
     }
 
@@ -740,16 +744,40 @@ public partial class MainWindow : Window
         const int WM_HOTKEY = 0x0312;
         if (msg == WM_HOTKEY)
         {
-            int id = wp.ToInt32();
-            if (id == HK_START) { StartAuto(false); handled = true; }   // 热键: 无倒计时
-            else if (id == HK_PAUSE) { Pause_Click(this, new RoutedEventArgs()); handled = true; }
+            switch (wp.ToInt32())
+            {
+                case HK_START: StartAuto(false); handled = true; break;   // 热键: 无倒计时
+                case HK_PAUSE: Pause_Click(this, new RoutedEventArgs()); handled = true; break;
+                case HK_SLOW: AdjustSpeed(-0.1); handled = true; break;
+                case HK_FAST: AdjustSpeed(+0.1); handled = true; break;
+                case HK_BACK: SeekRelative(-5000); handled = true; break;
+                case HK_FWD: SeekRelative(+10000); handled = true; break;
+            }
         }
         return IntPtr.Zero;
     }
 
+    // 调速: 改滑块值(ValueChanged 会同步 SpeedLabel + SkyPlayer.SpeedFactor)
+    void AdjustSpeed(double delta)
+    {
+        SpeedSlider.Value = Math.Clamp(SpeedSlider.Value + delta, SpeedSlider.Minimum, SpeedSlider.Maximum);
+        StatusText.Text = $"状态: 速度 {SpeedSlider.Value:0.0}x";
+    }
+
+    // 相对跳转(仅播放/试听中); 夹到 [0, 总时长]
+    void SeekRelative(double deltaMs)
+    {
+        if (!_playing && !_previewing) return;
+        double target = Math.Clamp(_player.PositionMs + deltaMs, 0, _player.TotalMs);
+        _player.Seek(target);
+        StatusText.Text = $"状态: {(deltaMs < 0 ? "后退" : "前进")} → {Fmt(target)}";
+    }
+
     protected override void OnClosed(EventArgs e)
     {
-        if (_hwnd != IntPtr.Zero) { UnregisterHotKey(_hwnd, HK_START); UnregisterHotKey(_hwnd, HK_PAUSE); }
+        if (_hwnd != IntPtr.Zero)
+            foreach (int id in new[] { HK_START, HK_PAUSE, HK_SLOW, HK_FAST, HK_BACK, HK_FWD })
+                UnregisterHotKey(_hwnd, id);
         _player.Stop();
         base.OnClosed(e);
     }
