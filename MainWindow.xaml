@@ -7,6 +7,39 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <!-- ===== 极简扁平图标 (Feather/Lucide 风格, 24x24) ===== -->
+        <PathGeometry x:Key="IconPrev" Figures="M20 5 L20 19 L9 12 Z M4 5 L7 5 L7 19 L4 19 Z"/>
+        <PathGeometry x:Key="IconNext" Figures="M4 5 L4 19 L15 12 Z M17 5 L20 5 L20 19 L17 19 Z"/>
+        <PathGeometry x:Key="IconPlay" Figures="M6 4 L6 20 L20 12 Z"/>
+        <PathGeometry x:Key="IconPause" Figures="M7 4 L11 4 L11 20 L7 20 Z M13 4 L17 4 L17 20 L13 20 Z"/>
+        <PathGeometry x:Key="IconList" Figures="M4 7 L20 7 M4 12 L20 12 M4 17 L20 17"/>
+        <PathGeometry x:Key="IconHeadphones" Figures="M5 13 V11 A7 7 0 0 1 19 11 V13 M4 14 L7 14 L7 19 L4 19 Z M17 14 L20 14 L20 19 L17 19 Z"/>
+        <PathGeometry x:Key="IconMountain" Figures="M2 20 L8 9 L12 15 L15 10 L22 20 Z"/>
+        <PathGeometry x:Key="IconRepeat" Figures="M17 1 L21 5 L17 9 M3 11 V9 A4 4 0 0 1 7 5 L21 5 M7 23 L3 19 L7 15 M21 13 V15 A4 4 0 0 1 17 19 L3 19"/>
+        <PathGeometry x:Key="IconRepeatOne" Figures="M17 1 L21 5 L17 9 M3 11 V9 A4 4 0 0 1 7 5 L21 5 M7 23 L3 19 L7 15 M21 13 V15 A4 4 0 0 1 17 19 L3 19 M11 10 L12 9 L12 15"/>
+        <PathGeometry x:Key="IconShuffle" Figures="M16 3 L21 3 L21 8 M4 20 L21 3 M21 16 L21 21 L16 21 M15 15 L21 21 M4 4 L9 9"/>
+        <PathGeometry x:Key="IconMore" Figures="M5 10.4 A1.6 1.6 0 1 1 5 13.6 A1.6 1.6 0 1 1 5 10.4 Z M12 10.4 A1.6 1.6 0 1 1 12 13.6 A1.6 1.6 0 1 1 12 10.4 Z M19 10.4 A1.6 1.6 0 1 1 19 13.6 A1.6 1.6 0 1 1 19 10.4 Z"/>
+        <PathGeometry x:Key="IconStar" Figures="M12 3 L14.9 8.9 L21.4 9.8 L16.7 14.4 L17.8 20.9 L12 17.8 L6.2 20.9 L7.3 14.4 L2.6 9.8 L9.1 8.9 Z"/>
+        <PathGeometry x:Key="IconAdd" Figures="M12 4 V20 M4 12 H20"/>
+        <PathGeometry x:Key="IconDownload" Figures="M12 3 V14 M8 11 L12 15 L16 11 M5 19 H19"/>
+
+        <!-- 线条图标(描边): Stroke 跟随按钮 Foreground, 悬浮/高亮变色仍生效 -->
+        <Style x:Key="GlyphStroke" TargetType="Path">
+            <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            <Setter Property="StrokeThickness" Value="2"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Width" Value="19"/><Setter Property="Height" Value="19"/>
+        </Style>
+        <!-- 实心图标(填充) -->
+        <Style x:Key="GlyphFill" TargetType="Path">
+            <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Width" Value="17"/><Setter Property="Height" Value="17"/>
+        </Style>
+
         <!-- 圆角强调按钮: hover 变暗 -->
         <Style TargetType="Button">
             <Setter Property="Height" Value="42"/>
@@ -200,22 +233,350 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 菜单分隔线: 居中细线, 颜色偏深不抢眼 -->
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="#33808080" Margin="14,4"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
-            <Setter Property="Padding" Value="20,7"/>
+            <Setter Property="Padding" Value="16,7"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
                         <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="check" Grid.Column="0" Text="✓" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed" Foreground="{DynamicResource TextFg}"/>
+                                <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="arrow" Grid.Column="2" Text="›" Margin="12,0,0,0" FontSize="15" VerticalAlignment="Center" Visibility="Collapsed" Foreground="{DynamicResource SubTextFg}"/>
+                                <Popup x:Name="sub" IsOpen="{TemplateBinding IsSubmenuOpen}" Placement="Right" HorizontalOffset="-2" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                    <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="4">
+                                        <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.4" Color="#000000"/></Border.Effect>
+                                        <StackPanel IsItemsHost="True"/>
+                                    </Border>
+                                </Popup>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/></Trigger>
+                            <Trigger Property="HasItems" Value="True"><Setter TargetName="arrow" Property="Visibility" Value="Visible"/></Trigger>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="check" Property="Visibility" Value="Visible"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 底部播放器: 大圆播放键 -->
+        <Style x:Key="CircleBtn" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse x:Name="bg" Fill="{TemplateBinding Background}"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="Opacity" Value="0.85"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="bg" Property="Opacity" Value="0.65"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 底部播放器: 上一首/下一首等图标按钮 -->
+        <Style x:Key="IconBtn" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="6,2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 底部播放器: 圆角药丸(音色/倍速) -->
+        <Style x:Key="PillBtn" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="Transparent" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="11" Padding="10,3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 进度条: 贴顶细线(无把手), 悬浮变粗+白圆把手+时间药丸; 填充用主题强调色 -->
+        <Style x:Key="ProgressBar" TargetType="Slider">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Background="Transparent" VerticalAlignment="Top" Height="8" ClipToBounds="False">
+                            <!-- 悬浮热区(加大, 向下延伸进容器) -->
+                            <Border Height="30" Background="Transparent" VerticalAlignment="Bottom" Margin="0,0,0,-16"/>
+                            <!-- 未播放细线(向上加粗: 底边锚定) -->
+                            <Border x:Name="bg" CornerRadius="3" Background="#40FFFFFF" VerticalAlignment="Bottom">
+                                <Border.Style>
+                                    <Style TargetType="Border"><Setter Property="Height" Value="2"/>
+                                        <Style.Triggers><DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Slider}}" Value="True"><Setter Property="Height" Value="5"/></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Track x:Name="PART_Track" VerticalAlignment="Bottom" Height="5" ClipToBounds="False">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border x:Name="fill" CornerRadius="3" Background="{DynamicResource Accent}" VerticalAlignment="Bottom">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border"><Setter Property="Height" Value="2"/>
+                                                            <Style.Triggers><DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Slider}}" Value="True"><Setter Property="Height" Value="5"/></DataTrigger></Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Grid Width="18" Height="18" Background="Transparent" ClipToBounds="False"
+                                                      DataContext="{Binding Tag, RelativeSource={RelativeSource AncestorType=Slider}}">
+                                                    <!-- 大圆把手: 把手内元素(实时跟随进度) -->
+                                                    <Ellipse Fill="White" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                        <Ellipse.Effect><DropShadowEffect BlurRadius="5" ShadowDepth="0" Opacity="0.45" Color="#000000"/></Ellipse.Effect>
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse"><Setter Property="Width" Value="0"/><Setter Property="Height" Value="0"/>
+                                                                <Style.Triggers><DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Slider}}" Value="True"><Setter Property="Width" Value="15"/><Setter Property="Height" Value="15"/></DataTrigger></Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <!-- 时间药丸: Popup 顶层渲染, 不被裁 -->
+                                                    <Popup Placement="Top" AllowsTransparency="True" StaysOpen="True" Focusable="False" PopupAnimation="Fade" VerticalOffset="-6"
+                                                           IsOpen="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Slider}, Mode=OneWay}">
+                                                        <Border CornerRadius="13" Background="#111111" Padding="12,5" Margin="8">
+                                                            <Border.Effect><DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.55" Color="#000000"/></Border.Effect>
+                                                            <TextBlock Text="{Binding}" Foreground="White" FontSize="12.5" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                    </Popup>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 播放列表条目容器: 去掉默认选中蓝底, 由模板自绘 -->
+        <Style x:Key="PlaylistItemStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem"><ContentPresenter/></ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 播放列表条目: 封面/播放叠层 + 曲名/作者/创谱者 + 时长/收藏/更多 -->
+        <DataTemplate x:Key="PlaylistItemTpl">
+            <Border x:Name="row" Background="Transparent" CornerRadius="8" Padding="8,6" Margin="0,2" Cursor="Hand"
+                    MouseRightButtonUp="PlaylistRow_RightClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 封面 + 播放/暂停叠层 -->
+                    <Grid Grid.Column="0" Width="46" Height="46" MouseLeftButtonDown="PlaylistItemPlay_Click">
+                        <Border CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"/>
+                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="ovl" CornerRadius="6" Background="#66000000" Visibility="Collapsed">
+                            <Path x:Name="ovlIcon" Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform" Width="18" Height="18"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- 曲名 / 作者 / 创谱者 -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFg}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="eq" Text="▮▮▮" FontSize="9" Margin="6,0,0,0" Foreground="#4F9EF0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding AuthorText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                        <TextBlock Text="{Binding TranscriberText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                    </StackPanel>
+
+                    <!-- 右: 时长 (悬浮时换成 收藏星 + 更多) -->
+                    <Grid Grid.Column="2" VerticalAlignment="Center" MinWidth="56" Margin="4,0,0,0">
+                        <TextBlock x:Name="dur" Text="{Binding DurationText}" FontSize="12" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        <StackPanel x:Name="actions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.6" Fill="Transparent"
+                                  Stretch="Uniform" Width="17" Height="17" Cursor="Hand" VerticalAlignment="Center"
+                                  MouseLeftButtonDown="PlaylistFav_Click" ToolTip="收藏/取消收藏"/>
+                            <Button Style="{StaticResource IconBtn}" Margin="6,0,0,0" Click="PlaylistMore_Click" ToolTip="更多">
+                                <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconMore}"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                    <Setter TargetName="row" Property="Background" Value="{DynamicResource MenuHi}"/>
+                    <Setter TargetName="ovl" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="actions" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="dur" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                    <Setter TargetName="row" Property="Background" Value="{DynamicResource MenuHi}"/>
+                    <Setter TargetName="ovl" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ovlIcon" Property="Data" Value="{StaticResource IconPause}"/>
+                    <Setter TargetName="eq" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Fav}" Value="True">
+                    <Setter TargetName="favStar" Property="Fill" Value="#E6B52A"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 中栏曲库条目: 封面 + 曲名/作者/创谱者 + 时长 (悬浮换 加入播放列表/收藏星/更多) -->
+        <DataTemplate x:Key="LibraryItemTpl">
+            <Border x:Name="row" Background="Transparent" CornerRadius="8" Padding="8,6" Margin="0,2" Cursor="Hand"
+                    MouseRightButtonUp="LibRow_RightClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1">
+                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">
+                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFg}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding AuthorText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                        <TextBlock Text="{Binding TranscriberText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                    </StackPanel>
+
+                    <Grid Grid.Column="2" VerticalAlignment="Center" MinWidth="56" Margin="4,0,0,0">
+                        <!-- 非悬浮: 已收藏显金星 + 时长 -->
+                        <StackPanel x:Name="idle" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Path x:Name="favIdle" Data="{StaticResource IconStar}" Fill="#E6B52A" Stretch="Uniform" Width="15" Height="15" Margin="0,0,6,0" Visibility="Collapsed"/>
+                            <TextBlock x:Name="dur" Text="{Binding DurationText}" FontSize="12" Foreground="{DynamicResource SubTextFg}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- 悬浮: 加入播放列表 / 收藏 / 更多 -->
+                        <StackPanel x:Name="actions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+                            <Button Style="{StaticResource IconBtn}" Click="LibAdd_Click" ToolTip="加入播放列表">
+                                <Path Data="{StaticResource IconAdd}" Stroke="{DynamicResource TextFg}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Width="16" Height="16"/>
+                            </Button>
+                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.6" Fill="Transparent"
+                                  Stretch="Uniform" Width="17" Height="17" Cursor="Hand" VerticalAlignment="Center" Margin="4,0,0,0"
+                                  MouseLeftButtonDown="LibFav_Click" ToolTip="收藏/取消收藏"/>
+                            <Button Style="{StaticResource IconBtn}" Margin="4,0,0,0" Click="LibMore_Click" ToolTip="更多">
+                                <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconMore}"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Fav}" Value="True">
+                    <Setter TargetName="favIdle" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="favStar" Property="Fill" Value="#E6B52A"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                    <Setter TargetName="row" Property="Background" Value="{DynamicResource RowSel}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                    <Setter TargetName="row" Property="Background" Value="{DynamicResource MenuHi}"/>
+                    <Setter TargetName="actions" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="idle" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 中栏云端条目: 封面 + 曲名/作者/创谱者 + 难度/下载量 + 下载按钮 -->
+        <DataTemplate x:Key="CloudItemTpl">
+            <Border x:Name="row" Background="Transparent" CornerRadius="8" Padding="8,6" Margin="0,2">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1">
+                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">
+                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextFg}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding ArtistText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding TranscriberText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
+                            <TextBlock Text="{Binding Stars}" FontSize="11" Foreground="#E6B52A" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DownloadsText}" FontSize="11" Foreground="{DynamicResource SubTextFg}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource IconBtn}" Click="CloudDownload_Click" ToolTip="下载到本地曲库">
+                            <Path Data="{StaticResource IconDownload}" Stroke="{DynamicResource TextFg}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" Width="17" Height="17"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                    <Setter TargetName="row" Property="Background" Value="{DynamicResource MenuHi}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
 
         <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextFg}"/></Style>
     </Window.Resources>
@@ -223,10 +584,12 @@
     <!-- 圆角窗体 -->
     <Border Background="{DynamicResource WindowBg}" CornerRadius="16" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
         <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
-        <Grid Margin="10">
+        <Grid x:Name="RootScale" Margin="10">
+            <Grid.LayoutTransform><ScaleTransform x:Name="UiScale"/></Grid.LayoutTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- 标题栏 -->
@@ -244,15 +607,15 @@
             </Border>
 
             <!-- 主体三栏 -->
-            <Grid Grid.Row="1" Margin="4,12,4,4">
+            <Grid Grid.Row="1" Margin="4,12,4,4" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="360"/>
-                    <ColumnDefinition Width="*" MinWidth="240"/>
+                    <ColumnDefinition Width="268"/>
+                    <ColumnDefinition Width="*" MinWidth="260"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- 左: 演奏控制 -->
-                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                <!-- 左(旧): 演奏控制 — Stage1 已隐藏, 保留控件供现有逻辑引用 -->
+                <StackPanel Grid.Column="0" Margin="0,0,16,0" Visibility="Collapsed">
                     <TextBlock x:Name="AppTitleText" Text="光遇-Musa 自动演奏" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     <TextBlock Text="Sky-MusaAutoPlay (SMAP)" FontSize="14" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" Margin="0,2,0,14"/>
 
@@ -265,29 +628,6 @@
                             <TextBlock x:Name="StatusText" Text="状态: 准备中" TextWrapping="Wrap" Foreground="{DynamicResource StatusFg}" Margin="0,3,0,0"/>
                         </StackPanel>
                     </Border>
-
-                    <Grid Margin="0,14,0,0">
-                        <TextBlock x:Name="ElapsedText" Text="00:00" HorizontalAlignment="Left"/>
-                        <TextBlock x:Name="TotalText" Text="00:00" HorizontalAlignment="Right"/>
-                    </Grid>
-                    <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" Value="0" Margin="0,4,0,0"
-                            IsMoveToPointEnabled="True" ToolTip="拖动跳转播放位置"/>
-
-                    <Grid Margin="0,16,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom">
-                            <TextBlock x:Name="CountdownLabel" Text="倒计时:" VerticalAlignment="Center"/>
-                            <TextBox x:Name="CountdownBox" Text="3" Width="52" Height="30" Margin="6,0,0,0"
-                                     Style="{StaticResource RoundBox}" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                            <TextBlock x:Name="SpeedLabel" Text="1.0x" HorizontalAlignment="Center"/>
-                            <Slider x:Name="SpeedSlider" Minimum="0.5" Maximum="2.0" Value="1.0" Margin="0,2,0,0"/>
-                        </StackPanel>
-                    </Grid>
 
                     <Grid Margin="0,18,0,0">
                         <Grid.ColumnDefinitions>
@@ -312,47 +652,336 @@
                     </Grid>
                 </StackPanel>
 
-                <!-- 中: 曲目库 -->
-                <DockPanel Grid.Column="1" Margin="0,0,16,0">
-                    <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库 (右键收藏/加标签)" FontWeight="Bold" Margin="2,0,0,8"/>
-                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="96"/><ColumnDefinition Width="96"/><ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <ComboBox x:Name="FilterCombo" Grid.Column="0" Style="{StaticResource RoundCombo}" ToolTip="筛选"/>
-                        <ComboBox x:Name="SortCombo" Grid.Column="1" Style="{StaticResource RoundCombo}" Margin="8,0,0,0" ToolTip="排序"/>
-                        <TextBox x:Name="SearchBox" Grid.Column="2" Height="30" Margin="8,0,0,0" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
+                <!-- 左(新): 音乐软件式侧边栏 (Stage1) -->
+                <DockPanel Grid.Column="0" Margin="0,0,16,0">
+                    <!-- 头像资料卡: 点击登录/查看个人主页 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BoxBg}" CornerRadius="12" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="Profile_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0" Width="56" Height="56">
+                                <Ellipse Fill="#D9D9D9"/>
+                                <TextBlock x:Name="AvatarInitial" Text="?" FontSize="24" FontWeight="Bold" Foreground="#333333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                                <TextBlock x:Name="ProfileName" Text="未登录" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="ProfileLevel" Text="点此登录" FontSize="11" Foreground="{DynamicResource SubTextFg}" Margin="0,2,0,0"/>
+                                <TextBlock x:Name="ProfileSign" Text="缪斯树屋账号" FontSize="11" Foreground="{DynamicResource SubTextFg}" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 本地 / 云端 切换 -->
+                    <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="White" FontWeight="Bold" Margin="0,14,0,0" Click="ShowLocal_Click"/>
+                    <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="White" FontWeight="Bold" Margin="0,10,0,0" Click="ShowCloud_Click"/>
+
+                    <!-- 底部: 导入 / 设置 -->
+                    <Button x:Name="SideSettingsBtn" DockPanel.Dock="Bottom" Content="设置" Style="{StaticResource NeutralBtn}" Click="Settings_Click"/>
+                    <Button x:Name="SideImportBtn" DockPanel.Dock="Bottom" Content="导入" Style="{StaticResource NeutralBtn}" Margin="0,0,0,10" Click="Import_Click"/>
+
+                    <!-- 我的收藏夹 (Stage2) -->
+                    <Grid DockPanel.Dock="Top" Margin="0,18,0,6">
+                        <TextBlock x:Name="FoldersHeader" Text="我的收藏夹" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Button Content="＋" Style="{StaticResource IconBtn}" FontSize="16" HorizontalAlignment="Right" Click="AddFolder_Click" ToolTip="新建收藏夹"/>
                     </Grid>
                     <Border Background="{DynamicResource ListBg}" CornerRadius="10" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1">
-                        <ListView x:Name="SongList" Background="Transparent" Foreground="{DynamicResource TextFg}" BorderThickness="0"
-                                  Margin="4" MouseDoubleClick="SongList_DoubleClick" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                  VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True"/>
+                      <Grid x:Name="FolderListGrid">
+                        <ListBox x:Name="FolderList" Background="Transparent" BorderThickness="0" Margin="4" AllowDrop="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="FolderList_SelectionChanged" MouseRightButtonUp="FolderList_RightClick"
+                                 PreviewMouseLeftButtonDown="FolderList_DragDown" PreviewMouseMove="FolderList_DragMove"
+                                 PreviewMouseLeftButtonUp="FolderList_DragUp" Drop="FolderList_Drop"
+                                 DragOver="FolderList_DragOver" DragLeave="FolderList_DragLeave">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="frow" Background="Transparent" CornerRadius="8" Padding="6" Margin="0,2" Cursor="Hand">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1">
+                                                <Path Data="{StaticResource IconList}" Stroke="{DynamicResource SubTextFg}" StrokeThickness="2" Stretch="Uniform" Width="18" Height="18"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFg}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding CountText}" Foreground="{DynamicResource SubTextFg}" FontSize="11"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource MenuHi}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource MenuHi}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <!-- 拖动落点白条 -->
+                        <Border x:Name="DropLine" Height="3" CornerRadius="1.5" Background="White" VerticalAlignment="Top"
+                                HorizontalAlignment="Stretch" Margin="10,0,10,0" Visibility="Collapsed" IsHitTestVisible="False"/>
+                      </Grid>
                     </Border>
                 </DockPanel>
 
-                <!-- 右: 虚拟琴键 -->
-                <Border Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Width="430">
-                    <StackPanel>
-                        <TextBlock x:Name="KeysHeader" Text="🎹 光遇按键映射 (3×5)" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
-                        <TextBlock x:Name="KeysHint" Text="点单元格 → 按键盘任意键 重映射 · 播放时同步亮起" FontSize="11" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" Margin="0,4,0,14" TextWrapping="Wrap" TextAlignment="Center"/>
-                        <UniformGrid x:Name="PianoGrid" Rows="3" Columns="5" HorizontalAlignment="Center"/>
-                        <Button x:Name="KeyEditBtn" Content="🎹 编辑按键映射" Background="#2196F3" Foreground="White" FontWeight="Bold" Margin="0,16,0,0" Click="KeyEdit_Click"/>
+                <!-- 中: 曲目库 -->
+                <DockPanel x:Name="MidContent" Grid.Column="1" Margin="0,0,16,0">
+                    <DockPanel.RenderTransform><TranslateTransform x:Name="MidSlide"/></DockPanel.RenderTransform>
+                    <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库" FontWeight="Bold" FontSize="16" Margin="2,0,0,10"/>
+                    <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Height="36" Margin="0,0,0,8" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
+                    <StackPanel x:Name="LocalFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                        <ComboBox x:Name="FilterCombo" Width="128" Style="{StaticResource RoundCombo}" ToolTip="筛选"/>
+                        <ComboBox x:Name="SortCombo" Width="140" Margin="10,0,0,0" Style="{StaticResource RoundCombo}" ToolTip="排序"/>
+                    </StackPanel>
+                    <!-- 云端筛选/排序 (仅云端模式显示) -->
+                    <StackPanel x:Name="CloudFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10" Visibility="Collapsed">
+                        <ComboBox x:Name="CloudSortCombo" Width="128" Style="{StaticResource RoundCombo}" ToolTip="排序"/>
+                        <ComboBox x:Name="CloudDiffCombo" Width="140" Margin="10,0,0,0" Style="{StaticResource RoundCombo}" ToolTip="难度筛选"/>
+                    </StackPanel>
+                    <Grid>
+                        <ListView x:Name="SongList" Background="Transparent" Foreground="{DynamicResource TextFg}" BorderThickness="0"
+                                  Margin="0" MouseDoubleClick="SongList_DoubleClick" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ItemContainerStyle="{StaticResource PlaylistItemStyle}" ItemTemplate="{StaticResource LibraryItemTpl}"
+                                  VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True"/>
+                        <ListView x:Name="CloudList" Background="Transparent" Foreground="{DynamicResource TextFg}" BorderThickness="0" Visibility="Collapsed"
+                                  Margin="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ItemContainerStyle="{StaticResource PlaylistItemStyle}" ItemTemplate="{StaticResource CloudItemTpl}"
+                                  VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True"/>
+                    </Grid>
+                </DockPanel>
 
-                        <Grid Margin="0,10,0,0">
+                <!-- 右: 虚拟琴键 -->
+                <Border x:Name="RightContent" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Width="430">
+                    <Border.RenderTransform><TranslateTransform x:Name="RightSlide"/></Border.RenderTransform>
+                    <StackPanel>
+                        <TextBlock x:Name="KeysHeader" Text="🎹 光遇按键映射 (3×5)" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" Visibility="Collapsed"/>
+                        <TextBlock x:Name="KeysHint" Text="点单元格 → 按键盘任意键 重映射 · 播放时同步亮起" FontSize="11" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" Margin="0,4,0,14" TextWrapping="Wrap" TextAlignment="Center" Visibility="Collapsed"/>
+                        <UniformGrid x:Name="PianoGrid" Rows="3" Columns="5" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+
+                        <!-- 创建 / 练习: 宽度对齐琴键组两端 -->
+                        <Grid Margin="0,22,0,0" HorizontalAlignment="Center" Width="{Binding ActualWidth, ElementName=PianoGrid}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Button x:Name="CaveBtn" Grid.Row="0" Grid.Column="0" Content="洞穴音效: 关" Style="{StaticResource NeutralBtn}" Click="Cave_Click"/>
-                            <Button x:Name="InstrumentBtn" Grid.Row="0" Grid.Column="2" Content="音色: Piano" Style="{StaticResource NeutralBtn}" Click="Instrument_Click"/>
-                            <Button x:Name="ThemeBtn" Grid.Row="2" Grid.Column="0" Content="主题: 深色模式" Style="{StaticResource NeutralBtn}" Click="Theme_Click"/>
-                            <Button x:Name="AboutBtn" Grid.Row="2" Grid.Column="2" Content="软件信息" Style="{StaticResource NeutralBtn}" Click="About_Click"/>
+                            <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="#D08A18" Foreground="White" FontWeight="Bold" Click="Create_Click"/>
+                            <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="#3A3A3A" Foreground="#888888" FontWeight="Bold" IsEnabled="False" Click="Practice_Click" ToolTip="功能开发中"/>
                         </Grid>
+
+                        <!-- 旧按钮: 迁移至 设置/底部栏, 隐藏保留供现有逻辑引用 -->
+                        <StackPanel Visibility="Collapsed">
+                            <Button x:Name="KeyEditBtn" Content="🎹 编辑按键映射" Click="KeyEdit_Click"/>
+                            <Button x:Name="CaveBtn" Content="洞穴音效: 关" Click="Cave_Click"/>
+                            <Button x:Name="InstrumentBtn" Content="音色: Piano" Click="Instrument_Click"/>
+                            <Button x:Name="ThemeBtn" Content="主题: 深色模式" Click="Theme_Click"/>
+                            <Button x:Name="AboutBtn" Content="软件信息" Click="About_Click"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <!-- 设置界面 (在中/右栏后方, 点设置时中右栏飞出露出它) -->
+                <Grid x:Name="SettingsPanel" Grid.Column="1" Grid.ColumnSpan="2" Panel.ZIndex="5" Visibility="Collapsed" Margin="4,0,0,0" Background="{DynamicResource WindowBg}">
+                    <Grid.RenderTransform><TranslateTransform x:Name="SettingsSlide"/></Grid.RenderTransform>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+
+                    <!-- 设置列 -->
+                    <StackPanel Grid.Column="0" Margin="0,0,24,0">
+                        <TextBlock x:Name="SetTitleTx" Text="设置" FontSize="34" FontWeight="Bold" Margin="0,0,0,20"/>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetLangLbl" Grid.Column="0" Text="语言:" VerticalAlignment="Center" FontSize="15"/>
+                            <ComboBox Grid.Column="1" x:Name="SetLangCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetLangCombo_Changed"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetThemeLbl" Grid.Column="0" Text="主题:" VerticalAlignment="Center" FontSize="15"/>
+                            <ComboBox Grid.Column="1" x:Name="SetThemeCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetThemeCombo_Changed"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetUpdateLbl" Grid.Column="0" Text="更新:" VerticalAlignment="Center" FontSize="15"/>
+                            <Button x:Name="SetUpdateBtn" Grid.Column="1" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetLogLbl" Grid.Column="0" Text="日志:" VerticalAlignment="Center" FontSize="15"/>
+                            <Button x:Name="SetLogBtn" Grid.Column="1" Content="上传日志" Style="{StaticResource NeutralBtn}" Click="SetLog_Click"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetUiLbl" Grid.Column="0" Text="界面:" VerticalAlignment="Center" FontSize="15"/>
+                            <ComboBox Grid.Column="1" x:Name="SetUiCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetUiCombo_Changed"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetFontLbl" Grid.Column="0" Text="字体:" VerticalAlignment="Center" FontSize="15"/>
+                            <ComboBox Grid.Column="1" x:Name="SetFontCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetFontCombo_Changed"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetWaitLbl" Grid.Column="0" Text="等待:" VerticalAlignment="Center" FontSize="15"/>
+                            <TextBox Grid.Column="1" x:Name="SetWaitBox" Height="40" Style="{StaticResource RoundBox}" HorizontalContentAlignment="Center" TextChanged="SetWaitBox_Changed"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetBindLbl" Grid.Column="0" Text="绑定:" VerticalAlignment="Center" FontSize="15"/>
+                            <Button Grid.Column="1" x:Name="SetBindBtn" Content="点击修改" Style="{StaticResource NeutralBtn}" Click="SetBind_Click"/></Grid>
+                    </StackPanel>
+
+                    <!-- 软件信息列 -->
+                    <StackPanel Grid.Column="1">
+                        <TextBlock x:Name="SetSoftInfoTitle" Text="软件信息" FontSize="34" FontWeight="Bold" Margin="0,0,0,16"/>
+                        <TextBlock x:Name="AboutNameTx" Text="光遇-Musa 自动弹琴" FontSize="15" Margin="0,0,0,2"/>
+                        <TextBlock Text="Sky-MusaAutoPlay (SMAP)" FontSize="15" Foreground="{DynamicResource SubTextFg}" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="AboutVersion" Text="软件版本: v1.1-WPF" FontSize="14" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="AboutAuthorTx" Text="软件作者: LingYunALingYun" FontSize="14" Margin="0,0,0,4"/>
+                        <TextBlock FontSize="14" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="0,0,0,10">
+                            <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
+                        </TextBlock>
+                        <!-- 按键绑定网格: 仅点"绑定"后显示 -->
+                        <StackPanel x:Name="SettingsBindArea" Visibility="Collapsed">
+                            <Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="12" Padding="14" HorizontalAlignment="Left">
+                                <UniformGrid x:Name="SettingsPianoGrid" Rows="3" Columns="5"/>
+                            </Border>
+                            <TextBlock x:Name="SettingsBindHint" Text="点上方琴键格 → 按物理键完成重映射" FontSize="12" Foreground="{DynamicResource SubTextFg}" Margin="2,10,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Grid>
+
+            <!-- 底部播放器栏 (beta) -->
+            <Border Grid.Row="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
+                    CornerRadius="14" Margin="4,10,4,0">
+                <Grid>
+                    <!-- 主行: 左封面+歌名+星 / 中 倒计时+prev+play+next / 右 倍速 -->
+                    <Grid Margin="14,14,14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 左: 封面/歌名/星 (左对齐) + 倒计时 (贴中央播放组左侧) -->
+                        <Grid Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                <Border Width="52" Height="52" CornerRadius="8" Background="{DynamicResource BoxBg}"
+                                        BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" ClipToBounds="True">
+                                    <Image Source="/Assets/logo.png" Stretch="Uniform" Margin="6"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center" Margin="12,0,0,0" MaxWidth="180">
+                                    <TextBlock x:Name="PlayerSongName" Text="未有正在播放的歌曲" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="PlayerAuthor" Text="作者" FontSize="11" Foreground="{DynamicResource SubTextFg}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="PlayerTranscriber" Text="创谱者" FontSize="11" Foreground="{DynamicResource SubTextFg}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Path x:Name="FavStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.5" Fill="Transparent"
+                                      Width="22" Height="22" Stretch="Uniform" Cursor="Hand" Visibility="Collapsed"
+                                      VerticalAlignment="Center" Margin="12,0,0,0" MouseLeftButtonDown="FavStar_Click" ToolTip="收藏/取消收藏"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,14,0">
+                                <!-- 倒计时暂移除(保留控件供逻辑读取) -->
+                                <TextBlock x:Name="CountdownLabel" Text="倒计时:" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SubTextFg}" Visibility="Collapsed"/>
+                                <TextBox x:Name="CountdownBox" Text="3" Width="42" Height="28" Margin="6,0,0,0"
+                                         Style="{StaticResource RoundBox}" HorizontalContentAlignment="Center" Visibility="Collapsed"/>
+                                <Button x:Name="PlayModeBtn" Style="{StaticResource IconBtn}" Click="PlayMode_Click" ToolTip="播放方式">
+                                    <Path x:Name="PlayModeIcon" Style="{StaticResource GlyphStroke}" Data="{StaticResource IconRepeat}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 中: 仅 上一首/播放/下一首, 播放键绝对居中 -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Button x:Name="PrevBtn" Style="{StaticResource IconBtn}" Click="PrevSong_Click" ToolTip="上一首">
+                                <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconPrev}"/>
+                            </Button>
+                            <Button x:Name="PlayBtn" Style="{StaticResource CircleBtn}" Background="{DynamicResource TitleGrad}"
+                                    Width="52" Height="52" Margin="14,0" Click="PlayPause_Click">
+                                <Path x:Name="PlayIcon" Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform" Width="22" Height="22"/>
+                            </Button>
+                            <Button x:Name="NextBtn" Style="{StaticResource IconBtn}" Click="NextSong_Click" ToolTip="下一首">
+                                <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconNext}"/>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- 右: 播放列表 贴中央播放组右侧 + 洞穴/倍速右对齐 -->
+                        <Grid Grid.Column="2">
+                            <Button x:Name="PlaylistBtn" Style="{StaticResource IconBtn}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" Click="TogglePlaylist_Click" ToolTip="播放列表">
+                                <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconList}"/>
+                            </Button>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                <Button x:Name="PreviewIcon" Style="{StaticResource IconBtn}"
+                                        Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="PreviewMode_Click" ToolTip="试听模式(走扬声器不发按键)">
+                                    <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconHeadphones}"/>
+                                </Button>
+                                <Button x:Name="CaveIcon" Style="{StaticResource IconBtn}"
+                                        Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="Cave_Click" ToolTip="洞穴音效开关">
+                                    <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconMountain}"/>
+                                </Button>
+                                <Button x:Name="InstrumentPill" Content="音色:Piano" Style="{StaticResource PillBtn}"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" Click="Instrument_Click" ToolTip="选择音色"/>
+                                <Border BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="11" Padding="10,3" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="SpeedLabel" Text="1.0x" FontSize="12" MinWidth="30" TextAlignment="Center"/>
+                                </Border>
+                                <Slider x:Name="SpeedSlider" Minimum="0.5" Maximum="2.0" Value="1.0" Width="140" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 进度条: 自绘, 圆点/药丸以进度交界点为参考实时跟随 (无歌曲时隐藏) -->
+            <Grid x:Name="ProgBar" Grid.Row="2" VerticalAlignment="Top" Margin="6,10,6,0" Height="14" Panel.ZIndex="40"
+                  Background="Transparent" ClipToBounds="False" Cursor="Hand" Visibility="Collapsed"
+                  MouseEnter="ProgBar_Enter" MouseLeave="ProgBar_Leave"
+                  PreviewMouseLeftButtonDown="ProgBar_Down" PreviewMouseMove="ProgBar_Move" PreviewMouseLeftButtonUp="ProgBar_Up"
+                  SizeChanged="ProgBar_SizeChanged">
+                <Border x:Name="ProgTrack" Background="{DynamicResource ProgTrackBg}" Height="3" CornerRadius="2" VerticalAlignment="Center"/>
+                <Border x:Name="ProgFill" Background="{DynamicResource Accent}" Height="3" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0"/>
+                <Ellipse x:Name="ProgThumb" Fill="White" Width="0" Height="0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <Ellipse.Effect><DropShadowEffect BlurRadius="5" ShadowDepth="0" Opacity="0.45" Color="#000000"/></Ellipse.Effect>
+                </Ellipse>
+                <!-- 时间药丸: Popup 顶层不被裁, 横向偏移随交界点(代码更新) -->
+                <Popup x:Name="ProgTip" PlacementTarget="{Binding ElementName=ProgBar}" Placement="Relative" VerticalOffset="-34" AllowsTransparency="True" StaysOpen="True" Focusable="False">
+                    <Border x:Name="ProgTipPill" CornerRadius="13" Background="#111111" Padding="12,5" Margin="8">
+                        <Border.Effect><DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.55" Color="#000000"/></Border.Effect>
+                        <TextBlock x:Name="ProgTipText" Text="00:00 / 00:00" Foreground="White" FontSize="12.5" FontWeight="SemiBold"/>
+                    </Border>
+                </Popup>
+            </Grid>
+            <TextBlock x:Name="ElapsedText" Text="00:00" Visibility="Collapsed"/>
+            <TextBlock x:Name="TotalText" Text="00:00" Visibility="Collapsed"/>
+
+            <!-- 点击任意处收回播放列表的透明背板 -->
+            <Border x:Name="PlaylistBackdrop" Grid.Row="1" Grid.RowSpan="2" Background="Transparent"
+                    Visibility="Collapsed" Panel.ZIndex="9" MouseLeftButtonDown="PlaylistBackdrop_Click"/>
+
+            <!-- 播放列表浮层 (右侧滑出) -->
+            <Border x:Name="PlaylistPanel" Grid.Row="1" Grid.RowSpan="2" HorizontalAlignment="Right" Width="470" Margin="0,0,4,4"
+                    Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
+                    CornerRadius="14" Visibility="Collapsed" Panel.ZIndex="10">
+                <Border.Effect><DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
+                <Border.RenderTransform><TranslateTransform x:Name="PlaylistSlide"/></Border.RenderTransform>
+                <DockPanel Margin="14,12,10,12">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="PlaylistTitle" Text="播放列表" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock x:Name="PlaylistCount" Text="0 首" FontSize="12" Foreground="{DynamicResource SubTextFg}" VerticalAlignment="Bottom" Margin="8,0,0,3"/>
+                        </StackPanel>
+                        <Button x:Name="PlaylistClearBtn" Content="清空" Style="{StaticResource IconBtn}" FontSize="13" Foreground="{DynamicResource SubTextFg}"
+                                HorizontalAlignment="Right" Visibility="Collapsed" Click="PlaylistClear_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="PlaylistEmpty" DockPanel.Dock="Top" Text="双击左侧曲库里的歌曲, 即可加入播放列表"
+                               FontSize="12" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="2,20,2,0" TextAlignment="Center"/>
+                    <ListView x:Name="PlaylistView" Background="Transparent" BorderThickness="0"
+                              ItemContainerStyle="{StaticResource PlaylistItemStyle}" ItemTemplate="{StaticResource PlaylistItemTpl}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True"
+                              MouseDoubleClick="PlaylistView_DoubleClick"/>
+                </DockPanel>
+            </Border>
+
+            <!-- 轻提示 toast -->
+            <Border x:Name="Toast" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,18"
+                    Background="#D0000000" CornerRadius="18" Padding="18,9" Visibility="Collapsed" Panel.ZIndex="30" IsHitTestVisible="False">
+                <TextBlock x:Name="ToastText" Foreground="White" FontSize="13"/>
+            </Border>
         </Grid>
     </Border>
 </Window>

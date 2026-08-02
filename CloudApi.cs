@@ -28,6 +28,9 @@ public class CloudSheet
     public bool Recommended { get; set; }
 
     public string Stars => new string('★', Math.Clamp(Difficulty, 0, 5));
+    public string ArtistText => string.IsNullOrWhiteSpace(Artist) ? Lang.S("song.noartist") : Artist;
+    public string TranscriberText => string.IsNullOrWhiteSpace(TranscribedBy) ? Lang.S("song.notrans") : TranscribedBy;
+    public string DownloadsText => $"↓{Downloads}";
 }
 
 /// <summary>缪斯树屋在线曲库 API: 登录/列表/下载/上传, 登录态持久化到 %APPDATA%\SMAP\auth.json。</summary>

@@ -9,16 +9,31 @@ using System.Text.RegularExpressions;
 
 namespace SMAP_WPF;
 
-public class SongInfo
+public class SongInfo : System.ComponentModel.INotifyPropertyChanged
 {
-    public string File = "";
-    public string Name = "";
-    public double Bpm = 120;
-    public bool Fav;
-    public int NoteCount;
-    public double DurationMs;      // 末音符时间, 状态栏/进度条总时长用
+    public string File { get; set; } = "";
+    public string Name { get; set; } = "";
+    public double Bpm { get; set; } = 120;
+    public int NoteCount { get; set; }
+    public double DurationMs { get; set; }      // 末音符时间, 状态栏/进度条总时长用
+    public string Author { get; set; } = "";
+    public string TranscribedBy { get; set; } = "";
     public string FileName => Path.GetFileName(File);
+
+    // 播放列表条目展示用
+    public string AuthorText => string.IsNullOrWhiteSpace(Author) ? Lang.S("song.noartist") : Author;
+    public string TranscriberText => string.IsNullOrWhiteSpace(TranscribedBy) ? Lang.S("song.notrans") : TranscribedBy;
+    public string DurationText { get { var t = TimeSpan.FromMilliseconds(Math.Max(0, DurationMs)); return $"{(int)t.TotalMinutes}:{t.Seconds:00}"; } }
+    public string StarGlyph => Fav ? "★" : "☆";
+
+    bool _fav;
+    public bool Fav { get => _fav; set { _fav = value; OnChanged(nameof(Fav)); OnChanged(nameof(StarGlyph)); } }
+    bool _isPlaying;
+    public bool IsPlaying { get => _isPlaying; set { _isPlaying = value; OnChanged(nameof(IsPlaying)); } }
+
     public override string ToString() => (Fav ? "⭐ " : "") + Name;   // ListView 显示: 收藏前缀 + 曲名
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    void OnChanged(string p) => PropertyChanged?.Invoke(this, new(p));
 }
 
 /// <summary>一份可编辑的曲谱: 保留原始全部字段(Root), 音符以拍位置存, 保存时 beat→ms 写回。</summary>
@@ -56,6 +71,8 @@ public static class SongLibrary
                     ? n.GetString() ?? Path.GetFileNameWithoutExtension(f)
                     : Path.GetFileNameWithoutExtension(f);
                 double bpm = root.TryGetProperty("bpm", out var b) && b.ValueKind == JsonValueKind.Number ? b.GetDouble() : 120;
+                string author = root.TryGetProperty("author", out var au) && au.ValueKind == JsonValueKind.String ? au.GetString() ?? "" : "";
+                string trans = root.TryGetProperty("transcribedBy", out var tb) && tb.ValueKind == JsonValueKind.String ? tb.GetString() ?? "" : "";
                 int notes = 0; double dur = 0;
                 if (root.TryGetProperty("songNotes", out var sn) && sn.ValueKind == JsonValueKind.Array)
                 {
@@ -64,7 +81,7 @@ public static class SongLibrary
                         if (e.TryGetProperty("time", out var tm) && tm.ValueKind == JsonValueKind.Number)
                             dur = Math.Max(dur, tm.GetDouble());
                 }
-                list.Add(new SongInfo { File = f, Name = name, Bpm = bpm <= 0 ? 120 : bpm, NoteCount = notes, DurationMs = dur });
+                list.Add(new SongInfo { File = f, Name = name, Bpm = bpm <= 0 ? 120 : bpm, NoteCount = notes, DurationMs = dur, Author = author, TranscribedBy = trans });
             }
             catch { /* 跳过无法解析的文件 */ }
         }

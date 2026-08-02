@@ -11,7 +11,7 @@
     <AssemblyName>SMAP</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- 合并后仓库里有 JAVA version/ 旧 Java 源码, 不让 .NET SDK 扫描/编译它 -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**;Installer\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
