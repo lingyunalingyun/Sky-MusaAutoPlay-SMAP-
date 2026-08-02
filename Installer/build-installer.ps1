@@ -1,7 +1,10 @@
-# Build SMAP installer: publish SMAP -> zip into Payload\app.zip -> publish installer (embeds payload) as single-file exe.
+# Build SMAP installer. Run from the Installer folder (script is pure ASCII to avoid PS5.1 GBK parse issues).
 $ErrorActionPreference = "Stop"
-$inst       = $PSScriptRoot
-$smapCsproj = Join-Path (Split-Path $inst) "SMAP-WPF.csproj"   # Installer/ 在 SMAP-WPF 仓库内, 父目录即项目根
+$inst = $PSScriptRoot
+if (-not $inst -and $PSCommandPath) { $inst = Split-Path -Parent $PSCommandPath }
+if (-not $inst) { $inst = (Get-Location).Path }
+$repo       = Split-Path $inst                    # SMAP-WPF repo root (parent of Installer)
+$smapCsproj = Join-Path $repo "SMAP-WPF.csproj"
 $pubDir     = Join-Path $inst "_smap_publish"
 $payload    = Join-Path $inst "Payload\app.zip"
 $outDir     = Join-Path $inst "_setup_out"
@@ -12,7 +15,7 @@ if (Test-Path $pubDir) { Remove-Item $pubDir -Recurse -Force }
 & $dotnet publish $smapCsproj -c Release -r win-x64 --self-contained true -o $pubDir /p:DebugType=none /p:DebugSymbols=false --nologo
 if ($LASTEXITCODE -ne 0) { throw "SMAP publish failed" }
 
-# 示例曲谱: 放进发布产物的 songs\ , 装机后本地曲库自带这几首
+# Bundle sample sheets into publish output songs\ (so a fresh install has some songs)
 $sampleDir = Join-Path $inst "sample-songs"
 if (Test-Path $sampleDir) {
     $songsOut = Join-Path $pubDir "songs"
@@ -29,7 +32,8 @@ Compress-Archive -Path (Join-Path $pubDir "*") -DestinationPath $payload -Compre
 
 Write-Host "[3/3] Publishing installer (embed payload, single-file)..." -ForegroundColor Cyan
 if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
-& $dotnet publish (Join-Path $inst "SMAP-Installer.csproj") -c Release -r win-x64 --self-contained true -o $outDir /p:PublishSingleFile=true /p:DebugType=none /p:DebugSymbols=false --nologo
+# WPF single-file MUST include native libs for self-extract, else DllNotFoundException at startup.
+& $dotnet publish (Join-Path $inst "SMAP-Installer.csproj") -c Release -r win-x64 --self-contained true -o $outDir /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:DebugType=none /p:DebugSymbols=false --nologo
 if ($LASTEXITCODE -ne 0) { throw "Installer publish failed" }
 
 $setup = Join-Path $outDir "SMAP-Setup.exe"
