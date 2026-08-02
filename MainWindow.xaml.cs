@@ -20,6 +20,29 @@ public partial class MainWindow : Window
     double _speed = 1.0;
     bool _playing, _paused, _previewing;
 
+    // 播放列表 (音乐软件式: 双击曲库加入, 跨会话持久化, 内部切歌/自动续播)
+    readonly System.Collections.ObjectModel.ObservableCollection<SongInfo> _playlist = new();
+    SongInfo? _playCurrent;   // 当前播放上下文对应的播放列表条目(切歌/续播/自动续播用)
+    SongInfo? _nowPlaying;    // 当前正在发声的曲目(不论从曲库还是列表启动)
+    bool _previewMode;        // 试听模式: 播放键走扬声器(音频)而非发送游戏按键
+    static readonly SolidColorBrush _gold = new(Color.FromRgb(0xE6, 0xB5, 0x2A));   // 收藏星填充色
+    enum PlayMode { RepeatAll, RepeatOne, Shuffle }   // 列表循环 / 单曲循环 / 随机播放
+    PlayMode _playMode = PlayMode.RepeatAll;
+    readonly Random _rng = new();
+    static string PlayModeFile => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "playmode.txt");
+
+    // 收藏夹(歌单)
+    readonly System.Collections.ObjectModel.ObservableCollection<Folder> _folders = new();
+    Folder? _currentFolder;   // 中栏正在查看的收藏夹; null=整个本地曲库
+
+    // 云端曲库(内联, 无限滚动)
+    readonly System.Collections.ObjectModel.ObservableCollection<CloudSheet> _cloud = new();
+    bool _cloudMode, _cloudLoading;
+    int _cloudPage = 1, _cloudPages = 1;
+    static string PlaylistFile => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "playlist.txt");
+
     int _remapIndex = -1;   // >=0 时表示正在等待为该光遇键重绑物理键
 
     public MainWindow()
@@ -29,27 +52,36 @@ public partial class MainWindow : Window
         InitializeComponent();
         _player.Vk = KeyConfig.Load();
         BuildPianoGrid();
+        BuildSettingsGrid();
         SpeedSlider.ValueChanged += (_, e) =>
         {
             SpeedLabel.Text = $"{e.NewValue:0.0}x";
             _player.SpeedFactor = e.NewValue;   // 播放中拖动立即变速
         };
-        ProgressSlider.ValueChanged += (_, e) =>
-        {
-            if (_settingProgress) return;                    // 定时器回写, 非用户操作
-            if (!_playing && !_previewing) { SetProgress(0); return; }   // 没在放, 无处可跳
-            _player.Seek(e.NewValue * _player.TotalMs);
-        };
-
-        SortCombo.SelectionChanged += (_, __) => ApplyFilter();
-        FilterCombo.SelectionChanged += (_, __) => ApplyFilter();
-        SearchBox.TextChanged += (_, __) => ApplyFilter();
+        SortCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
+        FilterCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
+        SearchBox.TextChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
+        SearchBox.KeyDown += (_, e) => { if (_cloudMode && e.Key == System.Windows.Input.Key.Enter) { _cloudPage = 1; _ = LoadCloud(false); } };
         SongList.SelectionChanged += (_, __) => OnSongSelected();
-        StyleSongList();
+        CloudList.ItemsSource = _cloud;
+        CloudSortCombo.ItemsSource = new[] { "最新", "最热", "下载量" };
+        CloudSortCombo.SelectedIndex = 0;
+        CloudDiffCombo.ItemsSource = new[] { "全部难度", "★", "★★", "★★★", "★★★★", "★★★★★" };
+        CloudDiffCombo.SelectedIndex = 0;
+        CloudSortCombo.SelectionChanged += (_, __) => { if (_cloudMode) { _cloudPage = 1; _ = LoadCloud(false); } };
+        CloudDiffCombo.SelectionChanged += (_, __) => { if (_cloudMode) { _cloudPage = 1; _ = LoadCloud(false); } };
+        CloudList.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(CloudScroll));
 
         CloudApi.LoadAuth();
         UpdateLoginButton();
+        SetLibTab(true);
         RefreshLibrary();
+        PlaylistView.ItemsSource = _playlist;
+        LoadPlaylist();
+        LoadPlayMode();
+        foreach (var f in FolderStore.Load()) _folders.Add(f);
+        FolderList.ItemsSource = _folders;
+        UpdateFoldersHeader();
         ApplyLanguage();
 
         Title = Lang.S("app.title") + $"  v{UpdateChecker.AppVersion}";
@@ -70,12 +102,14 @@ public partial class MainWindow : Window
         ImportBtn.Content = Lang.S("btn.import");
         RefreshBtn.Content = Lang.S("btn.refresh");
         if (!CloudApi.LoggedIn) LoginBtn.Content = Lang.S("btn.login");
-        LibHeader.Text = Lang.S("lib.header");
+        UpdateLibHeader();
         KeysHeader.Text = Lang.S("keys.header");
         KeysHint.Text = Lang.S("keys.hint");
         KeyEditBtn.Content = _editingKeys ? Lang.S("keys.save") : Lang.S("keys.edit");
         CaveBtn.Content = $"{Lang.S("cave")}: {Lang.S(AudioEngine.Cave ? "on" : "off")}";
-        InstrumentBtn.Content = $"{Lang.S("instrument")}: {_instrumentName}";
+        InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(_instrumentName)}";
+        InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(_instrumentName)}";
+        _instrumentMenu = null;   // 语言变了, 重建带翻译的音色菜单
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
         AboutBtn.Content = Lang.S("about");
 
@@ -84,8 +118,73 @@ public partial class MainWindow : Window
         SortCombo.SelectedIndex = si;
 
         RebuildFilterOptions();
-        SongList.ContextMenu = BuildSongContextMenu();
-        OnSongSelected();   // 刷新曲名/BPM/音符数标签
+
+        // ── 侧边栏 ──
+        LocalLibBtn.Content = Lang.S("nav.local");
+        CloudLibBtn.Content = Lang.S("nav.cloud");
+        SideImportBtn.Content = Lang.S("side.import");
+        SideSettingsBtn.Content = Lang.S("side.settings");
+        UpdateFoldersHeader();
+        UpdateProfileCard();
+
+        // ── 右栏 / 播放器 ──
+        CreateRightBtn.Content = Lang.S("right.create");
+        PracticeBtn.Content = Lang.S("right.practice");
+        SearchBox.ToolTip = Lang.S("search.hint");
+        PrevBtn.ToolTip = Lang.S("tip.prev");
+        NextBtn.ToolTip = Lang.S("tip.next");
+        PlaylistBtn.ToolTip = Lang.S("tip.playlist");
+        PreviewIcon.ToolTip = Lang.S("tip.preview");
+        CaveIcon.ToolTip = Lang.S("tip.cave");
+        InstrumentPill.ToolTip = Lang.S("tip.inst");
+        PlayModeBtn.ToolTip = $"{Lang.S("tip.playmode")}: {PlayModeName(_playMode)}";
+        ProgBar.ToolTip = Lang.S("tip.seek");
+        if (!_playing && !_previewing) PlayerSongName.Text = Lang.S("player.nosong");
+        PlayerAuthor.Text = Lang.S("player.artist");
+        PlayerTranscriber.Text = Lang.S("player.trans");
+
+        // ── 播放列表面板 ──
+        PlaylistTitle.Text = Lang.S("pl.title");
+        PlaylistClearBtn.Content = Lang.S("pl.clear");
+        PlaylistEmpty.Text = Lang.S("pl.empty");
+        UpdatePlaylistHeader();
+
+        // ── 云端筛选/排序下拉 ──
+        int cs = CloudSortCombo.SelectedIndex < 0 ? 0 : CloudSortCombo.SelectedIndex;
+        CloudSortCombo.ItemsSource = new[] { Lang.S("cloud.newest"), Lang.S("cloud.hot"), Lang.S("cloud.downs") };
+        CloudSortCombo.SelectedIndex = cs;
+        int cd = CloudDiffCombo.SelectedIndex < 0 ? 0 : CloudDiffCombo.SelectedIndex;
+        CloudDiffCombo.ItemsSource = new[] { Lang.S("cloud.diffall"), "★", "★★", "★★★", "★★★★", "★★★★★" };
+        CloudDiffCombo.SelectedIndex = cd;
+
+        // ── 设置界面 ──
+        SetTitleTx.Text = Lang.S("set.title");
+        SetLangLbl.Text = Lang.S("set.lang");
+        SetThemeLbl.Text = Lang.S("set.theme");
+        SetUpdateLbl.Text = Lang.S("set.update");
+        SetUpdateBtn.Content = Lang.S("set.checkupd");
+        SetLogLbl.Text = Lang.S("set.log");
+        SetLogBtn.Content = Lang.S("set.uplog");
+        SetUiLbl.Text = Lang.S("set.ui");
+        SetFontLbl.Text = Lang.S("set.font");
+        SetWaitLbl.Text = Lang.S("set.wait");
+        SetBindLbl.Text = Lang.S("set.bind");
+        SetBindBtn.Content = _editingKeys ? Lang.S("set.bindDone") : Lang.S("set.bindEdit");
+        SettingsBindHint.Text = Lang.S("set.bindHint");
+        SetSoftInfoTitle.Text = Lang.S("set.softinfo");
+        AboutNameTx.Text = Lang.S("about.name");
+        AboutVersion.Text = $"{Lang.S("about.version")}: v{UpdateChecker.AppVersion}-WPF";
+        AboutAuthorTx.Text = $"{Lang.S("about.author")}: LingYunALingYun";
+        AboutRepoRun.Text = $"{Lang.S("about.repo")}: ";
+
+        // 刷新绑定文本(未知作者/创谱者、收藏夹曲数等随语言变)
+        SongList.Items.Refresh();
+        PlaylistView.Items.Refresh();
+        CloudList.Items.Refresh();
+        FolderList.Items.Refresh();
+        _instrumentMenu = null;
+
+        OnSongSelected();
     }
 
     // ---- 自定义标题栏窗口控制 ----
@@ -96,22 +195,285 @@ public partial class MainWindow : Window
     void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    // ---- 选中曲目 → 曲名/BPM/音符数/总时长 ----
+    // ---- 选中曲目 = 仅选中(不演奏); 底部播放栏只跟随"正在播放", 不跟随选中 ----
     void OnSongSelected()
     {
         if (Selected is { } s)
         {
             FilePathBox.Text = s.Name;
             SongInfoText.Text = $"BPM:{(int)s.Bpm}  {Lang.S("info.notes")}:{s.NoteCount}";
-            TotalText.Text = Fmt(s.DurationMs);
         }
         else
         {
             FilePathBox.Text = Lang.S("nosong");
             SongInfoText.Text = $"BPM:--  {Lang.S("info.notes")}:--";
-            TotalText.Text = "00:00";
         }
+    }
+
+    // ---- 底部播放器栏 (beta): 收藏星 / 上一首 / 下一首 ----
+    void FavStar_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var s = _nowPlaying ?? Selected;
+        if (s == null) return;
+        ToggleFav(s);
+        FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+    }
+
+    void PrevSong_Click(object sender, RoutedEventArgs e) => StepSong(-1);
+    void NextSong_Click(object sender, RoutedEventArgs e) => StepSong(+1);
+
+    void StepSong(int delta)
+    {
+        // 有播放列表 → 在列表内切歌; 否则在曲库里移动选择
+        if (_playlist.Count > 0)
+        {
+            SongInfo s;
+            if (_playMode == PlayMode.Shuffle) s = RandomItem(_playCurrent);   // 随机: ⏮/⏭ 都随机
+            else
+            {
+                int idx = _playCurrent != null ? _playlist.IndexOf(_playCurrent) : -1;
+                idx = idx < 0 ? (delta > 0 ? 0 : _playlist.Count - 1) : (idx + delta);
+                if (idx < 0) idx = _playlist.Count - 1;
+                if (idx >= _playlist.Count) idx = 0;
+                s = _playlist[idx];
+            }
+            if (_playing || _previewing) PlayPlaylistItem(s);   // 正在放 → 直接切到并播放
+            else { _playCurrent = s; UpdateNowPlaying(s); }     // 未在放 → 仅切换当前
+            return;
+        }
+        int n = SongList.Items.Count;
+        if (n == 0) return;
+        int i = SongList.SelectedIndex < 0 ? (delta > 0 ? -1 : 0) : SongList.SelectedIndex;
+        i = Math.Clamp(i + delta, 0, n - 1);
+        SongList.SelectedIndex = i;
+        SongList.ScrollIntoView(SongList.SelectedItem);
+    }
+
+    // ================= 播放列表 =================
+    void ClearPlayingMarks() { foreach (var s in _playlist) s.IsPlaying = false; }
+
+    void UpdatePlaylistHeader()
+    {
+        PlaylistCount.Text = $"{_playlist.Count} {Lang.S("unit.songs")}";
+        PlaylistEmpty.Visibility = _playlist.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PlaylistClearBtn.Visibility = _playlist.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // 底部"正在播放"信息跟随指定曲目
+    void UpdateNowPlaying(SongInfo s)
+    {
+        PlayerSongName.Text = s.Name;
+        PlayerAuthor.Text = s.AuthorText;
+        PlayerTranscriber.Text = s.TranscriberText;
+        FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        PlayerAuthor.Visibility = Visibility.Visible;
+        PlayerTranscriber.Visibility = Visibility.Visible;
+        FavStar.Visibility = Visibility.Visible;
+        TotalText.Text = Fmt(s.DurationMs);
+        ProgTipText.Text = $"00:00 / {TotalText.Text}";
+        ProgFill.Width = 0;
+        ProgBar.Visibility = Visibility.Visible;
+    }
+
+    // 无曲目播放: 只显封面 + 提示, 隐藏作者/创谱者/星
+    void SetIdlePlayer()
+    {
+        PlayerSongName.Text = "未有正在播放的歌曲";
+        PlayerAuthor.Visibility = Visibility.Collapsed;
+        PlayerTranscriber.Visibility = Visibility.Collapsed;
+        FavStar.Visibility = Visibility.Collapsed;
+        TotalText.Text = "00:00";
         ElapsedText.Text = "00:00";
+        ProgTipText.Text = "00:00 / 00:00";
+        ProgFill.Width = 0;
+        ProgBar.Visibility = Visibility.Collapsed;
+    }
+
+    void AddToPlaylist(SongInfo s)
+    {
+        if (_playlist.Any(x => x.File == s.File)) { ShowToast(string.Format(Lang.S("t.inQueue"), s.Name)); return; }
+        _playlist.Add(s);
+        UpdatePlaylistHeader();
+        SavePlaylist();
+        ShowToast(string.Format(Lang.S("t.addedQueue"), s.Name));
+    }
+
+    void PlayPlaylistItem(SongInfo s)
+    {
+        _advanceTimer?.Stop();
+        if (_playing || _previewing) StopPlaying();
+        if (!TryLoad(s)) return;
+        _playCurrent = s;
+        _nowPlaying = s;
+        _speed = SpeedSlider.Value;
+        _paused = false;
+        UpdateNowPlaying(s);
+        int sec = _previewMode ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
+        BeginCountdown(sec);
+    }
+
+    // 双击播放列表条目 → 播放
+    void PlaylistView_DoubleClick(object sender, RoutedEventArgs e)
+    {
+        if (PlaylistView.SelectedItem is SongInfo s) PlayPlaylistItem(s);
+    }
+
+    // 点封面叠层 → 播放该条
+    void PlaylistItemPlay_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SongInfo s) { PlayPlaylistItem(s); e.Handled = true; }
+    }
+
+    // 条目收藏星
+    void PlaylistFav_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
+        ToggleFav(s);
+        if (ReferenceEquals(s, Selected) || ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        e.Handled = true;
+    }
+
+    // 条目 ⋯ 菜单 (点更多按钮)
+    void PlaylistMore_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SongInfo s) OpenRowMenu(BuildPlaylistMenu(s), sender);
+    }
+
+    // 条目右键 → 同一份菜单
+    void PlaylistRow_RightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
+        OpenRowMenu(BuildPlaylistMenu(s), sender);
+        e.Handled = true;
+    }
+
+    ContextMenu BuildPlaylistMenu(SongInfo s)
+    {
+        var cm = new ContextMenu();
+
+        var play = new MenuItem { Header = Lang.S("m.play") };
+        play.Click += (_, __) => PlayPlaylistItem(s);
+
+        var favTo = BuildFavToMenu(s);   // 收藏到收藏夹(歌单)
+
+        var remove = new MenuItem { Header = Lang.S("m.removeQueue") };
+        remove.Click += (_, __) => RemoveFromPlaylist(s);
+        var open = new MenuItem { Header = Lang.S("m.openLoc") };
+        open.Click += (_, __) => { try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{s.File}\""); } catch { } };
+        var edit = new MenuItem { Header = Lang.S("m.editSong") };
+        edit.Click += (_, __) => OpenEditor(s);
+        var info = new MenuItem { Header = Lang.S("m.songInfo") };
+        info.Click += (_, __) => PlaylistSongInfo(s);
+
+        cm.Items.Add(play);
+        cm.Items.Add(favTo);
+        cm.Items.Add(remove);
+        cm.Items.Add(open);
+        cm.Items.Add(new Separator());
+        cm.Items.Add(edit);
+        cm.Items.Add(info);
+        return cm;
+    }
+
+    // 歌曲信息: 编辑曲名/作者/创谱者, 保存回文件并刷新显示
+    void PlaylistSongInfo(SongInfo s)
+    {
+        var doc = SongLibrary.LoadDocument(s);
+        var dlg = new InfoDialog(doc) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        SongLibrary.Save(doc, doc.Notes, doc.FilePath ?? s.File);
+        s.Name = doc.Name; s.Author = doc.Author; s.TranscribedBy = doc.TranscribedBy;
+        PlaylistView.Items.Refresh();
+        RefreshLibrary();
+        if (ReferenceEquals(s, _playCurrent) || (_nowPlaying != null && _nowPlaying.File == s.File)) UpdateNowPlaying(s);
+    }
+
+    void RemoveFromPlaylist(SongInfo s)
+    {
+        bool wasCurrent = ReferenceEquals(s, _playCurrent) || (_nowPlaying != null && _nowPlaying.File == s.File);
+        _playlist.Remove(s);
+        if (ReferenceEquals(s, _playCurrent)) _playCurrent = null;
+        if (wasCurrent)
+        {
+            if (_playing || _previewing) StopPlaying();   // 移除的正是在放的 → 停止
+            _nowPlaying = null;
+            OnSongSelected();                             // 底部信息回落到曲库选中
+        }
+        UpdatePlaylistHeader();
+        SavePlaylist();
+    }
+
+    void PlaylistClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playlist.Count == 0) return;
+        bool wasPlaying = _playing && !_paused;
+        if (wasPlaying) SetPaused(true);              // 弹窗前先暂停
+        if (!MsgBox.Confirm(this, Lang.S("c.clearQueue"), Lang.S("c.queueTitle")))
+        {
+            if (wasPlaying) SetPaused(false);         // 取消 → 继续播放
+            return;
+        }
+        if (_playing || _previewing) StopPlaying();   // 确认 → 一并停止
+        _playlist.Clear();
+        _playCurrent = null;
+        _nowPlaying = null;
+        UpdatePlaylistHeader();
+        SavePlaylist();
+    }
+
+    // 右侧滑出面板开合
+    void TogglePlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        if (PlaylistPanel.Visibility != Visibility.Visible) OpenPlaylistPanel();
+        else ClosePlaylistPanel();
+    }
+
+    void OpenPlaylistPanel()
+    {
+        PlaylistBackdrop.Visibility = Visibility.Visible;
+        PlaylistPanel.Visibility = Visibility.Visible;
+        var a = new DoubleAnimation(PlaylistPanel.Width, 0, TimeSpan.FromMilliseconds(260))
+        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        PlaylistSlide.BeginAnimation(TranslateTransform.XProperty, a);
+    }
+
+    void ClosePlaylistPanel()
+    {
+        PlaylistBackdrop.Visibility = Visibility.Collapsed;
+        var a = new DoubleAnimation(0, PlaylistPanel.Width, TimeSpan.FromMilliseconds(220))
+        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+        a.Completed += (_, __) => PlaylistPanel.Visibility = Visibility.Collapsed;
+        PlaylistSlide.BeginAnimation(TranslateTransform.XProperty, a);
+    }
+
+    // 点面板外任意处 → 收回
+    void PlaylistBackdrop_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => ClosePlaylistPanel();
+
+    void LoadPlaylist()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(PlaylistFile)) { UpdatePlaylistHeader(); return; }
+            foreach (var line in System.IO.File.ReadAllLines(PlaylistFile))
+            {
+                var path = line.Trim();
+                if (path.Length == 0) continue;
+                var s = _all.FirstOrDefault(x => x.File == path);
+                if (s != null && !_playlist.Contains(s)) _playlist.Add(s);
+            }
+        }
+        catch { }
+        UpdatePlaylistHeader();
+    }
+
+    void SavePlaylist()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PlaylistFile)!);
+            System.IO.File.WriteAllLines(PlaylistFile, _playlist.Select(s => s.File));
+        }
+        catch { }
     }
 
     static string Fmt(double ms)
@@ -162,7 +524,7 @@ public partial class MainWindow : Window
     void RefreshLibrary()
     {
         _all = SongLibrary.Scan();
-        foreach (var s in _all) s.Fav = LibraryMeta.IsFav(s.FileName);
+        foreach (var s in _all) s.Fav = IsCollected(s);
         RebuildFilterOptions();
         ApplyFilter();
         StatusText.Text = $"状态: 曲库 {_all.Count} 首  ({SongLibrary.SongsDir})";
@@ -172,7 +534,6 @@ public partial class MainWindow : Window
     {
         int idx = FilterCombo.SelectedIndex < 0 ? 0 : FilterCombo.SelectedIndex;   // 按索引保留(翻译后字串会变)
         var items = new List<string> { Lang.S("filter.all"), Lang.S("filter.fav") };
-        foreach (var t in LibraryMeta.AllTags()) items.Add(TagPrefix + t);
         FilterCombo.ItemsSource = items;
         FilterCombo.SelectedIndex = idx < items.Count ? idx : 0;
     }
@@ -181,16 +542,14 @@ public partial class MainWindow : Window
     {
         if (_all.Count == 0 && SongList.ItemsSource == null) { SongList.ItemsSource = _all; return; }
         string q = SearchBox.Text?.Trim().ToLowerInvariant() ?? "";
-        int fi = FilterCombo.SelectedIndex;   // 0=全部 1=仅收藏 ≥2=标签
+        int fi = FilterCombo.SelectedIndex;   // 0=全部 1=仅收藏
 
-        IEnumerable<SongInfo> res = _all;
+        // 选中收藏夹 → 只看该收藏夹曲目; 否则整个曲库
+        IEnumerable<SongInfo> res = _currentFolder != null
+            ? _all.Where(s => _currentFolder.Files.Contains(s.File))
+            : _all;
         if (q.Length > 0) res = res.Where(s => s.Name.ToLowerInvariant().Contains(q));
         if (fi == 1) res = res.Where(s => s.Fav);
-        else if (fi >= 2 && FilterCombo.SelectedItem is string f && f.StartsWith(TagPrefix))
-        {
-            var tag = f[TagPrefix.Length..];
-            res = res.Where(s => LibraryMeta.TagsOf(s.FileName).Contains(tag));
-        }
 
         res = SortCombo.SelectedIndex switch
         {
@@ -203,77 +562,95 @@ public partial class MainWindow : Window
 
     SongInfo? Selected => SongList.SelectedItem as SongInfo;
 
-    ContextMenu BuildSongContextMenu()
+    // 统一开菜单: 先关掉上一个已开的, 避免右键时叠出多个/干扰二级子菜单
+    ContextMenu? _rowMenu;
+    void OpenRowMenu(ContextMenu cm, object sender)
+    {
+        if (_rowMenu != null && _rowMenu.IsOpen) _rowMenu.IsOpen = false;
+        _rowMenu = cm;
+        cm.PlacementTarget = sender as UIElement;
+        cm.IsOpen = true;
+    }
+
+    // ===== 中栏曲库富列表行交互 (Stage3) =====
+    void LibAdd_Click(object sender, RoutedEventArgs e)
+    { if ((sender as FrameworkElement)?.DataContext is SongInfo s) AddToPlaylist(s); }
+
+    void LibFav_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
+        ToggleFav(s);
+        if (ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        e.Handled = true;
+    }
+
+    void LibMore_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SongInfo s) OpenRowMenu(BuildLibraryMenu(s), sender);
+    }
+
+    void LibRow_RightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
+        OpenRowMenu(BuildLibraryMenu(s), sender);
+        e.Handled = true;
+    }
+
+    // 曲库条目菜单: 添加到播放列表 / 收藏到…… / 从曲库中移除 / 打开文件位置 / 编辑曲目 / 歌曲信息
+    ContextMenu BuildLibraryMenu(SongInfo s)
     {
         var cm = new ContextMenu();
-
-        var fav = new MenuItem { Header = Lang.S("menu.fav") };
-        fav.Click += (_, __) =>
-        {
-            if (Selected is not { } s) return;
-            LibraryMeta.ToggleFav(s.FileName);
-            s.Fav = LibraryMeta.IsFav(s.FileName);
-            ApplyFilter();
-            StatusText.Text = $"状态: {(s.Fav ? "已收藏" : "已取消收藏")}「{s.Name}」";
-        };
-
-        var addTag = new MenuItem { Header = Lang.S("menu.addtag") };
-        addTag.Click += (_, __) =>
-        {
-            if (Selected is not { } s) return;
-            var tag = InputBox.Ask(this, "添加标签", s.Name, "标签名:");
-            if (string.IsNullOrWhiteSpace(tag)) return;
-            LibraryMeta.AddTag(s.FileName, tag.Trim());
-            RebuildFilterOptions();
-            StatusText.Text = $"状态: 已为「{s.Name}」加标签 {tag.Trim()}";
-        };
-
-        var removeTag = new MenuItem { Header = Lang.S("menu.rmtag") };
-        removeTag.Click += (_, __) =>
-        {
-            if (Selected is not { } s) return;
-            var tags = LibraryMeta.TagsOf(s.FileName).ToList();
-            if (tags.Count == 0) { MsgBox.Info(this, "此曲目暂无标签"); return; }
-            var tag = InputBox.Choose(this, "移除标签", s.Name, "选择要移除的标签:", tags);
-            if (tag == null) return;
-            LibraryMeta.RemoveTag(s.FileName, tag);
-            RebuildFilterOptions();
-            ApplyFilter();
-            StatusText.Text = $"状态: 已移除标签 {tag}";
-        };
-
-        var upload = new MenuItem { Header = Lang.S("menu.upload") };
+        var add = new MenuItem { Header = Lang.S("m.addQueue") };
+        add.Click += (_, __) => AddToPlaylist(s);
+        var remove = new MenuItem { Header = new TextBlock { Text = Lang.S("m.removeLib"), Foreground = new SolidColorBrush(Color.FromRgb(0xE7, 0x4C, 0x3C)) } };
+        remove.Click += (_, __) => DeleteSong(s);
+        var open = new MenuItem { Header = Lang.S("m.openLoc") };
+        open.Click += (_, __) => { try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{s.File}\""); } catch { } };
+        var edit = new MenuItem { Header = Lang.S("m.editSong") };
+        edit.Click += (_, __) => OpenEditor(s);
+        var info = new MenuItem { Header = Lang.S("m.songInfo") };
+        info.Click += (_, __) => PlaylistSongInfo(s);
+        var upload = new MenuItem { Header = Lang.S("m.uploadCloud") };
         upload.Click += (_, __) =>
         {
-            if (Selected is not { } s) return;
             if (!CloudApi.LoggedIn)
             {
                 if (new LoginDialog(this).ShowDialog() != true) return;
                 UpdateLoginButton();
             }
-            if (new UploadDialog(this, s.File, s.Name).ShowDialog() == true)
-                StatusText.Text = $"状态: ✅ 已上传「{s.Name}」";
+            if (new UploadDialog(this, s.File, s.Name).ShowDialog() == true) ShowToast(string.Format(Lang.S("t.uploaded"), s.Name));
         };
-
-        // 红字: 用显式 TextBlock 头(本地前景色压过全局 TextBlock 样式)
-        var delete = new MenuItem { Header = new TextBlock { Text = Lang.S("menu.delete"), Foreground = new SolidColorBrush(Color.FromRgb(0xE7, 0x4C, 0x3C)) } };
-        delete.Click += (_, __) =>
+        cm.Items.Add(add);
+        cm.Items.Add(BuildFavToMenu(s));
+        // 正在查看某收藏夹时: 从该收藏夹移除(不删歌)
+        if (_currentFolder is { } cf)
         {
-            if (Selected is not { } s) return;
-            if (!MsgBox.Confirm(this, $"确定删除曲谱「{s.Name}」?\n将从磁盘永久删除, 无法撤销。", "删除曲谱")) return;
-            try { System.IO.File.Delete(s.File); }
-            catch (Exception ex) { MsgBox.Info(this, "删除失败: " + ex.Message); return; }
-            LibraryMeta.Forget(s.FileName);
-            RefreshLibrary();
-            StatusText.Text = $"状态: 已删除「{s.Name}」";
-        };
-
-        cm.Items.Add(fav);
-        cm.Items.Add(addTag);
-        cm.Items.Add(removeTag);
+            var rmFolder = new MenuItem { Header = string.Format(Lang.S("m.removeFromFolder"), cf.Name) };
+            rmFolder.Click += (_, __) => RemoveFromFolder(cf, s);
+            cm.Items.Add(rmFolder);
+        }
+        cm.Items.Add(remove);
+        cm.Items.Add(open);
+        cm.Items.Add(new Separator());
+        cm.Items.Add(edit);
+        cm.Items.Add(info);
         cm.Items.Add(upload);
-        cm.Items.Add(delete);
         return cm;
+    }
+
+    // 从磁盘删除曲谱(并从收藏夹/播放列表清理)
+    void DeleteSong(SongInfo s)
+    {
+        if (!MsgBox.Confirm(this, string.Format(Lang.S("c.removeLibConfirm"), s.Name), Lang.S("m.removeLib"))) return;
+        try { System.IO.File.Delete(s.File); }
+        catch (Exception ex) { MsgBox.Info(this, "删除失败: " + ex.Message); return; }
+        LibraryMeta.Forget(s.FileName);
+        foreach (var f in _folders) f.Files.Remove(s.File);
+        SaveFolders();
+        var pl = _playlist.FirstOrDefault(x => x.File == s.File);
+        if (pl != null) RemoveFromPlaylist(pl);
+        RefreshLibrary();
+        ShowToast(string.Format(Lang.S("t.removedLib"), s.Name));
     }
 
     void OpenEditor(SongInfo? song)
@@ -292,6 +669,40 @@ public partial class MainWindow : Window
     readonly RotateTransform[] _keyRot = new RotateTransform[15];   // 触发时翻转一圈
     readonly Border[] _keyDiamond = new Border[15];                 // 翻转时圆角морф(菱形↔圆)
     readonly ScaleTransform[] _keyScale = new ScaleTransform[15];   // 触发时缩小回弹
+    readonly TextBlock[] _setKeyLabels = new TextBlock[15];         // 设置界面里的绑定网格
+    readonly Button[] _setKeyBtns = new Button[15];
+
+    // 设置界面的绑定网格(与主网格共享 KeyConfig; 编辑态点键→按物理键重绑)
+    void BuildSettingsGrid()
+    {
+        for (int i = 0; i < 15; i++)
+        {
+            var lbl = new TextBlock
+            {
+                Foreground = new SolidColorBrush(Theme.KeyLetter), FontSize = 13, FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+            };
+            var diamond = new Border
+            {
+                Width = 28, Height = 28, BorderBrush = new SolidColorBrush(Theme.KeyDiamond), BorderThickness = new Thickness(2),
+                CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new RotateTransform(45)
+            };
+            var cell = new Grid();
+            cell.Children.Add(diamond); cell.Children.Add(lbl);
+            var btn = new Button
+            {
+                Width = 62, Height = 62, Margin = new Thickness(4), Content = cell, Tag = i,
+                Background = new SolidColorBrush(Theme.KeySquare), BorderBrush = new SolidColorBrush(Theme.KeyBorder), BorderThickness = new Thickness(1)
+            };
+            int idx = i;
+            btn.Click += (_, __) => { if (_editingKeys) BeginRemap(idx); else { AudioEngine.Play(idx); FlashKey(idx); } };
+            _setKeyBtns[i] = btn;
+            _setKeyLabels[i] = lbl;
+            SettingsPianoGrid.Children.Add(btn);
+        }
+        for (int i = 0; i < 15; i++) RefreshKey(i);
+    }
 
     void BuildPianoGrid()
     {
@@ -341,8 +752,15 @@ public partial class MainWindow : Window
 
     void RefreshKey(int i)
     {
-        _keyLabels[i].Text = KeyConfig.Label(_player.Vk[i]);
-        ((SolidColorBrush)_pianoButtons[i].Background).Color = i == _remapIndex ? Theme.KeyWait : Theme.KeySquare;
+        var lab = KeyConfig.Label(_player.Vk[i]);
+        var col = i == _remapIndex ? Theme.KeyWait : Theme.KeySquare;
+        _keyLabels[i].Text = lab;
+        ((SolidColorBrush)_pianoButtons[i].Background).Color = col;
+        if (_setKeyBtns[i] != null)
+        {
+            _setKeyLabels[i].Text = lab;
+            ((SolidColorBrush)_setKeyBtns[i].Background).Color = col;
+        }
     }
 
     // 切换主题后给琴键重新上色
@@ -353,19 +771,75 @@ public partial class MainWindow : Window
             _keyLabels[i].Foreground = new SolidColorBrush(Theme.KeyLetter);
             _keyDiamond[i].BorderBrush = new SolidColorBrush(Theme.KeyDiamond);
             _pianoButtons[i].BorderBrush = new SolidColorBrush(Theme.KeyBorder);
+            if (_setKeyBtns[i] != null)
+            {
+                _setKeyLabels[i].Foreground = new SolidColorBrush(Theme.KeyLetter);
+                _setKeyBtns[i].BorderBrush = new SolidColorBrush(Theme.KeyBorder);
+            }
             RefreshKey(i);
         }
     }
 
     // ---- 播放/试听时琴键同步亮起 + 进度条 ----
     DispatcherTimer? _flashTimer;
-    bool _settingProgress;   // true 时进度条变化来自定时器回写, 不当作用户拖动
+    bool _progDragging;
 
-    void SetProgress(double frac)
+    // 进度条自绘: 填充宽度=进度, 圆点/药丸横移到进度交界点(参考点)
+    void UpdateProgUi() => RenderProg(_player.TotalMs > 0 ? _player.PositionMs / _player.TotalMs : 0, _player.PositionMs, _player.TotalMs);
+
+    void RenderProg(double frac, double posMs, double totalMs)
     {
-        _settingProgress = true;
-        ProgressSlider.Value = frac;
-        _settingProgress = false;
+        frac = Math.Clamp(frac, 0, 1);
+        double w = ProgBar.ActualWidth;
+        if (w <= 0) return;
+        double x = frac * w;                        // 交界点(参考点)
+        ProgFill.Width = x;
+        ProgThumb.Margin = new Thickness(x - ProgThumb.Width / 2, 0, 0, 0);
+        ProgTipText.Text = $"{Fmt(posMs)} / {Fmt(totalMs)}";
+        ProgTipPill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double pw = ProgTipPill.DesiredSize.Width;
+        double cx = Math.Clamp(x, pw / 2, Math.Max(pw / 2, w - pw / 2));    // 两端不超出软件
+        ProgTip.HorizontalOffset = cx - pw / 2;                            // 居中于参考点(受界限约束)
+    }
+
+    void ProgBar_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateProgUi();
+
+    void ProgBar_Enter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        ProgTrack.Height = ProgFill.Height = 6;     // 向上加粗(VerticalAlignment=Center 视觉居中变粗)
+        ProgThumb.Width = ProgThumb.Height = 15;
+        ProgTip.IsOpen = true;
+        UpdateProgUi();
+    }
+    void ProgBar_Leave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_progDragging) return;
+        ProgTrack.Height = ProgFill.Height = 3;
+        ProgThumb.Width = ProgThumb.Height = 0;
+        ProgTip.IsOpen = false;
+    }
+    void ProgBar_Down(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _progDragging = true; ProgBar.CaptureMouse(); SeekToMouse(e.GetPosition(ProgBar).X); e.Handled = true;
+    }
+    void ProgBar_Move(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_progDragging) SeekToMouse(e.GetPosition(ProgBar).X);
+    }
+    void ProgBar_Up(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!_progDragging) return;
+        _progDragging = false; ProgBar.ReleaseMouseCapture();
+        if (!ProgBar.IsMouseOver) ProgBar_Leave(sender, e);
+    }
+    void SeekToMouse(double mouseX)
+    {
+        if (!_playing && !_previewing) return;      // 暂停时 _playing 仍为 true → 可拖动
+        double w = ProgBar.ActualWidth; if (w <= 0) return;
+        double frac = Math.Clamp(mouseX / w, 0, 1);
+        double total = _player.TotalMs;
+        _player.Seek(frac * total);
+        RenderProg(frac, frac * total, total);      // 直接按鼠标位置渲染, 不等回写
     }
 
     void StartFlash()
@@ -380,9 +854,8 @@ public partial class MainWindow : Window
         var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
         t.Tick += (_, __) =>
         {
-            SetProgress(_player.TotalMs > 0 ? _player.PositionMs / _player.TotalMs : 0);
-            ElapsedText.Text = Fmt(_player.PositionMs);
-            TotalText.Text = Fmt(_player.TotalMs);
+            if (_progDragging) return;   // 拖动时不回写
+            UpdateProgUi();
         };
         return t;
     }
@@ -390,9 +863,8 @@ public partial class MainWindow : Window
     void StopFlash()
     {
         _flashTimer?.Stop();
-        SetProgress(0);
-        ElapsedText.Text = "00:00";
-        if (Selected is { } s) TotalText.Text = Fmt(s.DurationMs);
+        ProgFill.Width = 0;
+        ProgThumb.Margin = new Thickness(0);
     }
 
     // 触发: 背景色变深回弹(颜色动画自动回基准) + 翻转 + 缩放
@@ -487,6 +959,7 @@ public partial class MainWindow : Window
     {
         AudioEngine.Cave = !AudioEngine.Cave;
         CaveBtn.Content = $"{Lang.S("cave")}: {Lang.S(AudioEngine.Cave ? "on" : "off")}";
+        CaveIcon.Foreground = AudioEngine.Cave ? Brushes.DeepSkyBlue : (Brush)Application.Current.Resources["SubTextFg"];
         StatusText.Text = $"状态: 洞穴音效已{(AudioEngine.Cave ? "开启" : "关闭")}";
     }
 
@@ -498,19 +971,20 @@ public partial class MainWindow : Window
             _instrumentMenu = new ContextMenu();
             foreach (var name in AudioEngine.Instruments)
             {
-                var it = new MenuItem { Header = name };
+                var it = new MenuItem { Header = Lang.Instrument(name) };
                 var n = name;
                 it.Click += (_, __) =>
                 {
                     System.Threading.Tasks.Task.Run(() => AudioEngine.SetInstrument(n));
                     _instrumentName = n;
-                    InstrumentBtn.Content = $"{Lang.S("instrument")}: {n}";
-                    StatusText.Text = $"状态: 音色 → {n}";
+                    InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(n)}";
+                    InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(n)}";
+                    ShowToast($"{Lang.S("instrument")} → {Lang.Instrument(n)}");
                 };
                 _instrumentMenu.Items.Add(it);
             }
         }
-        _instrumentMenu.PlacementTarget = InstrumentBtn;
+        _instrumentMenu.PlacementTarget = (sender as UIElement) ?? InstrumentBtn;
         _instrumentMenu.IsOpen = true;
     }
 
@@ -518,7 +992,6 @@ public partial class MainWindow : Window
     {
         Theme.Apply(!Theme.Dark);
         ApplyKeyTheme();
-        StyleSongList();   // 悬停/选中色随主题重建
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
         StatusText.Text = $"状态: 已切换到{(Theme.Dark ? "深色" : "浅色")}主题";
     }
@@ -527,16 +1000,22 @@ public partial class MainWindow : Window
 
     void Create_Click(object sender, RoutedEventArgs e) => OpenEditor(null);
     void Edit_Click(object sender, RoutedEventArgs e) => OpenEditor(Selected);
-    void SongList_DoubleClick(object sender, RoutedEventArgs e) => OpenEditor(Selected);
+    // 双击曲库 = 加入播放列表 (编辑改由"编辑"按钮)
+    void SongList_DoubleClick(object sender, RoutedEventArgs e) { if (Selected is { } s) AddToPlaylist(s); }
 
-    // 选中曲谱 → _notes(key, ms); 无选中/空谱返回 false 并更新状态栏
-    bool TryLoadSelected()
+    // 载入指定曲谱 → _notes(key, ms); 空谱返回 false 并更新状态栏
+    bool TryLoad(SongInfo song)
     {
-        if (Selected is not { } song) { StatusText.Text = "状态: 请先在中间选一首曲谱"; return false; }
         var doc = SongLibrary.LoadDocument(song);
         _notes = doc.Notes.Select(n => (n.Key, n.Beat * doc.MsPerBeat)).ToList();
         if (_notes.Count == 0) { StatusText.Text = "状态: 该曲谱无音符"; return false; }
         return true;
+    }
+
+    bool TryLoadSelected()
+    {
+        if (Selected is not { } song) { StatusText.Text = "状态: 请先在中间选一首曲谱"; return false; }
+        return TryLoad(song);
     }
 
     // useCountdown: 按钮启动需倒计时(留时间切到光遇); 热键启动人已在游戏里, 立即开始
@@ -544,13 +1023,45 @@ public partial class MainWindow : Window
     {
         if (_playing || _previewing) { StopPlaying(); return; }
         if (!TryLoadSelected()) return;
+        _nowPlaying = Selected;
         _speed = SpeedSlider.Value;
         _paused = false;
         int sec = useCountdown && int.TryParse(CountdownBox.Text, out int s) ? Math.Max(0, s) : 0;
         BeginCountdown(sec);
     }
 
-    void Start_Click(object sender, RoutedEventArgs e) => StartAuto(true);
+    // F1: 开始 / 停止 (只演奏播放列表, 选中曲库歌曲不再演奏)
+    void Start_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playing || _previewing) { StopPlaying(); return; }
+        PlayCurrentOrFirst();
+    }
+
+    // 底部大播放键: 音乐软件式 播放/暂停 (只从播放列表播)
+    void PlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_playing && !_previewing) { PlayCurrentOrFirst(); return; }
+        if (_previewing) { StopPlaying(); return; }   // 试听态: 直接停
+        SetPaused(!_paused);   // 演奏态 → 暂停/继续 (保留进度)
+    }
+
+    // 播放列表当前曲(无则第一首)
+    void PlayCurrentOrFirst()
+    {
+        var target = _playCurrent ?? _playlist.FirstOrDefault();
+        if (target == null) { ShowToast(Lang.S("t.emptyQueue")); return; }
+        PlayPlaylistItem(target);
+    }
+
+    // 暂停/继续: 统一更新播放器 + 暂停按钮 + 大播放键图标 + 状态
+    void SetPaused(bool paused)
+    {
+        _paused = paused;
+        _player.Pause(paused);
+        PauseBtn.Content = paused ? "▶ 继续 (F2)" : "⏸ 暂停 (F2)";
+        SetPlayGlyph(!paused);
+        StatusText.Text = paused ? "状态: ⏸ 已暂停" : "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
+    }
 
     // 试听: 通过扬声器(AudioEngine)放整首, 不发按键/不切游戏窗口, 无需倒计时
     void Preview_Click(object sender, RoutedEventArgs e)
@@ -561,13 +1072,14 @@ public partial class MainWindow : Window
         PreviewBtn.Content = "⏹ 停止试听";
         StatusText.Text = $"状态: 🎧 试听中 ({SpeedSlider.Value:0.0}x)";
         StartFlash();
-        _player.Play(_notes, SpeedSlider.Value, () => Dispatcher.Invoke(OnPlayDone), AudioEngine.Play);
+        _player.Play(_notes, SpeedSlider.Value, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
     }
 
     void BeginCountdown(int sec)
     {
         _playing = true;
         StartBtn.Content = "⏹ 停止 (F1)";
+        SetPlayGlyph(true);
         _countdown?.Stop();
         if (sec <= 0) { StartPlaying(); return; }
         int left = sec;
@@ -584,9 +1096,30 @@ public partial class MainWindow : Window
 
     void StartPlaying()
     {
-        StatusText.Text = "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
+        // 无论从曲库还是播放列表启动, 都按文件匹配点亮列表里正在播放的那一条
+        ClearPlayingMarks();
+        var item = _nowPlaying != null ? _playlist.FirstOrDefault(x => x.File == _nowPlaying.File) : null;
+        if (item != null) { item.IsPlaying = true; _playCurrent = item; }
+        else _playCurrent = null;
         StartFlash();
-        _player.Play(_notes, _speed, () => Dispatcher.Invoke(OnPlayDone));
+        if (_previewMode)   // 试听模式: 走扬声器, 不发游戏按键
+        {
+            StatusText.Text = $"状态: 🎧 试听中 ({_speed:0.0}x)";
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
+        }
+        else
+        {
+            StatusText.Text = "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)));
+        }
+    }
+
+    // 试听模式开关: 高亮=开
+    void PreviewMode_Click(object sender, RoutedEventArgs e)
+    {
+        _previewMode = !_previewMode;
+        PreviewIcon.Foreground = _previewMode ? Brushes.MediumTurquoise : (Brush)Application.Current.Resources["SubTextFg"];
+        StatusText.Text = $"状态: 试听模式已{(_previewMode ? "开启(走扬声器)" : "关闭(发送按键)")}";
     }
 
     void ResetPlayUi()
@@ -596,19 +1129,121 @@ public partial class MainWindow : Window
         StartBtn.Content = "▶ 开始 (F1)";
         PauseBtn.Content = "⏸ 暂停 (F2)";
         PreviewBtn.Content = "🎧 试听 (扬声器)";
+        SetPlayGlyph(false);
+        ClearPlayingMarks();
+        SetIdlePlayer();
+    }
+
+    // 底部大播放键: ▶/⏹ 切换 + 缩放弹跳动画
+    void SetPlayGlyph(bool playing)
+    {
+        PlayIcon.Data = (Geometry)FindResource(playing ? "IconPause" : "IconPlay");
+        var st = new ScaleTransform(1, 1);
+        PlayBtn.RenderTransformOrigin = new Point(0.5, 0.5);
+        PlayBtn.RenderTransform = st;
+        var pop = new DoubleAnimation(0.55, 1.0, TimeSpan.FromMilliseconds(280))
+        { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.7 } };
+        st.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+        st.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
     }
 
     void OnPlayDone()
     {
         bool wasPreview = _previewing;
+        var finished = _playCurrent;
         ResetPlayUi();
         AudioEngine.StopAll();
         if (StatusText.Text.Contains("演奏中")) StatusText.Text = "状态: 演奏完成";
         else if (wasPreview && StatusText.Text.Contains("试听")) StatusText.Text = "状态: 试听结束";
+
+        // 自动续播: 按播放方式决定下一首, 间隔 2 秒 (试听按钮 wasPreview 除外; 试听模式仍续播)
+        if (!wasPreview && finished != null && _playlist.Count > 0)
+        {
+            var next = NextByMode(finished);
+            if (next != null)
+            {
+                _advanceTimer?.Stop();
+                _advanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                _advanceTimer.Tick += (_, __) =>
+                {
+                    _advanceTimer!.Stop();
+                    if (!_playing && !_previewing && _playlist.Contains(next)) PlayPlaylistItem(next);
+                };
+                _advanceTimer.Start();
+            }
+        }
+    }
+    DispatcherTimer? _advanceTimer;   // 曲间 2 秒续播延时
+
+    // 播放方式循环: 列表循环 → 单曲循环 → 随机 → ...
+    void PlayMode_Click(object sender, RoutedEventArgs e)
+    {
+        _playMode = _playMode switch
+        {
+            PlayMode.RepeatAll => PlayMode.RepeatOne,
+            PlayMode.RepeatOne => PlayMode.Shuffle,
+            _ => PlayMode.RepeatAll,
+        };
+        UpdatePlayModeButton();
+        SavePlayMode();
+        StatusText.Text = $"状态: 播放方式 — {PlayModeName(_playMode)}";
+    }
+
+    static string PlayModeName(PlayMode m) => m switch
+    {
+        PlayMode.RepeatOne => "单曲循环",
+        PlayMode.Shuffle => "随机播放",
+        _ => "列表循环",
+    };
+
+    void UpdatePlayModeButton()
+    {
+        PlayModeIcon.Data = (Geometry)FindResource(_playMode switch
+        { PlayMode.RepeatOne => "IconRepeatOne", PlayMode.Shuffle => "IconShuffle", _ => "IconRepeat" });
+        PlayModeBtn.ToolTip = $"播放方式: {PlayModeName(_playMode)}";
+    }
+
+    void LoadPlayMode()
+    {
+        try { if (System.IO.File.Exists(PlayModeFile) && Enum.TryParse(System.IO.File.ReadAllText(PlayModeFile).Trim(), out PlayMode m)) _playMode = m; }
+        catch { }
+        UpdatePlayModeButton();
+    }
+
+    void SavePlayMode()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PlayModeFile)!);
+            System.IO.File.WriteAllText(PlayModeFile, _playMode.ToString());
+        }
+        catch { }
+    }
+
+    SongInfo? NextByMode(SongInfo cur)
+    {
+        if (_playlist.Count == 0) return null;
+        switch (_playMode)
+        {
+            case PlayMode.RepeatOne: return cur;                 // 单曲循环
+            case PlayMode.Shuffle: return RandomItem(cur);       // 随机
+            default:                                             // 列表循环(到底回头)
+                int i = _playlist.IndexOf(cur);
+                return _playlist[(i < 0 ? 0 : i + 1) % _playlist.Count];
+        }
+    }
+
+    SongInfo RandomItem(SongInfo? exclude)
+    {
+        if (_playlist.Count == 1) return _playlist[0];
+        SongInfo s;
+        do { s = _playlist[_rng.Next(_playlist.Count)]; } while (ReferenceEquals(s, exclude));
+        return s;
     }
 
     void StopPlaying()
     {
+        _advanceTimer?.Stop();   // 取消挂起的曲间续播
         _countdown?.Stop();
         _player.Stop();
         AudioEngine.StopAll();
@@ -619,12 +1254,11 @@ public partial class MainWindow : Window
     void Pause_Click(object sender, RoutedEventArgs e)
     {
         if (!_playing) return;
-        _paused = !_paused;
-        _player.Pause(_paused);
-        PauseBtn.Content = _paused ? "▶ 继续 (F2)" : "⏸ 暂停 (F2)";
-        StatusText.Text = _paused ? "状态: ⏸ 已暂停" : "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
+        SetPaused(!_paused);
     }
     void Refresh_Click(object sender, RoutedEventArgs e) => RefreshLibrary();
+
+    void UpdateLibHeader() => LibHeader.Text = _currentFolder?.Name ?? Lang.S("nav.local");
 
     // 导入 json/txt(直接复制) 与 midi(转换对话框), 支持多选
     void Cloud_Click(object sender, RoutedEventArgs e) => new CloudWindow(this, RefreshLibrary).Show();
@@ -654,6 +1288,456 @@ public partial class MainWindow : Window
         LoginBtn.Content = CloudApi.LoggedIn ? $"👤 {CloudApi.Username}" : Lang.S("btn.login");
         LoginBtn.Background = CloudApi.LoggedIn
             ? new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)) : new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a));
+        UpdateProfileCard();
+    }
+
+    // ===== 侧边栏 (Stage1) =====
+    void UpdateProfileCard()
+    {
+        if (CloudApi.LoggedIn)
+        {
+            var name = CloudApi.Username ?? "";
+            ProfileName.Text = name;
+            AvatarInitial.Text = name.Length > 0 ? name.Substring(0, 1).ToUpperInvariant() : "?";
+            ProfileLevel.Text = Lang.S("profile.in");
+            ProfileSign.Text = Lang.S("profile.acct");
+        }
+        else
+        {
+            ProfileName.Text = Lang.S("profile.guest");
+            AvatarInitial.Text = "?";
+            ProfileLevel.Text = Lang.S("profile.login");
+            ProfileSign.Text = Lang.S("profile.acct");
+        }
+    }
+
+    // 头像资料卡 → 登录 / 个人主页 (复用登录按钮逻辑)
+    void Profile_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => Login_Click(sender, new RoutedEventArgs());
+
+    // 本地/云端切换 (Stage3: 云端内联到中栏)
+    void ShowLocal_Click(object sender, RoutedEventArgs e)
+    {
+        CloseSettings();
+        SetLibTab(true);
+        SetCloudMode(false);
+        _currentFolder = null;
+        FolderList.SelectedItem = null;
+        UpdateLibHeader();
+        ApplyFilter();
+    }
+    void ShowCloud_Click(object sender, RoutedEventArgs e)
+    {
+        CloseSettings();
+        SetLibTab(false);
+        SetCloudMode(true);
+    }
+
+    void SetLibTab(bool local)
+    {
+        LocalLibBtn.Background = local ? new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xD0)) : new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a));
+        CloudLibBtn.Background = local ? new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)) : new SolidColorBrush(Color.FromRgb(0x12, 0x79, 0x5A));
+    }
+
+    // ===== 云端曲库(内联) Stage3 =====
+    void SetCloudMode(bool cloud)
+    {
+        _cloudMode = cloud;
+        SongList.Visibility = cloud ? Visibility.Collapsed : Visibility.Visible;
+        CloudList.Visibility = cloud ? Visibility.Visible : Visibility.Collapsed;
+        CloudFilterRow.Visibility = cloud ? Visibility.Visible : Visibility.Collapsed;
+        LocalFilterRow.Visibility = cloud ? Visibility.Collapsed : Visibility.Visible;
+        LibHeader.Text = cloud ? Lang.S("nav.cloud") : (_currentFolder?.Name ?? Lang.S("nav.local"));
+        SearchBox.Text = "";
+        if (cloud) { _cloudPage = 1; _ = LoadCloud(false); }
+    }
+
+    // append=false: 换页/换筛选, 清空重载; append=true: 滚动到底加载下一页追加
+    async System.Threading.Tasks.Task LoadCloud(bool append)
+    {
+        if (_cloudLoading) return;
+        _cloudLoading = true;
+        try
+        {
+            string sort = CloudSortCombo.SelectedIndex switch { 1 => "hot", 2 => "downloads", _ => "newest" };
+            int diff = CloudDiffCombo.SelectedIndex;   // 0=全部 1..5=难度
+            var r = await CloudApi.ListAsync(SearchBox.Text, sort, diff, _cloudPage, 20);
+            if (!r.Ok) { ShowToast(r.Err ?? "云端加载失败"); return; }
+            if (!append) _cloud.Clear();
+            foreach (var it in r.Items) _cloud.Add(it);
+            _cloudPages = r.Pages;
+            if (!append && _cloud.Count == 0) ShowToast(Lang.S("t.cloudEmpty"));
+        }
+        finally { _cloudLoading = false; }
+    }
+
+    // 无限滚动: 接近底部 → 加载下一页
+    void CloudScroll(object sender, ScrollChangedEventArgs e)
+    {
+        if (!_cloudMode || _cloudLoading || _cloudPage >= _cloudPages) return;
+        if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 240 && e.ExtentHeight > 0)
+        {
+            _cloudPage++;
+            _ = LoadCloud(true);
+        }
+    }
+
+    async void CloudDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not CloudSheet sheet) return;
+        ShowToast(string.Format(Lang.S("t.downloading"), sheet.Title));
+        var path = await CloudApi.DownloadAsync(sheet, SongLibrary.SongsDir, msg => Dispatcher.Invoke(() => ShowToast(msg)));
+        if (path != null) { RefreshLibrary(); ShowToast(string.Format(Lang.S("t.downloaded"), sheet.Title)); }
+    }
+
+    // ===== 设置界面(内联) =====
+    bool _settingsOpen;
+    void Settings_Click(object sender, RoutedEventArgs e) { if (_settingsOpen) CloseSettings(); else OpenSettings(); }
+
+    const double SettingsShift = 90;
+
+    static void Slide(TranslateTransform t, double from, double to) =>
+        t.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
+    static void Fade(UIElement el, double from, double to) =>
+        el.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
+
+    void OpenSettings()
+    {
+        _settingsOpen = true;
+        RefreshSettingsPills();
+        // 旧界面: 下移 + 淡出
+        Slide(MidSlide, 0, SettingsShift); Fade(MidContent, 1, 0);
+        Slide(RightSlide, 0, SettingsShift); Fade(RightContent, 1, 0);
+        // 设置: 从上方下移进入 + 淡入
+        SettingsPanel.Visibility = Visibility.Visible;
+        Slide(SettingsSlide, -SettingsShift, 0); Fade(SettingsPanel, 0, 1);
+    }
+
+    void CloseSettings()
+    {
+        if (!_settingsOpen) return;
+        _settingsOpen = false;
+        if (_editingKeys) { KeyEdit_Click(this, new RoutedEventArgs()); SetBindBtn.Content = "点击修改"; SettingsBindArea.Visibility = Visibility.Collapsed; }
+        // 旧界面: 移回 + 淡入
+        Slide(MidSlide, SettingsShift, 0); Fade(MidContent, 0, 1);
+        Slide(RightSlide, SettingsShift, 0); Fade(RightContent, 0, 1);
+        // 设置: 上移退出 + 淡出
+        Slide(SettingsSlide, 0, -SettingsShift);
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+        fade.Completed += (_, __) => SettingsPanel.Visibility = Visibility.Collapsed;
+        SettingsPanel.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    bool _settingsInit;
+    double _uiScale = 1.0, _fontScale = 1.0;
+    static readonly int[] ScalePercents = { 80, 85, 90, 95, 100, 105, 110, 115, 120 };
+    static int ScaleIndex(double s) { int i = Array.IndexOf(ScalePercents, (int)Math.Round(s * 100)); return i < 0 ? 4 : i; }
+
+    void RefreshSettingsPills()
+    {
+        if (!_settingsInit)
+        {
+            SetLangCombo.ItemsSource = Lang.Names;
+            SetUiCombo.ItemsSource = Array.ConvertAll(ScalePercents, p => $"{p}%");
+            SetFontCombo.ItemsSource = Array.ConvertAll(ScalePercents, p => $"{p}%");
+            _settingsInit = true;
+        }
+        SetLangCombo.SelectedIndex = (int)Lang.Current;
+        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light") };
+        SetThemeCombo.SelectedIndex = Theme.Dark ? 0 : 1;
+        SetWaitBox.Text = CountdownBox.Text;
+        SetUiCombo.SelectedIndex = ScaleIndex(_uiScale);
+        SetFontCombo.SelectedIndex = ScaleIndex(_fontScale);
+        AboutVersion.Text = $"软件版本: v{UpdateChecker.AppVersion}-WPF";
+    }
+
+    void SetLangCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsInit || SetLangCombo.SelectedIndex < 0) return;
+        Lang.Set((AppLang)SetLangCombo.SelectedIndex);
+        ApplyLanguage();
+        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light") };
+        SetThemeCombo.SelectedIndex = Theme.Dark ? 0 : 1;
+    }
+    void SetThemeCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsInit || SetThemeCombo.SelectedIndex < 0) return;
+        bool dark = SetThemeCombo.SelectedIndex == 0;
+        if (dark == Theme.Dark) return;
+        Theme.Apply(dark);
+        ApplyKeyTheme();
+        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
+    }
+    void SetWaitBox_Changed(object sender, TextChangedEventArgs e)
+    {
+        var digits = new string(System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(SetWaitBox.Text, char.IsDigit)));
+        int sec = int.TryParse(digits, out int v) ? Math.Clamp(v, 0, 30) : 0;
+        CountdownBox.Text = sec.ToString();
+    }
+    void SetUpdate_Click(object sender, RoutedEventArgs e) => _ = CheckUpdateManual();
+    void SetLog_Click(object sender, RoutedEventArgs e) => _ = UploadLogAsync();
+
+    // 界面比例: 整体缩放(LayoutTransform) + 同步放大窗口
+    void SetUiCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsInit || SetUiCombo.SelectedIndex < 0) return;
+        _uiScale = ScalePercents[SetUiCombo.SelectedIndex] / 100.0;
+        UiScale.ScaleX = UiScale.ScaleY = _uiScale;
+        Width = 1200 * _uiScale; Height = 760 * _uiScale;
+    }
+
+    // 字体比例: 调整根节点继承字号
+    void SetFontCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsInit || SetFontCombo.SelectedIndex < 0) return;
+        _fontScale = ScalePercents[SetFontCombo.SelectedIndex] / 100.0;
+        RootScale.SetValue(System.Windows.Documents.TextElement.FontSizeProperty, 13.0 * _fontScale);
+    }
+
+    // 绑定: 就地进入/退出重映射 (在设置右栏琴键网格上操作, 不离开设置)
+    void SetBind_Click(object sender, RoutedEventArgs e)
+    {
+        KeyEdit_Click(sender, e);   // 切换 _editingKeys + 保存
+        bool on = _editingKeys;
+        SetBindBtn.Content = on ? "完成绑定" : "点击修改";
+        SettingsBindArea.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        ShowToast(on ? Lang.S("t.bindOn") : Lang.S("t.bindOff"));
+    }
+    void Repo_Nav(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+        e.Handled = true;
+    }
+
+    async System.Threading.Tasks.Task CheckUpdateManual()
+    {
+        var r = await UpdateChecker.CheckAsync();
+        if (r is not { } rel) { ShowToast(Lang.S("t.latest")); return; }
+        if (MsgBox.Confirm(this, $"发现新版本 v{rel.Tag}\n当前 v{UpdateChecker.AppVersion}\n\n前往 GitHub 下载?", Lang.S("set.checkupd")) && rel.Url.Length > 0)
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true });
+    }
+
+    async System.Threading.Tasks.Task UploadLogAsync()
+    {
+        ShowToast(Lang.S("t.uploading"));
+        var err = await CloudApi.UploadLogAsync(Logger.Recent(3));
+        ShowToast(err == null ? Lang.S("t.logok") : Lang.S("t.logfail") + err);
+    }
+
+    // 练习: 跟弹(走扬声器 + 点亮虚拟琴键, 不发游戏键, 不倒计时); 再点停止
+    void Practice_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playing || _previewing) { StopPlaying(); return; }
+        if (!_previewMode) { _previewMode = true; PreviewIcon.Foreground = Brushes.MediumTurquoise; }
+        PlayCurrentOrFirst();
+        ShowToast(Lang.S("t.practice"));
+    }
+
+    // 轻提示: 底部居中淡入淡出 (StatusText 已随旧面板隐藏, 用它做用户反馈)
+    DispatcherTimer? _toastTimer;
+    void ShowToast(string msg)
+    {
+        ToastText.Text = msg;
+        Toast.Visibility = Visibility.Visible;
+        Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)));
+        _toastTimer?.Stop();
+        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
+        _toastTimer.Tick += (_, __) =>
+        {
+            _toastTimer!.Stop();
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(260));
+            fade.Completed += (_, ___) => Toast.Visibility = Visibility.Collapsed;
+            Toast.BeginAnimation(OpacityProperty, fade);
+        };
+        _toastTimer.Start();
+    }
+
+    // ===== 收藏夹(歌单) Stage2 =====
+    void SaveFolders() => FolderStore.Save(_folders);
+    void UpdateFoldersHeader() => FoldersHeader.Text = $"{Lang.S("side.folders")} {_folders.Count}";
+
+    // ⭐ 星标 = 是否在"默认收藏夹"(第一个收藏夹)里
+    Folder? DefaultFolder => _folders.FirstOrDefault();
+
+    // 从某收藏夹移除该曲(不删曲谱文件); 若是默认收藏夹则同步熄灭星标
+    void RemoveFromFolder(Folder f, SongInfo s)
+    {
+        if (!f.Files.Remove(s.File)) return;
+        f.OnChanged(nameof(Folder.CountText));
+        s.Fav = IsCollected(s);
+        SaveFolders();
+        if (ReferenceEquals(_currentFolder, f)) ApplyFilter();   // 从当前视图消失
+        ShowToast(string.Format(Lang.S("t.removedFrom"), f.Name) + $"「{s.Name}」");
+    }
+
+    // ⭐ 亮 = 收藏在任意收藏夹里 (音乐软件式)
+    bool IsCollected(SongInfo s) => _folders.Any(f => f.Files.Contains(s.File));
+
+    // 点星标 = 加入/移出"默认收藏夹"(快捷收藏); 星标显示则看是否收藏在任意收藏夹
+    void ToggleFav(SongInfo s)
+    {
+        var def = DefaultFolder;
+        if (def == null) return;
+        bool inDef = def.Files.Contains(s.File);
+        if (inDef) def.Files.Remove(s.File); else def.Files.Add(s.File);
+        def.OnChanged(nameof(Folder.CountText));
+        s.Fav = IsCollected(s);
+        SaveFolders();
+        if (ReferenceEquals(_currentFolder, def)) ApplyFilter();
+        ShowToast(!inDef ? string.Format(Lang.S("t.favTo"), def.Name) : (s.Fav ? string.Format(Lang.S("t.removedFrom"), def.Name) : Lang.S("t.unfav")));
+    }
+
+    void AddFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var name = InputBox.Ask(this, Lang.S("d.newFolder"), "", Lang.S("d.folderName"));
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _folders.Add(new Folder { Name = name.Trim() });
+        SaveFolders();
+        UpdateFoldersHeader();
+        ShowToast(string.Format(Lang.S("t.newFolder"), name.Trim()));
+    }
+
+    // 收藏夹拖动排序 (拖动只重排, 不进入收藏夹; 干净点击才进入)
+    Point _folderDragStart;
+    Folder? _folderDown;
+    bool _folderDragging;
+    void FolderList_DragDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _folderDragStart = e.GetPosition(null);
+        _folderDown = (e.OriginalSource as FrameworkElement)?.DataContext as Folder;
+        _folderDragging = false;
+    }
+    void FolderList_DragMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _folderDown == null || _folderDragging) return;
+        var p = e.GetPosition(null);
+        if (Math.Abs(p.X - _folderDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(p.Y - _folderDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        _folderDragging = true;
+        DragDrop.DoDragDrop(FolderList, _folderDown, DragDropEffects.Move);   // 阻塞至放下
+        DropLine.Visibility = Visibility.Collapsed;
+        _folderDown = null;
+    }
+    void FolderList_DragUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!_folderDragging && _folderDown != null) OpenFolder(_folderDown);   // 干净点击 → 进入收藏夹
+        _folderDown = null; _folderDragging = false;
+    }
+    int _dropIndex = -1;   // 落点插入位置(在该索引之前)
+    void FolderList_DragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(Folder))) return;
+        var pt = e.GetPosition(FolderListGrid);
+        _dropIndex = _folders.Count;
+        double lineY = 0;
+        for (int i = 0; i < FolderList.Items.Count; i++)
+        {
+            if (FolderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement lbi) continue;
+            double top = lbi.TranslatePoint(new Point(0, 0), FolderListGrid).Y;
+            double mid = top + lbi.ActualHeight / 2;
+            if (pt.Y < mid) { _dropIndex = i; lineY = top; break; }
+            lineY = top + lbi.ActualHeight;   // 落到该项之后(最后一次生效=末尾)
+        }
+        DropLine.Margin = new Thickness(10, Math.Max(0, lineY - 1), 10, 0);
+        DropLine.Visibility = Visibility.Visible;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+    void FolderList_DragLeave(object sender, DragEventArgs e) => DropLine.Visibility = Visibility.Collapsed;
+
+    void FolderList_Drop(object sender, DragEventArgs e)
+    {
+        DropLine.Visibility = Visibility.Collapsed;
+        if (e.Data.GetData(typeof(Folder)) is not Folder src) return;
+        int from = _folders.IndexOf(src);
+        if (from < 0 || _dropIndex < 0) return;
+        int to = _dropIndex > from ? _dropIndex - 1 : _dropIndex;   // 移除后目标索引修正
+        to = Math.Clamp(to, 0, _folders.Count - 1);
+        if (from == to) return;
+        _folders.Move(from, to);
+        SaveFolders();
+        RefreshLibrary();   // 默认收藏夹(第一个)可能变了 → 重算星标
+    }
+
+    void OpenFolder(Folder f)
+    {
+        CloseSettings();
+        _currentFolder = f;
+        FolderList.SelectedItem = f;
+        SetLibTab(true);
+        SetCloudMode(false);
+        UpdateLibHeader();
+        ApplyFilter();
+    }
+
+    // 选中变化不再自动导航(避免拖动时进入); 导航改由 FolderList_DragUp 的干净点击触发
+    void FolderList_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+
+    // 收藏夹右键: 重命名 / 删除
+    void FolderList_RightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var f = (e.OriginalSource as FrameworkElement)?.DataContext as Folder;
+        if (f == null) return;
+        var cm = new ContextMenu();
+        var open = new MenuItem { Header = Lang.S("m.view") };
+        open.Click += (_, __) => OpenFolder(f);
+        var rename = new MenuItem { Header = Lang.S("m.rename") };
+        rename.Click += (_, __) =>
+        {
+            var n = InputBox.Ask(this, Lang.S("d.renameFolder"), f.Name, Lang.S("d.newName"));
+            if (!string.IsNullOrWhiteSpace(n)) { f.Name = n.Trim(); SaveFolders(); }
+        };
+        var del = new MenuItem { Header = new TextBlock { Text = Lang.S("m.delFolder"), Foreground = new SolidColorBrush(Color.FromRgb(0xE7, 0x4C, 0x3C)) } };
+        del.Click += (_, __) =>
+        {
+            if (!MsgBox.Confirm(this, string.Format(Lang.S("c.delFolder"), f.Name), Lang.S("m.delFolder"))) return;
+            _folders.Remove(f);
+            if (ReferenceEquals(_currentFolder, f)) { _currentFolder = null; ApplyFilter(); }
+            SaveFolders();
+            UpdateFoldersHeader();
+        };
+        cm.Items.Add(open); cm.Items.Add(rename); cm.Items.Add(del);
+        cm.IsOpen = true;
+        e.Handled = true;
+    }
+
+    // 曲目"收藏到……"子菜单: 各收藏夹(勾选=在其中) + 新建收藏夹
+    MenuItem BuildFavToMenu(SongInfo s)
+    {
+        var favTo = new MenuItem { Header = Lang.S("m.favTo") };
+        foreach (var f in _folders)
+        {
+            var mi = new MenuItem { Header = f.Name, IsCheckable = true, IsChecked = f.Files.Contains(s.File) };
+            var folder = f;
+            mi.Click += (_, __) =>
+            {
+                if (mi.IsChecked) { if (!folder.Files.Contains(s.File)) folder.Files.Add(s.File); }
+                else folder.Files.Remove(s.File);
+                folder.OnChanged(nameof(Folder.CountText));
+                s.Fav = IsCollected(s);   // 在任意收藏夹 → 星标亮
+                SaveFolders();
+                if (ReferenceEquals(_currentFolder, folder)) ApplyFilter();
+                ShowToast(string.Format(Lang.S(mi.IsChecked ? "t.favTo" : "t.removedFrom"), folder.Name));
+            };
+            favTo.Items.Add(mi);
+        }
+        favTo.Items.Add(new Separator());
+        var neu = new MenuItem { Header = Lang.S("m.newFolder") };
+        neu.Click += (_, __) =>
+        {
+            var name = InputBox.Ask(this, Lang.S("d.newFolder"), "", Lang.S("d.folderName"));
+            if (string.IsNullOrWhiteSpace(name)) return;
+            var f = new Folder { Name = name.Trim() };
+            f.Files.Add(s.File);
+            _folders.Add(f);
+            s.Fav = IsCollected(s);
+            SaveFolders();
+            UpdateFoldersHeader();
+            ShowToast(string.Format(Lang.S("t.favTo"), f.Name));
+        };
+        favTo.Items.Add(neu);
+        return favTo;
     }
 
     void Import_Click(object sender, RoutedEventArgs e)

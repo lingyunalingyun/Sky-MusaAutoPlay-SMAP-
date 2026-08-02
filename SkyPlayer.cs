@@ -71,7 +71,16 @@ public class SkyPlayer
         {
             double now = sw.Elapsed.TotalMilliseconds;
             double dt = now - last; last = now;
-            if (_paused) { Thread.Sleep(10); continue; }   // last 已推进, 暂停期间不累积
+            if (_paused)
+            {
+                if (_seek)   // 暂停时也能拖动进度条: 应用跳转(更新位置/音符指针), 但不发声
+                {
+                    songMs = _seekMs; _seek = false; idx = 0;
+                    while (idx < notes.Count && notes[idx].ms < songMs) idx++;
+                    PositionMs = songMs;
+                }
+                Thread.Sleep(10); continue;
+            }
             if (_seek)
             {
                 songMs = _seekMs; _seek = false;
@@ -88,8 +97,8 @@ public class SkyPlayer
             PositionMs = songMs;
             Thread.Sleep(1);
         }
-        if (!_stop) PositionMs = TotalMs;
-        onDone();
+        // 仅自然播放结束才回调(手动 Stop 不触发, 否则会 停止→onDone→自动续播→再停止 无限级联卡死)
+        if (!_stop) { PositionMs = TotalMs; onDone(); }
     }
 
     void PressKey(int lightKey)

@@ -41,8 +41,17 @@ public static class InputBox
     static (Window win, Button ok) Build(Window owner, string title, string header, string prompt, UIElement field)
     {
         var win = new ChromeWindow(title, 360) { Owner = owner };
-        var ok = new Button { Content = "确定", Width = 80, Height = 30, IsDefault = true };
-        var cancel = new Button { Content = "取消", Width = 80, Height = 30, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
+        var ok = new Button
+        {
+            Content = Lang.S("d.ok"), Width = 88, Height = 34, IsDefault = true, Cursor = System.Windows.Input.Cursors.Hand,
+            Background = new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xD0)), Foreground = Brushes.White,
+            BorderThickness = new Thickness(0), Template = ChromeWindow.BtnTpl()
+        };
+        var cancel = new Button
+        {
+            Content = Lang.S("d.cancel"), Width = 88, Height = 34, IsCancel = true, Margin = new Thickness(8, 0, 0, 0), Cursor = System.Windows.Input.Cursors.Hand,
+            Background = FieldBg, Foreground = Brushes.White, BorderBrush = Border, BorderThickness = new Thickness(1), Template = ChromeWindow.BtnTpl()
+        };
         var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         btns.Children.Add(ok); btns.Children.Add(cancel);
 

@@ -60,7 +60,10 @@ public static class Theme
         C("ComboBg",      "#2a2a2a", "#eef0f2");
         C("ScrollThumbBrush", "#4a4a4a", "#c2c2ca");
         C("CaptionFg",    "#cfcfe0", "#ffffff");
-        C("MenuHi",       "#3a3a46", "#dfe6f2");   // 右键菜单 hover 高亮
+        C("MenuHi",       "#3a3a46", "#dfe6f2");   // 右键菜单 / 行 hover 高亮
+        C("RowSel",       "#50505f", "#c4d4ec");   // 列表选中(深灰, 非蓝)
+        C("Accent",       "#5aa0ff", "#2f6fd0");   // 主题强调色(进度条等)
+        C("ProgTrackBg",  "#40ffffff", "#33000000");   // 进度条未播放轨道(深浅各自可见)
 
         r["TitleGrad"] = dark
             ? Grad("#1c1c3e", "#2a2352", "#241d47")
