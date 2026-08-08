@@ -24,6 +24,8 @@ public class SkyPlayer
     public Action<int>? NoteFired;
 
     public double SpeedFactor = 1.0;   // 实时倍速, 播放中可改
+    public bool RandomSpeed;           // 随机模式: 每隔随机个音符随机变速(0.5~1.3)
+    int _randCountdown;                // 距下次变速还剩几个音符
     public double PositionMs;          // 当前歌曲进度(ms)
     public double TotalMs;             // 曲谱总时长(ms)
 
@@ -64,6 +66,7 @@ public class SkyPlayer
         TotalMs = notes.Count > 0 ? notes[^1].ms : 0;
         PositionMs = 0;
         _seek = false;
+        _randCountdown = 0;
         double songMs = 0, last = 0;
         int idx = 0;
         var sw = Stopwatch.StartNew();
@@ -93,6 +96,11 @@ public class SkyPlayer
                 noteAction(notes[idx].key);
                 NoteFired?.Invoke(notes[idx].key);
                 idx++;
+                if (RandomSpeed && --_randCountdown <= 0)
+                {
+                    SpeedFactor = 0.5 + Random.Shared.NextDouble() * 0.8;   // 0.5~1.3
+                    _randCountdown = Random.Shared.Next(2, 6);              // 隔 2~5 个音符再变
+                }
             }
             PositionMs = songMs;
             Thread.Sleep(1);

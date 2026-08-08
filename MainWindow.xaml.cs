@@ -45,6 +45,16 @@ public partial class MainWindow : Window
 
     int _remapIndex = -1;   // >=0 时表示正在等待为该光遇键重绑物理键
 
+    static MainWindow()
+    {
+        // 所有 WPF 动画默认帧率提到 120fps(WPF 默认约 60), 一处生效、全局动画受益
+        Timeline.DesiredFrameRateProperty.OverrideMetadata(typeof(Timeline),
+            new FrameworkPropertyMetadata { DefaultValue = 120 });
+        // TextBox 获焦点时才启用输入法(主窗口默认禁用见实例构造), 免物理键弹琴弹出中文候选
+        EventManager.RegisterClassHandler(typeof(TextBox), GotFocusEvent,
+            new RoutedEventHandler((s, _) => System.Windows.Input.InputMethod.SetIsInputMethodEnabled((TextBox)s, true)));
+    }
+
     public MainWindow()
     {
         Lang.Load();
@@ -53,11 +63,7 @@ public partial class MainWindow : Window
         _player.Vk = KeyConfig.Load();
         BuildPianoGrid();
         BuildSettingsGrid();
-        SpeedSlider.ValueChanged += (_, e) =>
-        {
-            SpeedLabel.Text = $"{e.NewValue:0.0}x";
-            _player.SpeedFactor = e.NewValue;   // 播放中拖动立即变速
-        };
+        System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
         SortCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
         FilterCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
         SearchBox.TextChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
@@ -110,6 +116,7 @@ public partial class MainWindow : Window
         InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(_instrumentName)}";
         InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(_instrumentName)}";
         _instrumentMenu = null;   // 语言变了, 重建带翻译的音色菜单
+        RefreshPitchPill();
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
         AboutBtn.Content = Lang.S("about");
 
@@ -171,6 +178,8 @@ public partial class MainWindow : Window
         SetBindLbl.Text = Lang.S("set.bind");
         SetBindBtn.Content = _editingKeys ? Lang.S("set.bindDone") : Lang.S("set.bindEdit");
         SettingsBindHint.Text = Lang.S("set.bindHint");
+        SetPitchLbl.Text = Lang.S("set.pitch");
+        SetPitchResetBtn.Content = Lang.S("set.pitchReset");
         SetSoftInfoTitle.Text = Lang.S("set.softinfo");
         AboutNameTx.Text = Lang.S("about.name");
         AboutVersion.Text = $"{Lang.S("about.version")}: v{UpdateChecker.AppVersion}-WPF";
@@ -305,7 +314,6 @@ public partial class MainWindow : Window
         if (!TryLoad(s)) return;
         _playCurrent = s;
         _nowPlaying = s;
-        _speed = SpeedSlider.Value;
         _paused = false;
         UpdateNowPlaying(s);
         int sec = _previewMode ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
@@ -742,7 +750,9 @@ public partial class MainWindow : Window
             _keyScale[i] = scale;
             int idx = i;
             // 平时点键=试听声音; 编辑态点键=开始重绑
-            btn.Click += (_, __) => { if (_editingKeys) BeginRemap(idx); else { AudioEngine.Play(idx); FlashKey(idx); } };
+            btn.PreviewMouseLeftButtonDown += (_, ev) => { if (_editingKeys) BeginRemap(idx); else { AudioEngine.NoteOn(idx); FlashKey(idx); } ev.Handled = true; };
+            btn.PreviewMouseLeftButtonUp += (_, __) => { if (!_editingKeys) AudioEngine.NoteOff(idx); };
+            btn.MouseLeave += (_, __) => { if (!_editingKeys) AudioEngine.NoteOff(idx); };   // 按住拖出也松开
             _pianoButtons[i] = btn;
             _keyLabels[i] = lbl;
             PianoGrid.Children.Add(btn);
@@ -945,13 +955,26 @@ public partial class MainWindow : Window
             int idx = Array.IndexOf(_player.Vk, (ushort)vk);
             if (idx >= 0)
             {
-                AudioEngine.Play(idx);
+                AudioEngine.NoteOn(idx);
                 FlashKey(idx);
                 e.Handled = true;
                 return;
             }
         }
         base.OnPreviewKeyDown(e);
+    }
+
+    protected override void OnPreviewKeyUp(System.Windows.Input.KeyEventArgs e)
+    {
+        // 松开物理键 -> 停对应琴键的持续长音
+        if (System.Windows.Input.Keyboard.FocusedElement is not TextBox)
+        {
+            var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+            int vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);
+            int idx = Array.IndexOf(_player.Vk, (ushort)vk);
+            if (idx >= 0) { AudioEngine.NoteOff(idx); e.Handled = true; return; }
+        }
+        base.OnPreviewKeyUp(e);
     }
 
     // ---- 洞穴音效 / 音色 / 主题 / 软件信息 ----
@@ -968,7 +991,7 @@ public partial class MainWindow : Window
     {
         if (_instrumentMenu == null)
         {
-            _instrumentMenu = new ContextMenu();
+            _instrumentMenu = new ContextMenu { MaxHeight = 296 };   // 约8项高, 超出滚轮翻动
             foreach (var name in AudioEngine.Instruments)
             {
                 var it = new MenuItem { Header = Lang.Instrument(name) };
@@ -979,13 +1002,66 @@ public partial class MainWindow : Window
                     _instrumentName = n;
                     InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(n)}";
                     InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(n)}";
+                    RefreshPitchPill();
                     ShowToast($"{Lang.S("instrument")} → {Lang.Instrument(n)}");
                 };
                 _instrumentMenu.Items.Add(it);
             }
         }
         _instrumentMenu.PlacementTarget = (sender as UIElement) ?? InstrumentBtn;
+        _instrumentMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;   // 向上展开
         _instrumentMenu.IsOpen = true;
+    }
+
+    // ---- 音高(每乐器移调, 存 %APPDATA%\SMAP\pitch.json) ----
+    static readonly string[] PitchNames = { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
+    static string NoteName(int semi) => PitchNames[((semi % 12) + 12) % 12];
+    static string PitchLabel(int semi) => $"{(semi > 0 ? "+" : "")}{semi} {NoteName(semi)}";
+
+    void RefreshPitchPill()
+    {
+        int semi = AudioEngine.GetOffset(_instrumentName);
+        PitchPill.Content = $"{Lang.S("pitch")}:{PitchLabel(semi)}";
+        PitchPill.ToolTip = Lang.S("tip.pitch");
+    }
+
+    void Pitch_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { MaxHeight = 296 };
+        int cur = AudioEngine.GetOffset(_instrumentName);
+        foreach (int semi in new[] { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -12, -24 })
+        {
+            var s = semi;
+            var it = new MenuItem { IsChecked = s == cur };
+            var hg = new Grid { Width = 64 };
+            hg.ColumnDefinitions.Add(new ColumnDefinition());
+            hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var numTb = new TextBlock { Text = (s > 0 ? "+" : "") + s };                       // 数字左对齐
+            var noteTb = new TextBlock { Text = NoteName(s), HorizontalAlignment = HorizontalAlignment.Right };  // 音名右对齐
+            Grid.SetColumn(noteTb, 1);
+            hg.Children.Add(numTb);
+            hg.Children.Add(noteTb);
+            it.Header = hg;
+            it.Click += (_, __) =>
+            {
+                var inst = _instrumentName;
+                AudioEngine.SetOffset(inst, s);   // 内部同步存值 + 异步重载采样
+                RefreshPitchPill();               // 立即读回新值, 胶囊即时更新
+                ShowToast($"{Lang.S("pitch")} {Lang.Instrument(inst)} → {PitchLabel(s)}");
+            };
+            menu.Items.Add(it);
+        }
+        menu.PlacementTarget = (sender as UIElement) ?? PitchPill;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;   // 向上展开
+        menu.IsOpen = true;
+    }
+
+    void SetPitchReset_Click(object sender, RoutedEventArgs e)
+    {
+        PitchConfig.ResetAll();
+        System.Threading.Tasks.Task.Run(() => AudioEngine.ClearCache());
+        RefreshPitchPill();
+        ShowToast(Lang.S("t.pitchReset"));
     }
 
     void Theme_Click(object sender, RoutedEventArgs e)
@@ -1000,8 +1076,8 @@ public partial class MainWindow : Window
 
     void Create_Click(object sender, RoutedEventArgs e) => OpenEditor(null);
     void Edit_Click(object sender, RoutedEventArgs e) => OpenEditor(Selected);
-    // 双击曲库 = 加入播放列表 (编辑改由"编辑"按钮)
-    void SongList_DoubleClick(object sender, RoutedEventArgs e) { if (Selected is { } s) AddToPlaylist(s); }
+    // 双击曲库 = 加入播放列表并立即播放 (编辑改由"编辑"按钮)
+    void SongList_DoubleClick(object sender, RoutedEventArgs e) { if (Selected is { } s) { AddToPlaylist(s); PlayPlaylistItem(s); } }
 
     // 载入指定曲谱 → _notes(key, ms); 空谱返回 false 并更新状态栏
     bool TryLoad(SongInfo song)
@@ -1024,7 +1100,6 @@ public partial class MainWindow : Window
         if (_playing || _previewing) { StopPlaying(); return; }
         if (!TryLoadSelected()) return;
         _nowPlaying = Selected;
-        _speed = SpeedSlider.Value;
         _paused = false;
         int sec = useCountdown && int.TryParse(CountdownBox.Text, out int s) ? Math.Max(0, s) : 0;
         BeginCountdown(sec);
@@ -1070,9 +1145,9 @@ public partial class MainWindow : Window
         if (!TryLoadSelected()) return;
         _previewing = true;
         PreviewBtn.Content = "⏹ 停止试听";
-        StatusText.Text = $"状态: 🎧 试听中 ({SpeedSlider.Value:0.0}x)";
+        StatusText.Text = $"状态: 🎧 试听中 ({_speed:0.0}x)";
         StartFlash();
-        _player.Play(_notes, SpeedSlider.Value, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
+        _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
     }
 
     void BeginCountdown(int sec)
@@ -1391,7 +1466,13 @@ public partial class MainWindow : Window
 
     // ===== 设置界面(内联) =====
     bool _settingsOpen;
-    void Settings_Click(object sender, RoutedEventArgs e) { if (_settingsOpen) CloseSettings(); else OpenSettings(); }
+    DateTime _lastSettingsToggle = DateTime.MinValue;
+    void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if ((DateTime.Now - _lastSettingsToggle).TotalMilliseconds < 420) return;   // 防抖: 动画(400ms)期间忽略连点, 免状态错乱
+        _lastSettingsToggle = DateTime.Now;
+        if (_settingsOpen) CloseSettings(); else OpenSettings();
+    }
 
     const double SettingsShift = 90;
 
@@ -1425,7 +1506,7 @@ public partial class MainWindow : Window
         // 设置: 上移退出 + 淡出
         Slide(SettingsSlide, 0, -SettingsShift);
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
-        fade.Completed += (_, __) => SettingsPanel.Visibility = Visibility.Collapsed;
+        fade.Completed += (_, __) => { if (!_settingsOpen) SettingsPanel.Visibility = Visibility.Collapsed; };   // 期间又打开了就别隐藏
         SettingsPanel.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
@@ -1844,8 +1925,39 @@ public partial class MainWindow : Window
     // 调速: 改滑块值(ValueChanged 会同步 SpeedLabel + SkyPlayer.SpeedFactor)
     void AdjustSpeed(double delta)
     {
-        SpeedSlider.Value = Math.Clamp(SpeedSlider.Value + delta, SpeedSlider.Minimum, SpeedSlider.Maximum);
-        StatusText.Text = $"状态: 速度 {SpeedSlider.Value:0.0}x";
+        SetSpeed(_speed + delta);
+        StatusText.Text = $"状态: 速度 {_speed:0.0}x";
+    }
+
+    // 播放速度: 胶囊显示 + 立即变速
+    void SetSpeed(double v)
+    {
+        _speed = Math.Clamp(v, 0.5, 2.0);
+        _player.RandomSpeed = false;
+        SpeedPill.Content = $"{_speed:0.0}x";
+        _player.SpeedFactor = _speed;
+    }
+
+    void Speed_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { MaxHeight = 296 };
+        var rnd = new MenuItem { Header = Lang.S("speed.random"), IsChecked = _player.RandomSpeed };
+        rnd.Click += (_, __) =>
+        {
+            _player.RandomSpeed = true;                    // 每音符随机变速
+            SpeedPill.Content = Lang.S("speed.random");
+        };
+        menu.Items.Add(rnd);
+        foreach (double v in new[] { 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5 })
+        {
+            var s = v;
+            var it = new MenuItem { Header = $"{s:0.0}x", IsChecked = !_player.RandomSpeed && Math.Abs(s - _speed) < 0.01 };
+            it.Click += (_, __) => SetSpeed(s);
+            menu.Items.Add(it);
+        }
+        menu.PlacementTarget = (sender as UIElement) ?? SpeedPill;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+        menu.IsOpen = true;
     }
 
     // 相对跳转(仅播放/试听中); 夹到 [0, 总时长]

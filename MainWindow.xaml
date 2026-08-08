@@ -227,7 +227,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="8" Padding="4">
-                            <StackPanel IsItemsHost="True"/>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" local:SmoothScroll.Enabled="True">
+                                <StackPanel IsItemsHost="True"/>
+                            </ScrollViewer>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
@@ -325,7 +327,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd" Background="Transparent" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="11" Padding="10,3">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/></Trigger>
@@ -823,6 +825,9 @@
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetBindLbl" Grid.Column="0" Text="绑定:" VerticalAlignment="Center" FontSize="15"/>
                             <Button Grid.Column="1" x:Name="SetBindBtn" Content="点击修改" Style="{StaticResource NeutralBtn}" Click="SetBind_Click"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetPitchLbl" Grid.Column="0" Text="音调:" VerticalAlignment="Center" FontSize="15"/>
+                            <Button Grid.Column="1" x:Name="SetPitchResetBtn" Content="恢复默认音调" Style="{StaticResource NeutralBtn}" Click="SetPitchReset_Click"/></Grid>
                     </StackPanel>
 
                     <!-- 软件信息列 -->
@@ -830,7 +835,7 @@
                         <TextBlock x:Name="SetSoftInfoTitle" Text="软件信息" FontSize="34" FontWeight="Bold" Margin="0,0,0,16"/>
                         <TextBlock x:Name="AboutNameTx" Text="光遇-Musa 自动弹琴" FontSize="15" Margin="0,0,0,2"/>
                         <TextBlock Text="Sky-MusaAutoPlay (SMAP)" FontSize="15" Foreground="{DynamicResource SubTextFg}" Margin="0,0,0,12"/>
-                        <TextBlock x:Name="AboutVersion" Text="软件版本: v1.1-WPF" FontSize="14" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="AboutVersion" Text="软件版本: v2.0-WPF" FontSize="14" Margin="0,0,0,8"/>
                         <TextBlock x:Name="AboutAuthorTx" Text="软件作者: LingYunALingYun" FontSize="14" Margin="0,0,0,4"/>
                         <TextBlock FontSize="14" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="0,0,0,10">
                             <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
@@ -901,11 +906,12 @@
 
                         <!-- 右: 播放列表 贴中央播放组右侧 + 洞穴/倍速右对齐 -->
                         <Grid Grid.Column="2">
-                            <Button x:Name="PlaylistBtn" Style="{StaticResource IconBtn}"
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button x:Name="PlaylistBtn" Grid.Column="0" Style="{StaticResource IconBtn}"
                                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" Click="TogglePlaylist_Click" ToolTip="播放列表">
                                 <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconList}"/>
                             </Button>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                                 <Button x:Name="PreviewIcon" Style="{StaticResource IconBtn}"
                                         Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="PreviewMode_Click" ToolTip="试听模式(走扬声器不发按键)">
                                     <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconHeadphones}"/>
@@ -914,12 +920,11 @@
                                         Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="Cave_Click" ToolTip="洞穴音效开关">
                                     <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconMountain}"/>
                                 </Button>
-                                <Button x:Name="InstrumentPill" Content="音色:Piano" Style="{StaticResource PillBtn}"
+                                <Button x:Name="InstrumentPill" Content="音色:Piano" MaxWidth="150" Style="{StaticResource PillBtn}"
                                         VerticalAlignment="Center" Margin="0,0,8,0" Click="Instrument_Click" ToolTip="选择音色"/>
-                                <Border BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="11" Padding="10,3" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <TextBlock x:Name="SpeedLabel" Text="1.0x" FontSize="12" MinWidth="30" TextAlignment="Center"/>
-                                </Border>
-                                <Slider x:Name="SpeedSlider" Minimum="0.5" Maximum="2.0" Value="1.0" Width="140" VerticalAlignment="Center"/>
+                                <Button x:Name="PitchPill" Content="音高:0" Style="{StaticResource PillBtn}"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" Click="Pitch_Click" ToolTip="音高(每乐器移调)"/>
+                                <Button x:Name="SpeedPill" Content="1.0x" Style="{StaticResource PillBtn}" VerticalAlignment="Center" Margin="0,0,8,0" Click="Speed_Click" ToolTip="播放速度"/>
                             </StackPanel>
                         </Grid>
                     </Grid>

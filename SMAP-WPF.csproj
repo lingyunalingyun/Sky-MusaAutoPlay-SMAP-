@@ -7,7 +7,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(Configuration)' == 'Debug'">app.debug.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(Configuration)' != 'Debug'">app.manifest</ApplicationManifest>
     <AssemblyName>SMAP</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- 合并后仓库里有 JAVA version/ 旧 Java 源码, 不让 .NET SDK 扫描/编译它 -->
