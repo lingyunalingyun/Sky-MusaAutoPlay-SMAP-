@@ -23,13 +23,11 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 
 ## Screenshots
 
-Dark theme:
-
-![Dark theme](docs/screenshots/dark_zh.png)
-
-Light theme / English:
-
-![Light / English](docs/screenshots/light_en.png)
+| Dark · Local library (Chinese) | Light · Cloud library (English) |
+|:---:|:---:|
+| ![Dark](docs/screenshots/dark_zh.png) | ![Light](docs/screenshots/light_en.png) |
+| **Traditional Chinese · Settings** | **Japanese · Play queue** |
+| ![TW](docs/screenshots/light_tw.png) | ![JA](docs/screenshots/dark_ja.png) |
 
 ## Features
 
