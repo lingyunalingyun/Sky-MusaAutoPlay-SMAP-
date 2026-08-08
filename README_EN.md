@@ -17,6 +17,8 @@ An auto-play (auto-piano) helper for **Sky: Children of the Light** — reimagin
 SMAP plays Sky's instruments for you: import or create a sheet, and it performs it in-game.
 The latest release is a **full C# WPF rewrite** with a **music-player UI** — an account + collections sidebar, a cover-art library in the middle, the virtual keys on the right, and a full-width player bar at the bottom, plus a play queue, an inline cloud library, and a settings view.
 
+> 🎵 **v2.0**: game instrument timbres filled out to **37** (incl. 27 original Sky sounds), plus per-instrument transpose, hold-to-sustain, and random-speed playback.
+
 > ⚠️ SMAP must **run as administrator** (required to simulate global key presses; it auto-requests UAC on launch).
 
 ## Screenshots
@@ -33,9 +35,9 @@ Light theme / English:
 
 ### Playback
 - **Auto-play** — simulates global key presses along the sheet timeline (uses scan codes + a short hold, so per-frame game polling doesn't miss notes).
-- **Player bar** — cover / title·artist·transcriber / favorite star / shuffle·prev·play·next·queue / preview mode / cave reverb / instrument / speed.
+- **Player bar** — cover / title·artist·transcriber / favorite star / shuffle·prev·play·next·queue / preview mode / cave reverb / instrument / pitch (transpose) / speed (incl. random).
 - **Progress bar** — a full-width thin line pinned to the container's top edge; on hover it thickens and shows a white handle + a time pill that track the play position in real time. Drag to seek, even while paused.
-- **Play queue** — a slide-out queue on the right; double-click a library song to enqueue; three modes (repeat-all / repeat-one / shuffle); auto-advance to the next track after a **2-second gap**.
+- **Play queue** — a slide-out queue on the right; double-click a library song to enqueue and play; three modes (repeat-all / repeat-one / shuffle); auto-advance to the next track after a **2-second gap**.
 - **Live speed control** + **global hotkeys**: F1 start/stop · F2 pause · F3 slower · F4 faster · F5 back 5s · F6 forward 10s.
 
 ### Library & Collections
@@ -47,13 +49,35 @@ Light theme / English:
 ### Authoring & Sound
 - **Piano-roll editor** — type notes on the keyboard, triplet grid, undo/redo.
 - **Cave reverb** — recreates Sky's cave acoustics.
-- **Instruments** — 10 of them (Piano / Harp / Guitar / Flute / Ukulele / Winter Piano / Xylophone / Electric Guitar / Bassoon / Orff), names localized per language.
+- **Instruments** — **37 of them**, including 27 original Sky timbres extracted from the game (Violin / Cello / Saxophone / Ocarina / Harmonica / Pipa / Glockenspiel / Handpan / Horn / Piccolo… etc.), names localized per language.
+- **Per-instrument transpose** — independent pitch offset per instrument (12 semitones + octaves), saved locally; low instruments default to their in-game register, one-click reset.
+- **Hold to sustain** — wind / bowed-string instruments sound continuously while a key is held.
 
 ### UI & Settings
 - **Custom rounded window** + **live dark/light theme** + **Sky-style diamond keys** (with a flip animation on trigger).
 - **Languages** — Simplified Chinese / Traditional Chinese / English / Japanese.
 - **Settings view** (slides in from the middle/right panels) — language / theme / check updates / upload logs / UI scale / font scale / start countdown / key mapping.
 - **Auto-requests admin** on launch + **automatic update check**.
+
+## Shortcuts
+
+**Global hotkeys** (work in-game too):
+
+| Key | Action | Key | Action |
+|---|---|---|---|
+| `F1` | Start / Stop | `F2` | Pause |
+| `F3` | Slower | `F4` | Faster |
+| `F5` | Back 5s | `F6` | Forward 10s |
+
+**Virtual keys** (15 keys, remappable in Settings):
+
+| Register | Keys |
+|---|---|
+| High | `Y` `U` `I` `O` `P` |
+| Mid | `H` `J` `K` `L` `;` |
+| Low | `N` `M` `,` `.` `/` |
+
+> Wind / bowed-string instruments sustain while you hold a key.
 
 ## Install / Use
 
