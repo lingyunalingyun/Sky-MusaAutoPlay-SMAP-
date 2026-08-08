@@ -23,13 +23,11 @@ SMAP 是一款《光·遇》自动弹琴助手：导入或制作曲谱，即可�
 
 ## 截图
 
-深色模式：
-
-![深色模式](docs/screenshots/dark_zh.png)
-
-浅色模式 / English：
-
-![浅色/英文](docs/screenshots/light_en.png)
+| 深色 · 本地曲库（简体中文） | 浅色 · 云端曲库（English） |
+|:---:|:---:|
+| ![深色中文](docs/screenshots/dark_zh.png) | ![浅色英文](docs/screenshots/light_en.png) |
+| **繁體中文 · 設定 / 軟體資訊** | **日本語 · 再生キュー** |
+| ![繁体设置](docs/screenshots/light_tw.png) | ![日文队列](docs/screenshots/dark_ja.png) |
 
 ## 主要功能
 
