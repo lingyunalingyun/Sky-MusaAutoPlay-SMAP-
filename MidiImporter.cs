@@ -53,6 +53,17 @@ public class MidiImporter
 
     public List<(int key, double ms)> Convert(HashSet<int> trackIndices, int octaveShift, int semitoneShift)
     {
+        // 手动八度偏移钳制在窗口剩余空间内: 旋律已贴顶/底就不再往那个方向推,
+        // 避免音符被推出 C4~C6 窗口后折回、与相邻音错开八度造成的劈裂
+        var ps = PitchesOf(trackIndices);
+        if (ps.Count > 0)
+        {
+            int lo = ps.Min() + semitoneShift, hi = ps.Max() + semitoneShift;
+            int up = Math.Max(0, (SkyMidi[^1] - hi) / 12);
+            int down = Math.Max(0, (lo - SkyMidi[0]) / 12);
+            octaveShift = Math.Clamp(octaveShift, -down, up);
+        }
+
         var tempos = BuildTempoMap();
         var notes = new List<(int key, double ms)>();
 
