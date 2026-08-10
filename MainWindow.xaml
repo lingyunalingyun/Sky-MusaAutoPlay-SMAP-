@@ -15,6 +15,8 @@
         <PathGeometry x:Key="IconList" Figures="M4 7 L20 7 M4 12 L20 12 M4 17 L20 17"/>
         <PathGeometry x:Key="IconHeadphones" Figures="M5 13 V11 A7 7 0 0 1 19 11 V13 M4 14 L7 14 L7 19 L4 19 Z M17 14 L20 14 L20 19 L17 19 Z"/>
         <PathGeometry x:Key="IconMountain" Figures="M2 20 L8 9 L12 15 L15 10 L22 20 Z"/>
+        <!-- 演奏模式(钢琴): 琴体 + 4 黑键 -->
+        <PathGeometry x:Key="IconPiano" Figures="M3 8 H21 V16 H3 Z M6 8 V12.5 M9.5 8 V12.5 M14.5 8 V12.5 M18 8 V12.5"/>
         <PathGeometry x:Key="IconRepeat" Figures="M17 1 L21 5 L17 9 M3 11 V9 A4 4 0 0 1 7 5 L21 5 M7 23 L3 19 L7 15 M21 13 V15 A4 4 0 0 1 17 19 L3 19"/>
         <PathGeometry x:Key="IconRepeatOne" Figures="M17 1 L21 5 L17 9 M3 11 V9 A4 4 0 0 1 7 5 L21 5 M7 23 L3 19 L7 15 M21 13 V15 A4 4 0 0 1 17 19 L3 19 M11 10 L12 9 L12 15"/>
         <PathGeometry x:Key="IconShuffle" Figures="M16 3 L21 3 L21 8 M4 20 L21 3 M21 16 L21 21 L16 21 M15 15 L21 21 M4 4 L9 9"/>
@@ -927,8 +929,8 @@
                             </Button>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                                 <Button x:Name="PreviewIcon" Style="{StaticResource IconBtn}"
-                                        Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="PreviewMode_Click" ToolTip="试听模式(走扬声器不发按键)">
-                                    <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconHeadphones}"/>
+                                        Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="PreviewMode_Click" ToolTip="演奏模式(点亮=发送游戏按键; 默认试听走扬声器)">
+                                    <Path Style="{StaticResource GlyphStroke}" Data="{StaticResource IconPiano}"/>
                                 </Button>
                                 <Button x:Name="CaveIcon" Style="{StaticResource IconBtn}"
                                         Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="Cave_Click" ToolTip="洞穴音效开关">

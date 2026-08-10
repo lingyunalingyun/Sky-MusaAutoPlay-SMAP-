@@ -129,6 +129,7 @@ public static class Lang
         ["player.trans"] = new[] { "创谱者", "創譜者", "Transcriber", "採譜者" },
         ["tip.playlist"] = new[] { "播放列表", "播放清單", "Play queue", "再生キュー" },
         ["tip.preview"]  = new[] { "试听模式(走扬声器不发按键)", "試聽模式(走喇叭不發按鍵)", "Preview mode (speaker, no key press)", "プレビュー(スピーカー、キー送信なし)" },
+        ["tip.perform"]  = new[] { "演奏模式(点亮=发送游戏按键; 默认试听走扬声器)", "演奏模式(點亮=發送遊戲按鍵; 預設試聽走喇叭)", "Perform mode (lit = send game keys; default preview via speaker)", "演奏モード(点灯=ゲームキー送信; 既定はプレビュー)" },
         ["tip.cave"]     = new[] { "洞穴音效开关", "洞穴音效開關", "Cave reverb toggle", "洞窟エコー切替" },
         ["tip.inst"]     = new[] { "选择音色", "選擇音色", "Choose instrument", "音色を選択" },
         ["tip.playmode"] = new[] { "播放方式", "播放方式", "Play mode", "再生モード" },
