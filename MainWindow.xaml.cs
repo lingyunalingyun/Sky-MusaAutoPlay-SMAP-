@@ -1698,9 +1698,10 @@ public partial class MainWindow : Window
         if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); }
 
         var small = RectIn(PianoGrid);
+        var bigGrid = RectIn(PracticePianoGrid);   // 用大键盘本体(不含卡片内边距)算缩放, 末帧键盘本体才与小键盘等大
         var card = RectIn(PracticeCard);
-        double s = card.Width > 0 ? small.Width / card.Width : 0.5;                 // 起点=缩到小键盘等宽
-        double dx = (small.Left + small.Width / 2) - (card.Left + card.Width / 2);  // 起点=中心对齐小键盘
+        double s = bigGrid.Width > 0 ? small.Width / bigGrid.Width : 0.5;           // 缩到大键盘本体=小键盘等宽
+        double dx = (small.Left + small.Width / 2) - (card.Left + card.Width / 2);  // 卡片中心对齐小键盘中心(键盘居中于卡片, 故键盘中心同步对齐)
         double dy = (small.Top + small.Height / 2) - (card.Top + card.Height / 2);
 
         // 首次: 无动画在持有, 直接把卡片落到"小键盘"起点(之后每次开/关都从当前值续演)
@@ -1715,7 +1716,7 @@ public partial class MainWindow : Window
         var dur = TimeSpan.FromMilliseconds(on ? 420 : 340);
         IEasingFunction ease = on
             ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 }    // 展开: 明显过冲弹一下
-            : new QuinticEase { EasingMode = EasingMode.EaseOut };                  // 收回: 前期猛缩, 尾段渐停
+            : new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.2 };    // 收回: 前期猛缩, 落到小键盘上回弹一下
 
         Anim(_pCardScale, ScaleTransform.ScaleXProperty, on ? 1 : s, dur, ease);
         Anim(_pCardScale, ScaleTransform.ScaleYProperty, on ? 1 : s, dur, ease);
