@@ -1336,9 +1336,9 @@ public partial class MainWindow : Window
         SetPlayGlyph(false);
         ClearPlayingMarks();
         SetIdlePlayer();
-        if (_practiceOpen && _practiceSteps.Count > 0)   // 练习: 展示停止后仍保留练习进度条+高亮
+        if (_practiceOpen && _practiceSteps.Count > 0)   // 练习: 展示停止后仍保留歌曲信息+进度条+高亮
         {
-            ProgBar.Visibility = Visibility.Visible;
+            if (_practiceSong != null) UpdateNowPlaying(_practiceSong); else ProgBar.Visibility = Visibility.Visible;
             RenderPracticeHints();
             UpdateProgUi();
         }
@@ -1754,6 +1754,7 @@ public partial class MainWindow : Window
     List<double> _practiceStepMs = new();   // 每步时间戳(供进度条按整曲位置显示)
     double _practiceTotalMs;
     int _practiceStep;
+    SongInfo? _practiceSong;                 // 当前练习的曲目(底部条显示 + 展示停止后恢复)
     readonly HashSet<int> _practiceHeld = new();   // 当前物理按住的键(判和弦是否同时按住)
 
     void Practice_Click(object sender, RoutedEventArgs e) => ShowPractice(true);
@@ -1766,7 +1767,7 @@ public partial class MainWindow : Window
         if (_practiceOpen == on) return;
         _practiceOpen = on;
         if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); StartPractice(); }
-        else if (!_playing && !_previewing) { ProgBar.Visibility = Visibility.Collapsed; UpdateProgUi(); }   // 退出练习: 无播放则收起底部进度条
+        else if (!_playing && !_previewing) { SetIdlePlayer(); UpdateProgUi(); }   // 退出练习: 无播放则底部条回空闲
 
         var small = RectIn(PianoGrid);
         var bigGrid = RectIn(PracticePianoGrid);   // 用大键盘本体(不含卡片内边距)算缩放, 末帧键盘本体才与小键盘等大
@@ -1839,11 +1840,13 @@ public partial class MainWindow : Window
     {
         _practiceStep = 0; _practiceHeld.Clear();
         var song = _nowPlaying ?? Selected;         // 优先播放条上那首(与播放键一致), 其次库里选中
+        _practiceSong = song;
         if (song != null) TryLoad(song);
         if (_notes.Count > 0) BuildPracticeSteps();
         else { _practiceSteps = new(); _practiceStepMs = new(); _practiceTotalMs = 0; }
         RenderPracticeHints();
-        ProgBar.Visibility = _practiceSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;   // 复用底部进度条
+        if (song != null && _practiceSteps.Count > 0) UpdateNowPlaying(song);   // 底部条显示练习曲信息 + 进度条
+        else ProgBar.Visibility = Visibility.Collapsed;
         UpdateProgUi();
     }
 
