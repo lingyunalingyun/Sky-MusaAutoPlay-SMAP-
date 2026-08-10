@@ -2378,6 +2378,7 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        CenterOnScreen();   // 分层窗口(AllowsTransparency)+高DPI 下 CenterScreen 会算偏, 手动按工作区居中
         _hwnd = new WindowInteropHelper(this).Handle;
         RegisterHotKey(_hwnd, HK_START, 0, 0x70);   // F1
         RegisterHotKey(_hwnd, HK_PAUSE, 0, 0x71);   // F2
@@ -2386,6 +2387,14 @@ public partial class MainWindow : Window
         RegisterHotKey(_hwnd, HK_BACK, 0, 0x74);    // F5 后退 5s
         RegisterHotKey(_hwnd, HK_FWD, 0, 0x75);     // F6 前进 10s
         HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
+    }
+
+    // 按主屏工作区把窗口摆正中(WorkArea 与 Left/Top/Width/Height 同为 DIP, DPI 无关)
+    void CenterOnScreen()
+    {
+        var wa = SystemParameters.WorkArea;
+        Left = wa.Left + (wa.Width - Width) / 2;
+        Top = wa.Top + (wa.Height - Height) / 2;
     }
 
     IntPtr WndProc(IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled)
