@@ -1017,7 +1017,14 @@ public partial class MainWindow : Window
             }
             return;
         }
-        if (!_playing && !_previewing) return;      // 暂停时 _playing 仍为 true → 可拖动
+        if (!_playing && !_previewing)              // 未播放: 若有已载入的曲(如启动恢复的), 拖动=设定续播起点
+        {
+            if (_nowPlaying == null || _notes.Count == 0) return;
+            double t = _notes[^1].ms;
+            _pendingResumeMs = frac * t; _resumeSong = _nowPlaying;
+            RenderProg(frac, _pendingResumeMs, t);
+            return;
+        }
         double total = _player.TotalMs;
         _player.Seek(frac * total);
         RenderProg(frac, frac * total, total);      // 直接按鼠标位置渲染, 不等回写
