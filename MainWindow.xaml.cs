@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     readonly System.Collections.ObjectModel.ObservableCollection<SongInfo> _playlist = new();
     SongInfo? _playCurrent;   // 当前播放上下文对应的播放列表条目(切歌/续播/自动续播用)
     SongInfo? _nowPlaying;    // 当前正在发声的曲目(不论从曲库还是列表启动)
-    bool _previewMode;        // 试听模式: 播放键走扬声器(音频)而非发送游戏按键
+    bool _previewMode = true;   // 默认试听(走扬声器); 关闭=演奏模式(发送游戏按键)。右下开关点亮=演奏
     static readonly SolidColorBrush _gold = new(Color.FromRgb(0xE6, 0xB5, 0x2A));   // 收藏星填充色
     enum PlayMode { RepeatAll, RepeatOne, Shuffle }   // 列表循环 / 单曲循环 / 随机播放
     PlayMode _playMode = PlayMode.RepeatAll;
@@ -44,8 +44,12 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "playlist.txt");
     static string NowPlayingFile => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "nowplaying.txt");
+    static string PrefsFile => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "prefs.txt");
+    bool _prefsLoading;   // 载入偏好期间抑制回存
     double _pendingResumeMs;    // 上次退出保留的进度: 恢复曲首次播放时 seek 到此处
     SongInfo? _resumeSong;      // 与 _pendingResumeMs 配对, 只对这首生效
+    DateTime _lastNpSave;       // "当前曲+进度"节流保存时间戳
 
     int _remapIndex = -1;   // >=0 时表示正在等待为该光遇键重绑物理键
 
@@ -97,6 +101,7 @@ public partial class MainWindow : Window
         FolderList.ItemsSource = _folders;
         UpdateFoldersHeader();
         ApplyLanguage();
+        LoadPrefs();   // 恢复音色/洞穴/演奏/倍速
 
         Title = Lang.S("app.title") + $"  v{UpdateChecker.AppVersion}";
         _ = CheckUpdateAsync();
@@ -150,7 +155,8 @@ public partial class MainWindow : Window
         PrevBtn.ToolTip = Lang.S("tip.prev");
         NextBtn.ToolTip = Lang.S("tip.next");
         PlaylistBtn.ToolTip = Lang.S("tip.playlist");
-        PreviewIcon.ToolTip = Lang.S("tip.preview");
+        PreviewIcon.ToolTip = Lang.S("tip.perform");
+        RefreshPerformIcon();
         CaveIcon.ToolTip = Lang.S("tip.cave");
         InstrumentPill.ToolTip = Lang.S("tip.inst");
         PlayModeBtn.ToolTip = $"{Lang.S("tip.playmode")}: {PlayModeName(_playMode)}";
@@ -338,6 +344,12 @@ public partial class MainWindow : Window
         _nowPlaying = s;
         _paused = false;
         UpdateNowPlaying(s);
+        // 续播: UpdateNowPlaying 已把进度条清零, 立刻渲染回保留位置(含倒计时期间), 免"先闪回0"
+        if (_pendingResumeMs > 0 && ReferenceEquals(s, _resumeSong))
+        {
+            double total = _notes.Count > 0 ? _notes[^1].ms : 0;
+            RenderProg(total > 0 ? _pendingResumeMs / total : 0, _pendingResumeMs, total);
+        }
         int sec = (_previewMode || _practiceOpen) ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
         BeginCountdown(sec);
     }
@@ -510,6 +522,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         SaveNowPlaying();
+        SavePrefs();
         base.OnClosing(e);
     }
 
@@ -1025,6 +1038,8 @@ public partial class MainWindow : Window
             if (_progDragging) return;   // 拖动时不回写
             if (_practiceOpen) SyncPracticeHighlightToPlayback();   // 练习展示: 高亮跟播放位置走
             UpdateProgUi();
+            // 播放时每 2 秒节流保存"当前曲+进度"(非练习), 强杀/崩溃也能恢复
+            if (!_practiceOpen && (DateTime.Now - _lastNpSave).TotalSeconds >= 2) { _lastNpSave = DateTime.Now; SaveNowPlaying(); }
         };
         return t;
     }
@@ -1166,6 +1181,7 @@ public partial class MainWindow : Window
         CaveBtn.Content = $"{Lang.S("cave")}: {Lang.S(AudioEngine.Cave ? "on" : "off")}";
         CaveIcon.Foreground = AudioEngine.Cave ? Brushes.DeepSkyBlue : (Brush)Application.Current.Resources["SubTextFg"];
         StatusText.Text = $"状态: 洞穴音效已{(AudioEngine.Cave ? "开启" : "关闭")}";
+        SavePrefs();
     }
 
     ContextMenu? _instrumentMenu;
@@ -1185,6 +1201,7 @@ public partial class MainWindow : Window
                     InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(n)}";
                     InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(n)}";
                     RefreshPitchPill();
+                    SavePrefs();
                     ShowToast($"{Lang.S("instrument")} → {Lang.Instrument(n)}");
                 };
                 _instrumentMenu.Items.Add(it);
@@ -1305,8 +1322,8 @@ public partial class MainWindow : Window
             SetPlayGlyph(true);
             StatusText.Text = $"状态: 🎧 练习展示中 ({_speed:0.0}x)";
             StartFlash();
-            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
-            if (_practiceStep > 0 && _practiceStep < _practiceStepMs.Count) _player.Seek(_practiceStepMs[_practiceStep]);
+            double from = _practiceStep > 0 && _practiceStep < _practiceStepMs.Count ? _practiceStepMs[_practiceStep] : 0;
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play, from);
             return;
         }
         if (!_playing && !_previewing) { PlayCurrentOrFirst(); return; }
@@ -1371,29 +1388,41 @@ public partial class MainWindow : Window
         var item = _nowPlaying != null ? _playlist.FirstOrDefault(x => x.File == _nowPlaying.File) : null;
         if (item != null) { item.IsPlaying = true; _playCurrent = item; }
         else _playCurrent = null;
+        // 恢复上次进度: 仅对保留的那首, 从保留位置起播(直接传给 Play, 避免 Play 后再 Seek 的竞态)
+        double startMs = (_pendingResumeMs > 0 && ReferenceEquals(_nowPlaying, _resumeSong)) ? _pendingResumeMs : 0;
+        _pendingResumeMs = 0; _resumeSong = null;
         StartFlash();
         if (_previewMode || _practiceOpen)   // 试听模式 或 练习展示: 走扬声器, 绝不发游戏按键(不调用模拟输入)
         {
             StatusText.Text = $"状态: 🎧 {(_practiceOpen ? "练习展示" : "试听")}中 ({_speed:0.0}x)";
-            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play, startMs);
         }
         else
         {
             StatusText.Text = "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
-            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)));
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), null, startMs);
         }
-        // 恢复上次进度: 仅对保留的那首、首次播放时 seek 一次
-        if (_pendingResumeMs > 0 && ReferenceEquals(_nowPlaying, _resumeSong)) _player.Seek(_pendingResumeMs);
-        _pendingResumeMs = 0; _resumeSong = null;
+        // 续播: 立刻把进度条渲染到起始位置, 消掉 UpdateNowPlaying 清零导致的"先闪回0"
+        if (startMs > 0)
+        {
+            double total = _notes.Count > 0 ? _notes[^1].ms : 0;
+            RenderProg(total > 0 ? startMs / total : 0, startMs, total);
+        }
     }
 
     // 试听模式开关: 高亮=开
+    // 右下开关: 切换 演奏模式(发送游戏按键) ↔ 试听(走扬声器, 默认); 点亮=演奏
     void PreviewMode_Click(object sender, RoutedEventArgs e)
     {
         _previewMode = !_previewMode;
-        PreviewIcon.Foreground = _previewMode ? Brushes.MediumTurquoise : (Brush)Application.Current.Resources["SubTextFg"];
-        StatusText.Text = $"状态: 试听模式已{(_previewMode ? "开启(走扬声器)" : "关闭(发送按键)")}";
+        RefreshPerformIcon();
+        StatusText.Text = $"状态: 已切到{(_previewMode ? "试听(走扬声器)" : "演奏(发送游戏按键)")}模式";
+        SavePrefs();
     }
+
+    // 演奏模式点亮橙色(提示发送真实按键), 试听为暗色
+    void RefreshPerformIcon() =>
+        PreviewIcon.Foreground = _previewMode ? (Brush)Application.Current.Resources["SubTextFg"] : new SolidColorBrush(Color.FromRgb(0xE6, 0x82, 0x2C));
 
     void ResetPlayUi()
     {
@@ -1496,6 +1525,58 @@ public partial class MainWindow : Window
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PlayModeFile)!);
             System.IO.File.WriteAllText(PlayModeFile, _playMode.ToString());
+        }
+        catch { }
+    }
+
+    // 偏好: 音色 / 洞穴 / 演奏(试听) / 倍速; 改动即存, 启动载入
+    void LoadPrefs()
+    {
+        _prefsLoading = true;
+        try
+        {
+            if (System.IO.File.Exists(PrefsFile))
+                foreach (var line in System.IO.File.ReadAllLines(PrefsFile))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    var k = line[..eq].Trim(); var v = line[(eq + 1)..].Trim();
+                    switch (k)
+                    {
+                        case "instrument": if (Array.IndexOf(AudioEngine.Instruments, v) >= 0) _instrumentName = v; break;
+                        case "cave": AudioEngine.Cave = v == "1"; break;
+                        case "preview": _previewMode = v == "1"; break;
+                        case "speed": if (double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sp)) _speed = Math.Clamp(sp, 0.5, 2.0); break;
+                    }
+                }
+        }
+        catch { }
+        // 应用到引擎 + 底部栏 UI
+        if (_instrumentName != AudioEngine.CurrentInstrument)
+            System.Threading.Tasks.Task.Run(() => AudioEngine.SetInstrument(_instrumentName));
+        InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(_instrumentName)}";
+        InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(_instrumentName)}";
+        RefreshPitchPill();
+        CaveBtn.Content = $"{Lang.S("cave")}: {Lang.S(AudioEngine.Cave ? "on" : "off")}";
+        CaveIcon.Foreground = AudioEngine.Cave ? Brushes.DeepSkyBlue : (Brush)Application.Current.Resources["SubTextFg"];
+        RefreshPerformIcon();
+        SetSpeed(_speed);   // 更新倍速药丸 + 播放器
+        _prefsLoading = false;
+    }
+
+    void SavePrefs()
+    {
+        if (_prefsLoading) return;
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PrefsFile)!);
+            System.IO.File.WriteAllLines(PrefsFile, new[]
+            {
+                $"instrument={_instrumentName}",
+                $"cave={(AudioEngine.Cave ? 1 : 0)}",
+                $"preview={(_previewMode ? 1 : 0)}",
+                $"speed={_speed.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}",
+            });
         }
         catch { }
     }
@@ -2332,6 +2413,7 @@ public partial class MainWindow : Window
         _player.RandomSpeed = false;
         SpeedPill.Content = $"{_speed:0.0}x";
         _player.SpeedFactor = _speed;
+        SavePrefs();
     }
 
     void Speed_Click(object sender, RoutedEventArgs e)

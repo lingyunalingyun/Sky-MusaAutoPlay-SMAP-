@@ -41,12 +41,16 @@ public class SkyPlayer
     public bool IsPlaying => _thread is { IsAlive: true };
     public void Pause(bool p) => _paused = p;
 
-    /// <summary>按曲谱时间线触发音符。noteAction 默认 SendInput 发按键(弹到游戏); 传 AudioEngine.Play 则走扬声器试听。</summary>
-    public void Play(List<(int key, double ms)> notes, double speed, Action onDone, Action<int>? noteAction = null)
+    double _startMs;   // 起始播放位置(续播用); 直接在线程内起播, 避免 Play 后再 Seek 的竞态
+
+    /// <summary>按曲谱时间线触发音符。noteAction 默认 SendInput 发按键(弹到游戏); 传 AudioEngine.Play 则走扬声器试听。
+    /// startMs>0 时从该毫秒位置起播(续播), 之前的音符跳过不补发。</summary>
+    public void Play(List<(int key, double ms)> notes, double speed, Action onDone, Action<int>? noteAction = null, double startMs = 0)
     {
         Stop();
         _stop = false; _paused = false;
         SpeedFactor = speed;
+        _startMs = Math.Max(0, startMs);
         var act = noteAction ?? PressKey;
         var list = notes.Where(n => n.key >= 0 && n.key < 15).OrderBy(n => n.ms).ToList();
         _thread = new Thread(() => Run(list, onDone, act)) { IsBackground = true };
@@ -64,11 +68,12 @@ public class SkyPlayer
     void Run(List<(int key, double ms)> notes, Action onDone, Action<int> noteAction)
     {
         TotalMs = notes.Count > 0 ? notes[^1].ms : 0;
-        PositionMs = 0;
+        double songMs = _startMs, last = 0;   // 从起始位置起播(续播)
+        PositionMs = songMs;
         _seek = false;
         _randCountdown = 0;
-        double songMs = 0, last = 0;
         int idx = 0;
+        while (idx < notes.Count && notes[idx].ms < songMs) idx++;   // 跳过起始位置之前的音符
         var sw = Stopwatch.StartNew();
         while (!_stop && idx < notes.Count)
         {
