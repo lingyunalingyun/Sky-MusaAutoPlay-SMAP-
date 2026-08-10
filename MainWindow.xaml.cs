@@ -42,6 +42,10 @@ public partial class MainWindow : Window
     int _cloudPage = 1, _cloudPages = 1;
     static string PlaylistFile => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "playlist.txt");
+    static string NowPlayingFile => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "nowplaying.txt");
+    double _pendingResumeMs;    // 上次退出保留的进度: 恢复曲首次播放时 seek 到此处
+    SongInfo? _resumeSong;      // 与 _pendingResumeMs 配对, 只对这首生效
 
     int _remapIndex = -1;   // >=0 时表示正在等待为该光遇键重绑物理键
 
@@ -87,6 +91,7 @@ public partial class MainWindow : Window
         RefreshLibrary();
         PlaylistView.ItemsSource = _playlist;
         LoadPlaylist();
+        RestoreNowPlaying();
         LoadPlayMode();
         foreach (var f in FolderStore.Load()) _folders.Add(f);
         FolderList.ItemsSource = _folders;
@@ -150,7 +155,7 @@ public partial class MainWindow : Window
         InstrumentPill.ToolTip = Lang.S("tip.inst");
         PlayModeBtn.ToolTip = $"{Lang.S("tip.playmode")}: {PlayModeName(_playMode)}";
         ProgBar.ToolTip = Lang.S("tip.seek");
-        if (!_playing && !_previewing) PlayerSongName.Text = Lang.S("player.nosong");
+        if (!_playing && !_previewing && !(_pendingResumeMs > 0 && _resumeSong != null)) PlayerSongName.Text = Lang.S("player.nosong");
         PlayerAuthor.Text = Lang.S("player.artist");
         PlayerTranscriber.Text = Lang.S("player.trans");
 
@@ -237,6 +242,19 @@ public partial class MainWindow : Window
 
     void StepSong(int delta)
     {
+        // 练习: 用播放列表切换练习曲(重建高亮/步/进度), 不自动播放
+        if (_practiceOpen)
+        {
+            if (_playlist.Count == 0) return;
+            int pi = _practiceSong != null ? _playlist.IndexOf(_practiceSong) : -1;
+            pi = pi < 0 ? (delta > 0 ? 0 : _playlist.Count - 1) : (pi + delta);
+            if (pi < 0) pi = _playlist.Count - 1;
+            if (pi >= _playlist.Count) pi = 0;
+            if (_playing || _previewing) StopPlaying();   // 停掉正在展示
+            _nowPlaying = _playlist[pi];                  // 让 StartPractice 选到它
+            StartPractice();
+            return;
+        }
         // 有播放列表 → 在列表内切歌; 否则在曲库里移动选择
         if (_playlist.Count > 0)
         {
@@ -484,6 +502,48 @@ public partial class MainWindow : Window
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PlaylistFile)!);
             System.IO.File.WriteAllLines(PlaylistFile, _playlist.Select(s => s.File));
+        }
+        catch { }
+    }
+
+    // 退出时保存"上次播放的曲 + 进度"; 下次启动恢复到底部条(不自动播放), 按播放从该进度续
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        SaveNowPlaying();
+        base.OnClosing(e);
+    }
+
+    void SaveNowPlaying()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(NowPlayingFile)!);
+            if (_nowPlaying == null) { if (System.IO.File.Exists(NowPlayingFile)) System.IO.File.Delete(NowPlayingFile); return; }
+            double pos = _player.PositionMs;
+            if (pos <= 0 && _pendingResumeMs > 0) pos = _pendingResumeMs;   // 恢复后未播放过 → 保留原进度
+            System.IO.File.WriteAllText(NowPlayingFile, $"{_nowPlaying.File}|{(long)pos}");
+        }
+        catch { }
+    }
+
+    void RestoreNowPlaying()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(NowPlayingFile)) return;
+            var raw = System.IO.File.ReadAllText(NowPlayingFile).Trim();
+            int bar = raw.LastIndexOf('|');
+            if (bar < 0) return;
+            var path = raw[..bar];
+            double.TryParse(raw[(bar + 1)..], out double pos);
+            var song = _all.FirstOrDefault(x => x.File == path);
+            if (song == null) return;
+            _nowPlaying = song; _playCurrent = _playlist.FirstOrDefault(x => x.File == song.File) ?? song;
+            if (!TryLoad(song)) return;                     // 载入音符(总时长/播放就绪)
+            _resumeSong = song; _pendingResumeMs = pos;
+            UpdateNowPlaying(song);                          // 底部条显示歌曲信息 + 进度条
+            double total = _notes.Count > 0 ? _notes[^1].ms : 0;
+            RenderProg(total > 0 ? pos / total : 0, pos, total);   // 进度条落到保留位置
         }
         catch { }
     }
@@ -868,6 +928,11 @@ public partial class MainWindow : Window
         {
             double pos = _practiceStep < _practiceStepMs.Count ? _practiceStepMs[_practiceStep] : _practiceTotalMs;
             RenderProg(_practiceTotalMs > 0 ? pos / _practiceTotalMs : 0, pos, _practiceTotalMs);
+        }
+        else if (!_playing && !_previewing && _pendingResumeMs > 0 && _resumeSong != null)   // 恢复上次进度: 未播放前先把进度条落到保留位置
+        {
+            double total = _notes.Count > 0 ? _notes[^1].ms : 0;
+            RenderProg(total > 0 ? _pendingResumeMs / total : 0, _pendingResumeMs, total);
         }
         else RenderProg(_player.TotalMs > 0 ? _player.PositionMs / _player.TotalMs : 0, _player.PositionMs, _player.TotalMs);
     }
@@ -1272,6 +1337,7 @@ public partial class MainWindow : Window
     {
         if (_playing || _previewing) { StopPlaying(); return; }
         if (!TryLoadSelected()) return;
+        _pendingResumeMs = 0; _resumeSong = null;   // 试听别的曲 → 放弃待恢复进度
         _previewing = true;
         PreviewBtn.Content = "⏹ 停止试听";
         StatusText.Text = $"状态: 🎧 试听中 ({_speed:0.0}x)";
@@ -1316,6 +1382,9 @@ public partial class MainWindow : Window
             StatusText.Text = "状态: 🎵 演奏中... (F1 停止 / F2 暂停)";
             _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)));
         }
+        // 恢复上次进度: 仅对保留的那首、首次播放时 seek 一次
+        if (_pendingResumeMs > 0 && ReferenceEquals(_nowPlaying, _resumeSong)) _player.Seek(_pendingResumeMs);
+        _pendingResumeMs = 0; _resumeSong = null;
     }
 
     // 试听模式开关: 高亮=开
@@ -1361,6 +1430,7 @@ public partial class MainWindow : Window
     {
         bool wasPreview = _previewing;
         var finished = _playCurrent;
+        if (_practiceOpen) _practiceStep = 0;   // 练习: 一首展示结束 → 回到开头(0 位置)
         ResetPlayUi();
         AudioEngine.StopAll();
         if (StatusText.Text.Contains("演奏中")) StatusText.Text = "状态: 演奏完成";
