@@ -1690,7 +1690,6 @@ public partial class MainWindow : Window
     // 转场: ①背景快速盖住(先隐藏主界面) ②练习卡片从右侧小键盘的位置/尺寸带过冲非线性放大展开
     //       动画只给终点不锁起点 → 从当前值续演, 中途点返回/再进可平滑打断反向
     bool _practiceOpen, _pInit;
-    int _pAnimToken;
     readonly ScaleTransform _pCardScale = new(1, 1);
     readonly TranslateTransform _pCardTrans = new(0, 0);
 
@@ -1726,39 +1725,40 @@ public partial class MainWindow : Window
             ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 }    // 展开: 明显过冲弹一下
             : new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.2 };    // 收回: 前期猛缩, 落到小键盘上回弹一下
 
-        Anim(_pCardScale, ScaleTransform.ScaleXProperty, on ? 1 : s, dur, ease);
+        _pSmallScale = s;   // 供背景跟随钩子换算展开进度(0=小键盘, 1=全屏)
+
+        // 转场期间把整卡片缓存为位图: 缩放走显卡合成, 不用每帧重绘15个键 → 不卡; 结束清缓存保持交互态清晰
+        PracticeCard.CacheMode = new BitmapCache { SnapsToDevicePixels = true };
+        // 背景每帧跟着卡片当前缩放走 → 无论怎么中途打断都自洽(卡片≈小键盘才露主界面, 接近全屏就全遮)
+        if (!_pRenderingHooked) { CompositionTarget.Rendering += PracticeBgFollow; _pRenderingHooked = true; }
+
+        // 缩放动画兼作"收尾驱动": 被后续动画替换时旧动画 Completed 不触发, 只有最新一次会跑 → 天然处理打断
+        var sx = new DoubleAnimation(on ? 1 : s, dur) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(sx, 120);
+        sx.Completed += (_, __) =>
+        {
+            CompositionTarget.Rendering -= PracticeBgFollow;
+            _pRenderingHooked = false;
+            PracticeBgFollow(null, EventArgs.Empty);       // 锁到终值
+            PracticeCard.CacheMode = null;
+            if (!_practiceOpen) PracticePanel.Visibility = Visibility.Collapsed;
+        };
+        _pCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
+
         Anim(_pCardScale, ScaleTransform.ScaleYProperty, on ? 1 : s, dur, ease);
         Anim(_pCardTrans, TranslateTransform.XProperty, on ? 0 : dx, dur, ease);
         Anim(_pCardTrans, TranslateTransform.YProperty, on ? 0 : dy, dur, ease);
         Anim(PracticeBackBtn, UIElement.OpacityProperty, on ? 1 : 0, dur, ease);
+    }
 
-        // 转场期间把整卡片缓存为位图: 缩放走显卡合成, 不用每帧重绘15个键 → 不卡; 仅最新一次动画结束时清缓存(交互态保持清晰)
-        int tok = ++_pAnimToken;
-        PracticeCard.CacheMode = new BitmapCache { SnapsToDevicePixels = true };
-
-        // 背景始终"晚于卡片露脸", 保证主界面只在键盘≈小键盘大小时才可见:
-        AnimationTimeline bg;
-        if (on)
-        {
-            bg = new DoubleAnimation(1, TimeSpan.FromMilliseconds(150)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };   // 展开: 最先快速盖住主界面
-        }
-        else
-        {
-            // 收回: 前 60% 一直全遮(等键盘缩回), 尾段才快速散开露出主界面
-            var kf = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(340) };
-            kf.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0)));
-            kf.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0.6)));
-            kf.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(1), new CubicEase { EasingMode = EasingMode.EaseIn }));
-            bg = kf;
-        }
-        Timeline.SetDesiredFrameRate(bg, 120);
-        bg.Completed += (_, __) =>
-        {
-            if (tok != _pAnimToken) return;              // 已被后续动画取代 → 交给后者收尾, 别抢着清缓存/收面板
-            PracticeCard.CacheMode = null;
-            if (!_practiceOpen) PracticePanel.Visibility = Visibility.Collapsed;
-        };
-        PracticeBg.BeginAnimation(UIElement.OpacityProperty, bg);
+    double _pSmallScale = 0.5;
+    bool _pRenderingHooked;
+    // 背景不透明度 = 卡片展开进度的函数(走到 35% 即全遮); 纯当前缩放的函数, 故任意打断都一致
+    void PracticeBgFollow(object? sender, EventArgs e)
+    {
+        double span = 1 - _pSmallScale;
+        double t = span > 1e-6 ? (_pCardScale.ScaleX - _pSmallScale) / span : 1;
+        PracticeBg.Opacity = Math.Clamp(t / 0.35, 0, 1);
     }
 
     // 只给终点(To), 省略 From → 从属性当前值(含正在播放的动画值)接着演, 天然可打断; 锁 120fps
