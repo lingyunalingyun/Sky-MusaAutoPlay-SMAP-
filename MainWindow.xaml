@@ -584,7 +584,7 @@
     </Window.Resources>
 
     <!-- 圆角窗体 -->
-    <Border Background="{DynamicResource WindowBg}" CornerRadius="16" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
+    <Border x:Name="WindowRoot" Background="{DynamicResource WindowBg}" CornerRadius="16" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
         <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
         <Grid x:Name="RootScale" Margin="10">
             <Grid.LayoutTransform><ScaleTransform x:Name="UiScale"/></Grid.LayoutTransform>
