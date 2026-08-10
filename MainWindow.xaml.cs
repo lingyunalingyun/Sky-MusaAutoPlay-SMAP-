@@ -921,13 +921,22 @@ public partial class MainWindow : Window
     {
         double w = ProgBar.ActualWidth; if (w <= 0) return;
         double frac = Math.Clamp(mouseX / w, 0, 1);
-        if (_practiceOpen)                          // 练习: 拖动/点击底部条 → 按时间跳到最近的步(落点与高亮对齐)
+        if (_practiceOpen)                          // 练习: 拖动/点击底部条
         {
             if (_practiceSteps.Count == 0) return;
-            _practiceStep = NearestStep(frac * _practiceTotalMs);
-            _practiceHeld.Clear();
-            RenderPracticeHints();
-            UpdateProgUi();
+            if (_playing || _previewing)            // 展示中 → 跳播放位置(高亮随后自动跟上)
+            {
+                double t = _player.TotalMs;
+                _player.Seek(frac * t);
+                RenderProg(frac, frac * t, t);
+            }
+            else                                     // 未展示 → 按时间跳到最近的步(落点与高亮对齐)
+            {
+                _practiceStep = NearestStep(frac * _practiceTotalMs);
+                _practiceHeld.Clear();
+                RenderPracticeHints();
+                UpdateProgUi();
+            }
             return;
         }
         if (!_playing && !_previewing) return;      // 暂停时 _playing 仍为 true → 可拖动
@@ -1223,6 +1232,18 @@ public partial class MainWindow : Window
     // 底部大播放键: 音乐软件式 播放/暂停 (只从播放列表播)
     void PlayPause_Click(object sender, RoutedEventArgs e)
     {
+        if (_practiceOpen)   // 练习: 播放键=展示练习这首(走扬声器, 从当前步开始), 再点停止
+        {
+            if (_playing || _previewing) { StopPlaying(); return; }
+            if (_practiceSteps.Count == 0) return;
+            _playing = true; _paused = false;
+            SetPlayGlyph(true);
+            StatusText.Text = $"状态: 🎧 练习展示中 ({_speed:0.0}x)";
+            StartFlash();
+            _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
+            if (_practiceStep > 0 && _practiceStep < _practiceStepMs.Count) _player.Seek(_practiceStepMs[_practiceStep]);
+            return;
+        }
         if (!_playing && !_previewing) { PlayCurrentOrFirst(); return; }
         if (_previewing) { StopPlaying(); return; }   // 试听态: 直接停
         SetPaused(!_paused);   // 演奏态 → 暂停/继续 (保留进度)
@@ -1817,7 +1838,8 @@ public partial class MainWindow : Window
     void StartPractice()
     {
         _practiceStep = 0; _practiceHeld.Clear();
-        if (Selected is { } song) TryLoad(song);   // 选中曲优先载入; 否则沿用当前已载入/在播放那首
+        var song = _nowPlaying ?? Selected;         // 优先播放条上那首(与播放键一致), 其次库里选中
+        if (song != null) TryLoad(song);
         if (_notes.Count > 0) BuildPracticeSteps();
         else { _practiceSteps = new(); _practiceStepMs = new(); _practiceTotalMs = 0; }
         RenderPracticeHints();
@@ -1902,13 +1924,14 @@ public partial class MainWindow : Window
         return best;
     }
 
-    // 练习展示中: 高亮跟着播放位置走(当前正在响的那一步)
+    // 练习展示中: 高亮=即将播放的那一步(比正在响的音快一格, 好提前准备)
     void SyncPracticeHighlightToPlayback()
     {
         if (_practiceSteps.Count == 0) return;
         double pos = _player.PositionMs;
         int s = 0;
-        while (s + 1 < _practiceStepMs.Count && _practiceStepMs[s + 1] <= pos) s++;
+        while (s < _practiceStepMs.Count && _practiceStepMs[s] <= pos) s++;   // 第一个时间戳 > 当前位置 = 下一个要按的
+        if (s >= _practiceSteps.Count) s = _practiceSteps.Count - 1;
         if (s != _practiceStep) { _practiceStep = s; RenderPracticeHints(); }
     }
 
