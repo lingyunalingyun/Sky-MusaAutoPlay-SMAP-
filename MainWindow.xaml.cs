@@ -1734,13 +1734,13 @@ public partial class MainWindow : Window
 
         // 转场期间: ①摘窗口阴影(免整窗每帧重渲染进 Effect 拖垮帧率) ②整卡片位图缓存(缩放走显卡合成, 不每帧重绘15键)
         WindowRoot.Effect = null;
-        PracticeCard.CacheMode ??= new BitmapCache { SnapsToDevicePixels = true };   // 只建一次, 打断不重建免卡顿
+        PracticeCard.CacheMode ??= new BitmapCache();   // 只建一次, 打断不重建; 不吸附像素(免每帧重栅格)
+        RenderOptions.SetBitmapScalingMode(PracticeCard, BitmapScalingMode.LowQuality);   // 缓存纹理走快速双线性缩放, 弱GPU也顺
         // 背景每帧跟着卡片当前缩放走 → 无论怎么中途打断都自洽(卡片≈小键盘才露主界面, 接近全屏就全遮)
         if (!_pRenderingHooked) { CompositionTarget.Rendering += PracticeBgFollow; _pRenderingHooked = true; }
 
         // 缩放动画兼作"收尾驱动": 被后续动画替换时旧动画 Completed 不触发, 只有最新一次会跑 → 天然处理打断
         var sx = new DoubleAnimation(target, dur) { EasingFunction = ease };
-        Timeline.SetDesiredFrameRate(sx, 120);
         sx.Completed += (_, __) =>
         {
             CompositionTarget.Rendering -= PracticeBgFollow;
@@ -1768,13 +1768,9 @@ public partial class MainWindow : Window
         PracticeBg.Opacity = Math.Clamp(t / 0.35, 0, 1);
     }
 
-    // 只给终点(To), 省略 From → 从属性当前值(含正在播放的动画值)接着演, 天然可打断; 锁 120fps
+    // 只给终点(To), 省略 From → 从属性当前值(含正在播放的动画值)接着演, 天然可打断; 帧率交回显示器 vsync(更稳)
     static void Anim(IAnimatable t, DependencyProperty p, double to, TimeSpan dur, IEasingFunction ease)
-    {
-        var a = new DoubleAnimation(to, dur) { EasingFunction = ease };
-        Timeline.SetDesiredFrameRate(a, 120);
-        t.BeginAnimation(p, a);
-    }
+        => t.BeginAnimation(p, new DoubleAnimation(to, dur) { EasingFunction = ease });
 
     // 轻提示: 底部居中淡入淡出 (StatusText 已随旧面板隐藏, 用它做用户反馈)
     DispatcherTimer? _toastTimer;
