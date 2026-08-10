@@ -190,6 +190,7 @@ public static class Lang
         ["t.logfail"]    = new[] { "上传失败: ", "上傳失敗: ", "Upload failed: ", "送信失敗: " },
         ["t.latest"]     = new[] { "已是最新版本", "已是最新版本", "You're on the latest version", "最新バージョンです" },
         ["t.practice"]   = new[] { "跟弹练习中(不发游戏按键)", "跟彈練習中(不發遊戲按鍵)", "Practice mode (no game keys)", "練習モード(ゲームキー送信なし)" },
+        ["t.practiceDone"]=new[] { "本曲跟弹完成! 从头再来", "本曲跟彈完成! 從頭再來", "Song complete! Restarting", "曲を弾き終えました! 最初から" },
     };
 
     // 音色名(内部键为英文, 显示按语言翻译)

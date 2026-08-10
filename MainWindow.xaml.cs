@@ -320,7 +320,7 @@ public partial class MainWindow : Window
         _nowPlaying = s;
         _paused = false;
         UpdateNowPlaying(s);
-        int sec = _previewMode ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
+        int sec = (_previewMode || _practiceOpen) ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
         BeginCountdown(sec);
     }
 
@@ -807,9 +807,9 @@ public partial class MainWindow : Window
             };
             _pScale[i] = scale;
             int idx = i;
-            btn.PreviewMouseLeftButtonDown += (_, ev) => { AudioEngine.NoteOn(idx); FlashKey(idx); ev.Handled = true; };
-            btn.PreviewMouseLeftButtonUp += (_, __) => AudioEngine.NoteOff(idx);
-            btn.MouseLeave += (_, __) => AudioEngine.NoteOff(idx);
+            btn.PreviewMouseLeftButtonDown += (_, ev) => { AudioEngine.NoteOn(idx); FlashKey(idx); _practiceHeld.Add(idx); PracticePress(idx); ev.Handled = true; };
+            btn.PreviewMouseLeftButtonUp += (_, __) => { AudioEngine.NoteOff(idx); _practiceHeld.Remove(idx); };
+            btn.MouseLeave += (_, __) => { AudioEngine.NoteOff(idx); _practiceHeld.Remove(idx); };
             _pBtn[i] = btn;
             _pLabels[i] = lbl;
             PracticePianoGrid.Children.Add(btn);
@@ -862,7 +862,15 @@ public partial class MainWindow : Window
     bool _progDragging;
 
     // 进度条自绘: 填充宽度=进度, 圆点/药丸横移到进度交界点(参考点)
-    void UpdateProgUi() => RenderProg(_player.TotalMs > 0 ? _player.PositionMs / _player.TotalMs : 0, _player.PositionMs, _player.TotalMs);
+    void UpdateProgUi()
+    {
+        if (_practiceOpen && !_playing && !_previewing && _practiceSteps.Count > 0)   // 纯练习(未展示): 用当前步位置
+        {
+            double pos = _practiceStep < _practiceStepMs.Count ? _practiceStepMs[_practiceStep] : _practiceTotalMs;
+            RenderProg(_practiceTotalMs > 0 ? pos / _practiceTotalMs : 0, pos, _practiceTotalMs);
+        }
+        else RenderProg(_player.TotalMs > 0 ? _player.PositionMs / _player.TotalMs : 0, _player.PositionMs, _player.TotalMs);
+    }
 
     void RenderProg(double frac, double posMs, double totalMs)
     {
@@ -911,9 +919,18 @@ public partial class MainWindow : Window
     }
     void SeekToMouse(double mouseX)
     {
-        if (!_playing && !_previewing) return;      // 暂停时 _playing 仍为 true → 可拖动
         double w = ProgBar.ActualWidth; if (w <= 0) return;
         double frac = Math.Clamp(mouseX / w, 0, 1);
+        if (_practiceOpen)                          // 练习: 拖动/点击底部条 → 按时间跳到最近的步(落点与高亮对齐)
+        {
+            if (_practiceSteps.Count == 0) return;
+            _practiceStep = NearestStep(frac * _practiceTotalMs);
+            _practiceHeld.Clear();
+            RenderPracticeHints();
+            UpdateProgUi();
+            return;
+        }
+        if (!_playing && !_previewing) return;      // 暂停时 _playing 仍为 true → 可拖动
         double total = _player.TotalMs;
         _player.Seek(frac * total);
         RenderProg(frac, frac * total, total);      // 直接按鼠标位置渲染, 不等回写
@@ -932,6 +949,7 @@ public partial class MainWindow : Window
         t.Tick += (_, __) =>
         {
             if (_progDragging) return;   // 拖动时不回写
+            if (_practiceOpen) SyncPracticeHighlightToPlayback();   // 练习展示: 高亮跟播放位置走
             UpdateProgUi();
         };
         return t;
@@ -1028,6 +1046,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 练习界面 ←/→ 调节进度(后退/前进一步)
+        if (_practiceOpen && e.Key is System.Windows.Input.Key.Left or System.Windows.Input.Key.Right)
+        {
+            PracticeSeek(e.Key == System.Windows.Input.Key.Right ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
+
         // 物理键盘触发对应琴键(发声+动画); 焦点在输入框时放行, 忽略长按重复
         if (!e.IsRepeat && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
         {
@@ -1038,6 +1064,7 @@ public partial class MainWindow : Window
             {
                 AudioEngine.NoteOn(idx);
                 FlashKey(idx);
+                if (_practiceOpen) { _practiceHeld.Add(idx); PracticePress(idx); }
                 e.Handled = true;
                 return;
             }
@@ -1053,7 +1080,7 @@ public partial class MainWindow : Window
             var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
             int vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);
             int idx = Array.IndexOf(_player.Vk, (ushort)vk);
-            if (idx >= 0) { AudioEngine.NoteOff(idx); e.Handled = true; return; }
+            if (idx >= 0) { AudioEngine.NoteOff(idx); _practiceHeld.Remove(idx); e.Handled = true; return; }
         }
         base.OnPreviewKeyUp(e);
     }
@@ -1258,9 +1285,9 @@ public partial class MainWindow : Window
         if (item != null) { item.IsPlaying = true; _playCurrent = item; }
         else _playCurrent = null;
         StartFlash();
-        if (_previewMode)   // 试听模式: 走扬声器, 不发游戏按键
+        if (_previewMode || _practiceOpen)   // 试听模式 或 练习展示: 走扬声器, 绝不发游戏按键(不调用模拟输入)
         {
-            StatusText.Text = $"状态: 🎧 试听中 ({_speed:0.0}x)";
+            StatusText.Text = $"状态: 🎧 {(_practiceOpen ? "练习展示" : "试听")}中 ({_speed:0.0}x)";
             _player.Play(_notes, _speed, () => Dispatcher.BeginInvoke(new Action(OnPlayDone)), AudioEngine.Play);
         }
         else
@@ -1288,6 +1315,12 @@ public partial class MainWindow : Window
         SetPlayGlyph(false);
         ClearPlayingMarks();
         SetIdlePlayer();
+        if (_practiceOpen && _practiceSteps.Count > 0)   // 练习: 展示停止后仍保留练习进度条+高亮
+        {
+            ProgBar.Visibility = Visibility.Visible;
+            RenderPracticeHints();
+            UpdateProgUi();
+        }
     }
 
     // 底部大播放键: ▶/⏹ 切换 + 缩放弹跳动画
@@ -1312,8 +1345,8 @@ public partial class MainWindow : Window
         if (StatusText.Text.Contains("演奏中")) StatusText.Text = "状态: 演奏完成";
         else if (wasPreview && StatusText.Text.Contains("试听")) StatusText.Text = "状态: 试听结束";
 
-        // 自动续播: 按播放方式决定下一首, 间隔 2 秒 (试听按钮 wasPreview 除外; 试听模式仍续播)
-        if (!wasPreview && finished != null && _playlist.Count > 0)
+        // 自动续播: 按播放方式决定下一首, 间隔 2 秒 (试听按钮 wasPreview 除外; 试听模式仍续播; 练习展示不续播)
+        if (!wasPreview && !_practiceOpen && finished != null && _playlist.Count > 0)
         {
             var next = NextByMode(finished);
             if (next != null)
@@ -1695,6 +1728,13 @@ public partial class MainWindow : Window
     readonly ScaleTransform _pCardScale = new(1, 1);
     readonly TranslateTransform _pCardTrans = new(0, 0);
 
+    // 跟弹: 当前曲按时间戳分组成"步"(和弦=同时刻多键); 高亮当前步(主题色)+下一步(淡色), 按对整步才前进
+    List<int[]> _practiceSteps = new();
+    List<double> _practiceStepMs = new();   // 每步时间戳(供进度条按整曲位置显示)
+    double _practiceTotalMs;
+    int _practiceStep;
+    readonly HashSet<int> _practiceHeld = new();   // 当前物理按住的键(判和弦是否同时按住)
+
     void Practice_Click(object sender, RoutedEventArgs e) => ShowPractice(true);
     void PracticeBack_Click(object sender, RoutedEventArgs e) => ShowPractice(false);
 
@@ -1704,7 +1744,8 @@ public partial class MainWindow : Window
     {
         if (_practiceOpen == on) return;
         _practiceOpen = on;
-        if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); }
+        if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); StartPractice(); }
+        else if (!_playing && !_previewing) { ProgBar.Visibility = Visibility.Collapsed; UpdateProgUi(); }   // 退出练习: 无播放则收起底部进度条
 
         var small = RectIn(PianoGrid);
         var bigGrid = RectIn(PracticePianoGrid);   // 用大键盘本体(不含卡片内边距)算缩放, 末帧键盘本体才与小键盘等大
@@ -1771,6 +1812,108 @@ public partial class MainWindow : Window
     // 只给终点(To), 省略 From → 从属性当前值(含正在播放的动画值)接着演, 天然可打断; 帧率交回显示器 vsync(更稳)
     static void Anim(IAnimatable t, DependencyProperty p, double to, TimeSpan dur, IEasingFunction ease)
         => t.BeginAnimation(p, new DoubleAnimation(to, dur) { EasingFunction = ease });
+
+    // ---- 跟弹交互: 高亮下一个/下下个要按的键, 按对整步才前进 ----
+    void StartPractice()
+    {
+        _practiceStep = 0; _practiceHeld.Clear();
+        if (Selected is { } song) TryLoad(song);   // 选中曲优先载入; 否则沿用当前已载入/在播放那首
+        if (_notes.Count > 0) BuildPracticeSteps();
+        else { _practiceSteps = new(); _practiceStepMs = new(); _practiceTotalMs = 0; }
+        RenderPracticeHints();
+        ProgBar.Visibility = _practiceSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;   // 复用底部进度条
+        UpdateProgUi();
+    }
+
+    // 按时间戳把 _notes 分组成步: 同一时刻(±20ms)的多个键=一个和弦步; 同时记每步时间戳与全曲时长
+    void BuildPracticeSteps()
+    {
+        _practiceSteps = new(); _practiceStepMs = new();
+        var ns = _notes.Where(n => n.key is >= 0 and < 15).OrderBy(n => n.ms).ToList();
+        _practiceTotalMs = ns.Count > 0 ? ns[^1].ms : 0;
+        int i = 0;
+        while (i < ns.Count)
+        {
+            double t0 = ns[i].ms;
+            var keys = new List<int>();
+            while (i < ns.Count && ns[i].ms - t0 <= 20)
+            {
+                if (!keys.Contains(ns[i].key)) keys.Add(ns[i].key);
+                i++;
+            }
+            _practiceSteps.Add(keys.ToArray());
+            _practiceStepMs.Add(t0);
+        }
+    }
+
+    // 当前步→主题色, 下一步→主题色淡化版, 其余→常态
+    void RenderPracticeHints()
+    {
+        var accent = ((SolidColorBrush)Application.Current.Resources["Accent"]).Color;
+        var faded = Lerp(Theme.KeySquare, accent, 0.45);
+        var cur = _practiceStep < _practiceSteps.Count ? _practiceSteps[_practiceStep] : Array.Empty<int>();
+        var nxt = _practiceStep + 1 < _practiceSteps.Count ? _practiceSteps[_practiceStep + 1] : Array.Empty<int>();
+        for (int i = 0; i < 15; i++)
+        {
+            var c = Theme.KeySquare;
+            if (Array.IndexOf(nxt, i) >= 0) c = faded;
+            if (Array.IndexOf(cur, i) >= 0) c = accent;   // 当前步优先于下一步
+            var b = (SolidColorBrush)_pBtn[i].Background;
+            b.BeginAnimation(SolidColorBrush.ColorProperty, null);   // 清掉残留的按键闪动, 直接落基色
+            b.Color = c;
+        }
+    }
+
+    // 跟弹时按下某键: 当前步全部键"同时按住"才算过(和弦不能一个个先后按); 按错不动
+    void PracticePress(int key)
+    {
+        if (_practiceStep >= _practiceSteps.Count) return;
+        var cur = _practiceSteps[_practiceStep];
+        if (Array.IndexOf(cur, key) < 0) return;          // 不是当前步该按的键
+        foreach (var k in cur) if (!_practiceHeld.Contains(k)) return;   // 整步的键要此刻都在按住
+        _practiceStep++;
+        if (_practiceStep >= _practiceSteps.Count)         // 全曲弹完 → 回到开头
+        {
+            _practiceStep = 0;
+            ShowToast(Lang.S("t.practiceDone"));
+        }
+        RenderPracticeHints();
+        UpdateProgUi();   // 底部进度条跟着步进
+    }
+
+    void PracticeSeek(int deltaSteps)
+    {
+        if (_practiceSteps.Count == 0) return;
+        _practiceStep = Math.Clamp(_practiceStep + deltaSteps, 0, _practiceSteps.Count - 1);
+        _practiceHeld.Clear();
+        RenderPracticeHints();
+        UpdateProgUi();
+    }
+
+    // 按整曲时间找最近的步(供进度条按时间比例跳转, 使落点与高亮对齐)
+    int NearestStep(double ms)
+    {
+        int best = 0; double bd = double.MaxValue;
+        for (int i = 0; i < _practiceStepMs.Count; i++)
+        {
+            double d = Math.Abs(_practiceStepMs[i] - ms);
+            if (d < bd) { bd = d; best = i; }
+        }
+        return best;
+    }
+
+    // 练习展示中: 高亮跟着播放位置走(当前正在响的那一步)
+    void SyncPracticeHighlightToPlayback()
+    {
+        if (_practiceSteps.Count == 0) return;
+        double pos = _player.PositionMs;
+        int s = 0;
+        while (s + 1 < _practiceStepMs.Count && _practiceStepMs[s + 1] <= pos) s++;
+        if (s != _practiceStep) { _practiceStep = s; RenderPracticeHints(); }
+    }
+
+    static Color Lerp(Color a, Color b, double t) => Color.FromRgb(
+        (byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
 
     // 轻提示: 底部居中淡入淡出 (StatusText 已随旧面板隐藏, 用它做用户反馈)
     DispatcherTimer? _toastTimer;
