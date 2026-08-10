@@ -121,6 +121,7 @@ public static class Lang
         // ── 右栏 ──
         ["right.create"] = new[] { "创建", "創建", "Create", "新規" },
         ["right.practice"]=new[] { "练习", "練習", "Practice", "練習" },
+        ["practice.back"] = new[] { "‹ 返回", "‹ 返回", "‹ Back", "‹ 戻る" },
 
         // ── 底部播放器 ──
         ["player.nosong"]= new[] { "未有正在播放的歌曲", "沒有正在播放的歌曲", "Nothing playing", "再生中の曲なし" },
