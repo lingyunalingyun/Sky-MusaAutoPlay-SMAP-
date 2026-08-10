@@ -17,7 +17,9 @@ An auto-play (auto-piano) helper for **Sky: Children of the Light** — reimagin
 SMAP plays Sky's instruments for you: import or create a sheet, and it performs it in-game.
 The latest release is a **full C# WPF rewrite** with a **music-player UI** — an account + collections sidebar, a cover-art library in the middle, the virtual keys on the right, and a full-width player bar at the bottom, plus a play queue, an inline cloud library, and a settings view.
 
-> 🎵 **v2.0**: game instrument timbres filled out to **37** (incl. 27 original Sky sounds), plus per-instrument transpose, hold-to-sustain, and random-speed playback.
+> 🎹 **v2.1 "YunYun"**: adds a **Practice (follow-along) mode** — a full-screen keyboard highlighting the next / next-next keys, chords must be held together, with demo playback; the bottom-right toggle is now "Perform mode" (preview by default); on exit it remembers the last played song + position and your instrument / cave / speed settings; fixes the window not centering on launch.
+
+> 🎵 v2.0: game instrument timbres filled out to **37** (incl. 27 original Sky sounds), per-instrument transpose, hold-to-sustain, and random-speed playback.
 
 > ⚠️ SMAP must **run as administrator** (required to simulate global key presses; it auto-requests UAC on launch).
 
@@ -33,10 +35,18 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 
 ### Playback
 - **Auto-play** — simulates global key presses along the sheet timeline (uses scan codes + a short hold, so per-frame game polling doesn't miss notes).
-- **Player bar** — cover / title·artist·transcriber / favorite star / shuffle·prev·play·next·queue / preview mode / cave reverb / instrument / pitch (transpose) / speed (incl. random).
+- **Perform / Preview toggle** — the bottom-right switch: **preview by default** (speaker, won't touch the game), lit = **perform** (sends game keys).
+- **Player bar** — cover / title·artist·transcriber / favorite star / shuffle·prev·play·next·queue / perform mode / cave reverb / instrument / pitch (transpose) / speed (incl. random).
 - **Progress bar** — a full-width thin line pinned to the container's top edge; on hover it thickens and shows a white handle + a time pill that track the play position in real time. Drag to seek, even while paused.
 - **Play queue** — a slide-out queue on the right; double-click a library song to enqueue and play; three modes (repeat-all / repeat-one / shuffle); auto-advance to the next track after a **2-second gap**.
+- **Remembers last state** — on exit it keeps the last played song + position; reopen to see it and resume from there; instrument / cave / perform mode / speed are remembered too.
 - **Live speed control** + **global hotkeys**: F1 start/stop · F2 pause · F3 slower · F4 faster · F5 back 5s · F6 forward 10s.
+
+### Practice (follow-along)
+- **Full-screen keyboard** — click "Practice" on the main screen; the keys zoom out of their original spot into a full-screen keyboard (springy, interruptible animation); `Esc` returns.
+- **Follow-along hints** — highlights the next key (accent) + the next-next key (dimmed); you only advance by pressing the current key, and **chords must be held together**.
+- **Demo playback** — press play to demo the whole song: sound via speaker + highlights leading the sound by one step; it **never sends game keys** in practice.
+- **Seeking** — reuses the bottom progress bar; `←` / `→` or drag / click to move; prev / next switches the practice song via the play queue.
 
 ### Library & Collections
 - **Local library** — rich rows with cover art (title / artist / transcriber / duration); hover reveals add-to-queue / favorite / more; right-click menu with 7 actions (add to queue / add to collection / remove from library / open file location / edit / song info / upload).
