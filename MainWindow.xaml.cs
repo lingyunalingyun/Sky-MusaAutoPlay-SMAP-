@@ -62,6 +62,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         _player.Vk = KeyConfig.Load();
         BuildPianoGrid();
+        BuildPracticeGrid();
+        PracticeCard.RenderTransform = new TransformGroup { Children = { _pCardScale, _pCardTrans } };
         BuildSettingsGrid();
         System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
         SortCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
@@ -137,6 +139,7 @@ public partial class MainWindow : Window
         // ── 右栏 / 播放器 ──
         CreateRightBtn.Content = Lang.S("right.create");
         PracticeBtn.Content = Lang.S("right.practice");
+        PracticeBackBtn.Content = Lang.S("practice.back");
         SearchBox.ToolTip = Lang.S("search.hint");
         PrevBtn.ToolTip = Lang.S("tip.prev");
         NextBtn.ToolTip = Lang.S("tip.next");
@@ -679,6 +682,11 @@ public partial class MainWindow : Window
     readonly ScaleTransform[] _keyScale = new ScaleTransform[15];   // 触发时缩小回弹
     readonly TextBlock[] _setKeyLabels = new TextBlock[15];         // 设置界面里的绑定网格
     readonly Button[] _setKeyBtns = new Button[15];
+    readonly Button[] _pBtn = new Button[15];                       // 练习界面: 全屏大键盘, 与主键盘同步亮起翻转
+    readonly TextBlock[] _pLabels = new TextBlock[15];
+    readonly RotateTransform[] _pRot = new RotateTransform[15];
+    readonly Border[] _pDiamond = new Border[15];
+    readonly ScaleTransform[] _pScale = new ScaleTransform[15];
 
     // 设置界面的绑定网格(与主网格共享 KeyConfig; 编辑态点键→按物理键重绑)
     void BuildSettingsGrid()
@@ -760,6 +768,53 @@ public partial class MainWindow : Window
         }
     }
 
+    // 练习界面的全屏大键盘: 与主键盘同一造型(菱形轮廓+字母), 尺寸放大; 点击试听, 播放时同步亮起翻转
+    void BuildPracticeGrid()
+    {
+        for (int i = 0; i < 15; i++)
+        {
+            var lbl = new TextBlock
+            {
+                Foreground = new SolidColorBrush(Theme.KeyLetter),
+                FontSize = 30, FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+            };
+            var rot = new RotateTransform(45);
+            var diamond = new Border
+            {
+                Width = 58, Height = 58,
+                BorderBrush = new SolidColorBrush(Theme.KeyDiamond),
+                BorderThickness = new Thickness(3),
+                CornerRadius = new CornerRadius(3),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = rot
+            };
+            _pRot[i] = rot;
+            _pDiamond[i] = diamond;
+            var cell = new Grid();
+            cell.Children.Add(diamond);
+            cell.Children.Add(lbl);
+
+            var scale = new ScaleTransform(1, 1);
+            var btn = new Button
+            {
+                Width = 128, Height = 128, Margin = new Thickness(9), Content = cell, Tag = i,
+                Background = new SolidColorBrush(Theme.KeySquare),
+                BorderBrush = new SolidColorBrush(Theme.KeyBorder), BorderThickness = new Thickness(1),
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = scale
+            };
+            _pScale[i] = scale;
+            int idx = i;
+            btn.PreviewMouseLeftButtonDown += (_, ev) => { AudioEngine.NoteOn(idx); FlashKey(idx); ev.Handled = true; };
+            btn.PreviewMouseLeftButtonUp += (_, __) => AudioEngine.NoteOff(idx);
+            btn.MouseLeave += (_, __) => AudioEngine.NoteOff(idx);
+            _pBtn[i] = btn;
+            _pLabels[i] = lbl;
+            PracticePianoGrid.Children.Add(btn);
+        }
+    }
+
     void RefreshKey(int i)
     {
         var lab = KeyConfig.Label(_player.Vk[i]);
@@ -770,6 +825,11 @@ public partial class MainWindow : Window
         {
             _setKeyLabels[i].Text = lab;
             ((SolidColorBrush)_setKeyBtns[i].Background).Color = col;
+        }
+        if (_pBtn[i] != null)
+        {
+            _pLabels[i].Text = lab;
+            ((SolidColorBrush)_pBtn[i].Background).Color = Theme.KeySquare;   // 练习键无重映射等待态
         }
     }
 
@@ -785,6 +845,12 @@ public partial class MainWindow : Window
             {
                 _setKeyLabels[i].Foreground = new SolidColorBrush(Theme.KeyLetter);
                 _setKeyBtns[i].BorderBrush = new SolidColorBrush(Theme.KeyBorder);
+            }
+            if (_pBtn[i] != null)
+            {
+                _pLabels[i].Foreground = new SolidColorBrush(Theme.KeyLetter);
+                _pDiamond[i].BorderBrush = new SolidColorBrush(Theme.KeyDiamond);
+                _pBtn[i].BorderBrush = new SolidColorBrush(Theme.KeyBorder);
             }
             RefreshKey(i);
         }
@@ -877,41 +943,47 @@ public partial class MainWindow : Window
         ProgThumb.Margin = new Thickness(0);
     }
 
-    // 触发: 背景色变深回弹(颜色动画自动回基准) + 翻转 + 缩放
+    // 触发: 背景色变深回弹(颜色动画自动回基准) + 翻转 + 缩放; 主键盘与练习大键盘同步
     void FlashKey(int k)
     {
         if (k < 0 || k >= 15 || k == _remapIndex) return;
         var brush = (SolidColorBrush)_pianoButtons[k].Background;
         brush.BeginAnimation(SolidColorBrush.ColorProperty,
             new ColorAnimation(Theme.KeyLit, Theme.KeySquare, TimeSpan.FromMilliseconds(240)) { FillBehavior = FillBehavior.Stop });
-        SpinKey(k);
+        SpinKey(_keyRot[k], _keyDiamond[k], _keyScale[k]);
+        if (_pBtn[k] != null)
+        {
+            ((SolidColorBrush)_pBtn[k].Background).BeginAnimation(SolidColorBrush.ColorProperty,
+                new ColorAnimation(Theme.KeyLit, Theme.KeySquare, TimeSpan.FromMilliseconds(240)) { FillBehavior = FillBehavior.Stop });
+            SpinKey(_pRot[k], _pDiamond[k], _pScale[k]);
+        }
     }
 
-    // 光遇式翻转: 旋转一整圈(45°→405°) + 圆角морф(菱形3→圆15→菱形3), 中途成圆再变回
-    void SpinKey(int k)
+    // 光遇式翻转: 旋转一整圈(45°→405°) + 圆角морф(菱形→满圆→菱形, 峰值=半宽故任意尺寸都成正圆), 中途成圆再变回
+    void SpinKey(RotateTransform rot, Border diamond, ScaleTransform scale)
     {
-        if (k < 0 || k >= 15) return;
         const int ms = 360;
         var spin = new DoubleAnimation(45, 405, TimeSpan.FromMilliseconds(ms))
         {
             FillBehavior = FillBehavior.Stop,
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
-        _keyRot[k].BeginAnimation(RotateTransform.AngleProperty, spin);
+        rot.BeginAnimation(RotateTransform.AngleProperty, spin);
 
+        double peak = diamond.Width / 2;   // 满圆半径 = 半宽
         var morph = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop, Duration = TimeSpan.FromMilliseconds(ms) };
         morph.KeyFrames.Add(new EasingDoubleKeyFrame(3, KeyTime.FromPercent(0)));
-        morph.KeyFrames.Add(new EasingDoubleKeyFrame(15, KeyTime.FromPercent(0.5), new SineEase { EasingMode = EasingMode.EaseInOut }));
+        morph.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromPercent(0.5), new SineEase { EasingMode = EasingMode.EaseInOut }));
         morph.KeyFrames.Add(new EasingDoubleKeyFrame(3, KeyTime.FromPercent(1), new SineEase { EasingMode = EasingMode.EaseInOut }));
-        _keyDiamond[k].BeginAnimation(KeyFx.RoundProperty, morph);
+        diamond.BeginAnimation(KeyFx.RoundProperty, morph);
 
         // 按下缩小回弹(线性): 1 → 0.85 → 1
-        var scale = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop, Duration = TimeSpan.FromMilliseconds(ms) };
-        scale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(0)));
-        scale.KeyFrames.Add(new LinearDoubleKeyFrame(0.85, KeyTime.FromPercent(0.35)));
-        scale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(1)));
-        _keyScale[k].BeginAnimation(ScaleTransform.ScaleXProperty, scale);
-        _keyScale[k].BeginAnimation(ScaleTransform.ScaleYProperty, scale);
+        var sc = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop, Duration = TimeSpan.FromMilliseconds(ms) };
+        sc.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(0)));
+        sc.KeyFrames.Add(new LinearDoubleKeyFrame(0.85, KeyTime.FromPercent(0.35)));
+        sc.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(1)));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, sc);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, sc);
     }
 
     void BeginRemap(int idx)
@@ -1606,13 +1678,86 @@ public partial class MainWindow : Window
         ShowToast(err == null ? Lang.S("t.logok") : Lang.S("t.logfail") + err);
     }
 
-    // 练习: 跟弹(走扬声器 + 点亮虚拟琴键, 不发游戏键, 不倒计时); 再点停止
-    void Practice_Click(object sender, RoutedEventArgs e)
+    // 练习: 进入全屏大键盘界面(跟弹展示后续再接入); 返回退出
+    // 转场: ①背景快速盖住(先隐藏主界面) ②练习卡片从右侧小键盘的位置/尺寸带过冲非线性放大展开
+    //       动画只给终点不锁起点 → 从当前值续演, 中途点返回/再进可平滑打断反向
+    bool _practiceOpen, _pInit;
+    int _pAnimToken;
+    readonly ScaleTransform _pCardScale = new(1, 1);
+    readonly TranslateTransform _pCardTrans = new(0, 0);
+
+    void Practice_Click(object sender, RoutedEventArgs e) => ShowPractice(true);
+    void PracticeBack_Click(object sender, RoutedEventArgs e) => ShowPractice(false);
+
+    Rect RectIn(FrameworkElement el) => el.TransformToVisual(RootScale).TransformBounds(new Rect(el.RenderSize));
+
+    void ShowPractice(bool on)
     {
-        if (_playing || _previewing) { StopPlaying(); return; }
-        if (!_previewMode) { _previewMode = true; PreviewIcon.Foreground = Brushes.MediumTurquoise; }
-        PlayCurrentOrFirst();
-        ShowToast(Lang.S("t.practice"));
+        if (_practiceOpen == on) return;
+        _practiceOpen = on;
+        if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); }
+
+        var small = RectIn(PianoGrid);
+        var card = RectIn(PracticeCard);
+        double s = card.Width > 0 ? small.Width / card.Width : 0.5;                 // 起点=缩到小键盘等宽
+        double dx = (small.Left + small.Width / 2) - (card.Left + card.Width / 2);  // 起点=中心对齐小键盘
+        double dy = (small.Top + small.Height / 2) - (card.Top + card.Height / 2);
+
+        // 首次: 无动画在持有, 直接把卡片落到"小键盘"起点(之后每次开/关都从当前值续演)
+        if (on && !_pInit)
+        {
+            _pCardScale.ScaleX = _pCardScale.ScaleY = s;
+            _pCardTrans.X = dx; _pCardTrans.Y = dy;
+            PracticeBg.Opacity = 0; PracticeBackBtn.Opacity = 0;
+            _pInit = true;
+        }
+
+        var dur = TimeSpan.FromMilliseconds(on ? 420 : 340);
+        IEasingFunction ease = on
+            ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 }    // 展开: 明显过冲弹一下
+            : new QuinticEase { EasingMode = EasingMode.EaseOut };                  // 收回: 前期猛缩, 尾段渐停
+
+        Anim(_pCardScale, ScaleTransform.ScaleXProperty, on ? 1 : s, dur, ease);
+        Anim(_pCardScale, ScaleTransform.ScaleYProperty, on ? 1 : s, dur, ease);
+        Anim(_pCardTrans, TranslateTransform.XProperty, on ? 0 : dx, dur, ease);
+        Anim(_pCardTrans, TranslateTransform.YProperty, on ? 0 : dy, dur, ease);
+        Anim(PracticeBackBtn, UIElement.OpacityProperty, on ? 1 : 0, dur, ease);
+
+        // 转场期间把整卡片缓存为位图: 缩放走显卡合成, 不用每帧重绘15个键 → 不卡; 仅最新一次动画结束时清缓存(交互态保持清晰)
+        int tok = ++_pAnimToken;
+        PracticeCard.CacheMode = new BitmapCache { SnapsToDevicePixels = true };
+
+        // 背景始终"晚于卡片露脸", 保证主界面只在键盘≈小键盘大小时才可见:
+        AnimationTimeline bg;
+        if (on)
+        {
+            bg = new DoubleAnimation(1, TimeSpan.FromMilliseconds(150)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };   // 展开: 最先快速盖住主界面
+        }
+        else
+        {
+            // 收回: 前 60% 一直全遮(等键盘缩回), 尾段才快速散开露出主界面
+            var kf = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(340) };
+            kf.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0)));
+            kf.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0.6)));
+            kf.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(1), new CubicEase { EasingMode = EasingMode.EaseIn }));
+            bg = kf;
+        }
+        Timeline.SetDesiredFrameRate(bg, 120);
+        bg.Completed += (_, __) =>
+        {
+            if (tok != _pAnimToken) return;              // 已被后续动画取代 → 交给后者收尾, 别抢着清缓存/收面板
+            PracticeCard.CacheMode = null;
+            if (!_practiceOpen) PracticePanel.Visibility = Visibility.Collapsed;
+        };
+        PracticeBg.BeginAnimation(UIElement.OpacityProperty, bg);
+    }
+
+    // 只给终点(To), 省略 From → 从属性当前值(含正在播放的动画值)接着演, 天然可打断; 锁 120fps
+    static void Anim(IAnimatable t, DependencyProperty p, double to, TimeSpan dur, IEasingFunction ease)
+    {
+        var a = new DoubleAnimation(to, dur) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(a, 120);
+        t.BeginAnimation(p, a);
     }
 
     // 轻提示: 底部居中淡入淡出 (StatusText 已随旧面板隐藏, 用它做用户反馈)

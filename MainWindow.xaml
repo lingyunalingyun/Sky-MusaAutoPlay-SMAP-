@@ -779,7 +779,7 @@
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="#D08A18" Foreground="White" FontWeight="Bold" Click="Create_Click"/>
-                            <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="#3A3A3A" Foreground="#888888" FontWeight="Bold" IsEnabled="False" Click="Practice_Click" ToolTip="功能开发中"/>
+                            <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="#2F6FD0" Foreground="White" FontWeight="Bold" Click="Practice_Click"/>
                         </Grid>
 
                         <!-- 旧按钮: 迁移至 设置/底部栏, 隐藏保留供现有逻辑引用 -->
@@ -849,6 +849,20 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
+            </Grid>
+
+            <!-- 练习界面: 全屏大键盘 (覆盖主体三栏, 保留底部播放条); 卡片从主界面小键盘位置放大展开 -->
+            <Grid x:Name="PracticePanel" Grid.Row="1" Panel.ZIndex="8" Visibility="Collapsed" Margin="4,12,4,4">
+                <!-- 背景层: 单独淡入淡出, 好让卡片保持实心飞入 -->
+                <Border x:Name="PracticeBg" Background="{DynamicResource WindowBg}"/>
+                <Button x:Name="PracticeBackBtn" Content="‹ 返回" Style="{StaticResource NeutralBtn}"
+                        HorizontalAlignment="Left" VerticalAlignment="Top" Padding="18,8" Margin="8,4,0,0"
+                        Click="PracticeBack_Click"/>
+                <Border x:Name="PracticeCard" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
+                        CornerRadius="18" Padding="40,32" RenderTransformOrigin="0.5,0.5">
+                    <UniformGrid x:Name="PracticePianoGrid" Rows="3" Columns="5"/>
+                </Border>
             </Grid>
 
             <!-- 底部播放器栏 (beta) -->
