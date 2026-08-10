@@ -1019,6 +1019,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 练习界面按 Esc 快速返回主界面
+        if (_practiceOpen && e.Key == System.Windows.Input.Key.Escape)
+        {
+            ShowPractice(false);
+            e.Handled = true;
+            return;
+        }
+
         // 物理键盘触发对应琴键(发声+动画); 焦点在输入框时放行, 忽略长按重复
         if (!e.IsRepeat && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
         {
