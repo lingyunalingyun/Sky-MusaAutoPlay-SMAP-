@@ -543,8 +543,11 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1">
-                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" ClipToBounds="True">
+                        <Grid>
+                            <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image Source="{Binding Cover}" Stretch="UniformToFill"/>
+                        </Grid>
                     </Border>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">

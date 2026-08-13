@@ -31,6 +31,24 @@ public class SongInfo : System.ComponentModel.INotifyPropertyChanged
     bool _isPlaying;
     public bool IsPlaying { get => _isPlaying; set { _isPlaying = value; OnChanged(nameof(IsPlaying)); } }
 
+    // 内嵌封面(懒加载, 只在列表项进入可见时后台读一次, 无则保持 ♪ 占位)
+    System.Windows.Media.Imaging.BitmapImage? _cover;
+    bool _coverTried;
+    public System.Windows.Media.Imaging.BitmapImage? Cover { get => _cover; private set { _cover = value; OnChanged(nameof(Cover)); } }
+    public void EnsureCover()
+    {
+        if (_coverTried) return;
+        _coverTried = true;
+        var f = File;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var raw = CoverUtil.ReadEmbedded(f);
+            try { System.IO.File.AppendAllText(@"C:\Users\lingy\AppData\Local\Temp\claude\C--Users-lingy\12574530-ee7e-4e07-9e11-6c1181f5c3f8\scratchpad\smap_dbg.log", $"ENSURE {System.IO.Path.GetFileName(f)} rawLen={(raw?.Length ?? -1)}\r\n"); } catch { }
+            var img = CoverUtil.FromBytes(raw);   // 后台读+解码(冻结位图可跨线程)
+            if (img != null) System.Windows.Application.Current?.Dispatcher.Invoke(() => Cover = img);
+        });
+    }
+
     public override string ToString() => (Fav ? "⭐ " : "") + Name;   // ListView 显示: 收藏前缀 + 曲名
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     void OnChanged(string p) => PropertyChanged?.Invoke(this, new(p));
