@@ -1314,9 +1314,11 @@ public partial class MainWindow : Window
     {
         var doc = SongLibrary.LoadDocument(song);
         _notes = doc.Notes.Select(n => (n.Key, n.Beat * doc.MsPerBeat)).ToList();
+        _curMsPerBeat = doc.MsPerBeat > 1 ? doc.MsPerBeat : 500;   // 供读谱按拍建网格(含空拍)
         if (_notes.Count == 0) { StatusText.Text = "状态: 该曲谱无音符"; return false; }
         return true;
     }
+    double _curMsPerBeat = 500;
 
     bool TryLoadSelected()
     {
@@ -2059,32 +2061,63 @@ public partial class MainWindow : Window
         if (song != null) TryLoad(song);
         if (_notes.Count > 0) BuildPracticeSteps();
         else { _practiceSteps = new(); _practiceStepMs = new(); _practiceTotalMs = 0; }
+        _practiceStep = NextNoteStep(0);            // 光标落到第一个有音符的格(跳过开头休止)
         RenderPracticeHints();
         if (song != null && _practiceSteps.Count > 0) UpdateNowPlaying(song);   // 底部条显示练习曲信息 + 进度条
         else ProgBar.Visibility = Visibility.Collapsed;
         UpdateProgUi();
     }
 
-    // 按时间戳把 _notes 分组成步: 同一时刻(±20ms)的多个键=一个和弦步; 同时记每步时间戳与全曲时长
+    // 把 _notes 铺成"按拍网格": 每格一个细分单位(空拍也占一格), 有音符填键否则空; 忠实反映节奏含休止
     void BuildPracticeSteps()
     {
         _practiceSteps = new(); _practiceStepMs = new();
         var ns = _notes.Where(n => n.key is >= 0 and < 15).OrderBy(n => n.ms).ToList();
         _practiceTotalMs = ns.Count > 0 ? ns[^1].ms : 0;
+        if (ns.Count == 0) return;
+        double mpb = _curMsPerBeat > 1 ? _curMsPerBeat : 500;
+
+        // ① 同刻音符(±20ms)合成一格(拍位 + 键)
+        var cells = new List<(double beat, List<int> keys)>();
         int i = 0;
         while (i < ns.Count)
         {
             double t0 = ns[i].ms;
             var keys = new List<int>();
-            while (i < ns.Count && ns[i].ms - t0 <= 20)
-            {
-                if (!keys.Contains(ns[i].key)) keys.Add(ns[i].key);
-                i++;
-            }
-            _practiceSteps.Add(keys.ToArray());
-            _practiceStepMs.Add(t0);
+            while (i < ns.Count && ns[i].ms - t0 <= 20) { if (!keys.Contains(ns[i].key)) keys.Add(ns[i].key); i++; }
+            cells.Add((t0 / mpb, keys));
+        }
+
+        // ② 检测细分: 让所有音符拍位近似落在 k/subdiv 的最小可行细分(1拍/2/三连/16分/6/8)
+        int subdiv = 4;
+        foreach (var sd in new[] { 1, 2, 3, 4, 6, 8 })
+        {
+            bool ok = true;
+            foreach (var (beat, _) in cells) { double r = beat * sd; if (Math.Abs(r - Math.Round(r)) > 0.18) { ok = false; break; } }
+            if (ok) { subdiv = sd; break; }
+        }
+        double unitMs = mpb / subdiv;
+
+        // ③ 时间网格: 首音符为 slot0, 每格一单位; 空格=休止(空键数组)
+        double beat0 = cells[0].beat;
+        int maxSlot = Math.Clamp((int)Math.Round((cells[^1].beat - beat0) * subdiv), 0, 20000);
+        var slot = new List<int>?[maxSlot + 1];
+        foreach (var (beat, keys) in cells)
+        {
+            int s = Math.Clamp((int)Math.Round((beat - beat0) * subdiv), 0, maxSlot);
+            var list = slot[s] ??= new();
+            foreach (var k in keys) if (!list.Contains(k)) list.Add(k);
+        }
+        for (int s = 0; s <= maxSlot; s++)
+        {
+            _practiceSteps.Add(slot[s]?.ToArray() ?? Array.Empty<int>());
+            _practiceStepMs.Add(cells[0].beat * mpb + s * unitMs);
         }
     }
+
+    // 下一个/上一个"有音符"的格(跳过休止); 越界返回 Count / -1 交调用方处理
+    int NextNoteStep(int from) { for (int i = Math.Max(0, from); i < _practiceSteps.Count; i++) if (_practiceSteps[i].Length > 0) return i; return _practiceSteps.Count; }
+    int PrevNoteStep(int from) { for (int i = Math.Min(from, _practiceSteps.Count - 1); i >= 0; i--) if (_practiceSteps[i].Length > 0) return i; return 0; }
 
     // 当前步→主题色, 下一步→主题色淡化版, 其余→常态
     void RenderPracticeHints()
@@ -2092,7 +2125,8 @@ public partial class MainWindow : Window
         var accent = ((SolidColorBrush)Application.Current.Resources["Accent"]).Color;
         var faded = Lerp(Theme.KeySquare, accent, 0.45);
         var cur = _practiceStep < _practiceSteps.Count ? _practiceSteps[_practiceStep] : Array.Empty<int>();
-        var nxt = _practiceStep + 1 < _practiceSteps.Count ? _practiceSteps[_practiceStep + 1] : Array.Empty<int>();
+        int nStep = NextNoteStep(_practiceStep + 1);
+        var nxt = nStep < _practiceSteps.Count ? _practiceSteps[nStep] : Array.Empty<int>();   // 下一个有音符的格(跳过休止)
         for (int i = 0; i < 15; i++)
         {
             var c = Theme.KeySquare;
@@ -2112,10 +2146,10 @@ public partial class MainWindow : Window
         var cur = _practiceSteps[_practiceStep];
         if (Array.IndexOf(cur, key) < 0) return;          // 不是当前步该按的键
         foreach (var k in cur) if (!_practiceHeld.Contains(k)) return;   // 整步的键要此刻都在按住
-        _practiceStep++;
-        if (_practiceStep >= _practiceSteps.Count)         // 全曲弹完 → 回到开头
+        _practiceStep = NextNoteStep(_practiceStep + 1);   // 跳过休止格, 落到下一个有音符的格
+        if (_practiceStep >= _practiceSteps.Count)         // 全曲弹完 → 回到开头(首个音符格)
         {
-            _practiceStep = 0;
+            _practiceStep = NextNoteStep(0);
             ShowToast(Lang.S("t.practiceDone"));
         }
         RenderPracticeHints();
@@ -2125,7 +2159,9 @@ public partial class MainWindow : Window
     void PracticeSeek(int deltaSteps)
     {
         if (_practiceSteps.Count == 0) return;
-        _practiceStep = Math.Clamp(_practiceStep + deltaSteps, 0, _practiceSteps.Count - 1);
+        // ←→ 按"有音符的格"前后跳(跳过休止, 保证能跟弹)
+        _practiceStep = deltaSteps > 0 ? NextNoteStep(_practiceStep + 1) : PrevNoteStep(_practiceStep - 1);
+        _practiceStep = Math.Clamp(_practiceStep, 0, _practiceSteps.Count - 1);
         _practiceHeld.Clear();
         RenderPracticeHints();
         UpdateProgUi();
@@ -2266,10 +2302,12 @@ public partial class MainWindow : Window
     void SheetPrev_Click(object sender, RoutedEventArgs e) { if (_sheetPage > 0) { _sheetPage--; RenderSheet(); } }
     void SheetNext_Click(object sender, RoutedEventArgs e) { if ((_sheetPage + 1) * SheetPerPage < _practiceSteps.Count) { _sheetPage++; RenderSheet(); } }
 
-    // 点某格 → 跳到那一步
+    // 点某格 → 跳到那一步(空拍格吸附到其后第一个有音符的格, 保证能跟弹)
     void SheetCellClick(int slot)
     {
         int step = _sheetPage * SheetPerPage + slot;
+        if (step >= _practiceSteps.Count) return;
+        if (_practiceSteps[step].Length == 0) step = NextNoteStep(step);
         if (step >= _practiceSteps.Count) return;
         _practiceStep = step; _practiceHeld.Clear();
         RenderPracticeHints();   // 内部会回刷谱面高亮
@@ -2305,11 +2343,11 @@ public partial class MainWindow : Window
                 foreach (var d in _sheetDots[c]) SetDot(d, dotOff, false);
                 continue;
             }
-            cell.Opacity = 1;
+            var keys = _practiceSteps[step];
             bool isCur = step == _practiceStep;
+            cell.Opacity = keys.Length == 0 && !isCur ? 0.5 : 1;   // 空拍(休止)格更淡, 让有音符的格更突出; 当前格保持清晰
             cell.BorderBrush = isCur ? new SolidColorBrush(accent) : cellBd;
             cell.BorderThickness = new Thickness(isCur ? 2 : 1);
-            var keys = _practiceSteps[step];
             var onColor = isCur ? curColor : accent;    // 当前步高亮(主题相关) / 其余步=Accent 蓝
             for (int k = 0; k < 15; k++)
             {

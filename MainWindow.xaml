@@ -461,6 +461,7 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <EventSetter Event="Loaded" Handler="SongItemLoaded"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem"><ContentPresenter/></ControlTemplate>

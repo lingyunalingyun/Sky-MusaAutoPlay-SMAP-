@@ -42,9 +42,7 @@ public class SongInfo : System.ComponentModel.INotifyPropertyChanged
         var f = File;
         System.Threading.Tasks.Task.Run(() =>
         {
-            var raw = CoverUtil.ReadEmbedded(f);
-            try { System.IO.File.AppendAllText(@"C:\Users\lingy\AppData\Local\Temp\claude\C--Users-lingy\12574530-ee7e-4e07-9e11-6c1181f5c3f8\scratchpad\smap_dbg.log", $"ENSURE {System.IO.Path.GetFileName(f)} rawLen={(raw?.Length ?? -1)}\r\n"); } catch { }
-            var img = CoverUtil.FromBytes(raw);   // 后台读+解码(冻结位图可跨线程)
+            var img = CoverUtil.FromBytes(CoverUtil.ReadEmbedded(f));   // 后台读+解码(冻结位图可跨线程)
             if (img != null) System.Windows.Application.Current?.Dispatcher.Invoke(() => Cover = img);
         });
     }
