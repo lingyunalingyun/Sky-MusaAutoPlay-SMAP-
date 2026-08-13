@@ -58,7 +58,9 @@ static class CoverUtil
     {
         try
         {
-            var o = FirstObject(JsonNode.Parse(File.ReadAllText(txtPath)));
+            var text = File.ReadAllText(txtPath);
+            if (!text.Contains("\"cover\"")) return null;   // 无封面字段: 免去大 JSON 全解析(库批量扫描更快)
+            var o = FirstObject(JsonNode.Parse(text));
             var s = o?["cover"]?.GetValue<string>();
             if (string.IsNullOrEmpty(s)) return null;
             if (s.StartsWith("data:")) { int i = s.IndexOf(','); if (i >= 0) s = s[(i + 1)..]; }

@@ -605,7 +605,14 @@ public partial class MainWindow : Window
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hover.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Theme.ListHover)));
         style.Triggers.Add(hover);
+        style.Setters.Add(new EventSetter(FrameworkElement.LoadedEvent, new RoutedEventHandler(SongItemLoaded)));   // 项进入可见 → 懒加载封面
         SongList.ItemContainerStyle = style;
+    }
+
+    // 列表项容器实例化(仅可见项, 虚拟化) → 后台读该曲内嵌封面
+    void SongItemLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is ListViewItem { Content: SongInfo s }) s.EnsureCover();
     }
 
     async System.Threading.Tasks.Task CheckUpdateAsync()
