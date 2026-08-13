@@ -72,6 +72,8 @@ public partial class MainWindow : Window
         BuildPianoGrid();
         BuildPracticeGrid();
         PracticeCard.RenderTransform = new TransformGroup { Children = { _pCardScale, _pCardTrans } };
+        SizeChanged += (_, __) => { if (_practiceOpen && !_transitioning) ApplyReadLayout(animate: false); };   // 练习键盘布局随窗口尺寸即时重算(读谱/普通都要, 小窗口自动缩不遮控件; 转场中不插手免清动画)
+        StateChanged += (_, __) => MaxBtn.Content = WindowState == WindowState.Maximized ? "❐" : "☐";   // 最大化钮字形随状态切换
         _rootShadow = WindowRoot.Effect;   // 练习转场期间临时摘除, 免整窗子树每帧重渲染进阴影 Effect 拖垮帧率
         BuildSettingsGrid();
         System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
@@ -214,7 +216,9 @@ public partial class MainWindow : Window
     // ---- 自定义标题栏窗口控制 ----
     void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove();
+        if (e.ButtonState != System.Windows.Input.MouseButtonState.Pressed) return;
+        if (e.ClickCount == 2) { ToggleMax(); return; }               // 双击标题栏: 最大化/还原
+        if (WindowState == WindowState.Normal) DragMove();            // 最大化态不拖动
     }
     void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     void Close_Click(object sender, RoutedEventArgs e) => Close();
@@ -1915,6 +1919,15 @@ public partial class MainWindow : Window
     SongInfo? _practiceSong;                 // 当前练习的曲目(底部条显示 + 展示停止后恢复)
     readonly HashSet<int> _practiceHeld = new();   // 当前物理按住的键(判和弦是否同时按住)
 
+    // 读谱模式: 大键盘上方谱面缩略图墙, 每格=一步和弦的迷你 5×3 键位图, 左右翻页, 当前步高亮
+    const int SheetPerPage = 32;             // 8 列 × 4 行
+    bool _readMode;
+    bool _metroOn;                           // 打点模式(节拍器)开关
+    int _metroBpm = 120;                     // 节拍器速度 BPM
+    int _sheetPage;
+    readonly Border[] _sheetCells = new Border[SheetPerPage];       // 每格外框(当前步描边高亮)
+    readonly Border[][] _sheetDots = new Border[SheetPerPage][];    // 每格内 15 键位
+
     void Practice_Click(object sender, RoutedEventArgs e) => ShowPractice(true);
     void PracticeBack_Click(object sender, RoutedEventArgs e) => ShowPractice(false);
 
@@ -1924,15 +1937,17 @@ public partial class MainWindow : Window
     {
         if (_practiceOpen == on) return;
         _practiceOpen = on;
-        if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); StartPractice(); }
-        else if (!_playing && !_previewing) { SetIdlePlayer(); UpdateProgUi(); }   // 退出练习: 无播放则底部条回空闲
+        if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); StartPractice(); if (_metroOn) AudioEngine.MetronomeOn(_metroBpm); }
+        else { AudioEngine.MetronomeOff(); if (!_playing && !_previewing) { SetIdlePlayer(); UpdateProgUi(); } }   // 退出练习: 停节拍器; 无播放则底部条回空闲
 
         var small = RectIn(PianoGrid);
         var bigGrid = RectIn(PracticePianoGrid);   // 用大键盘本体(不含卡片内边距)算缩放, 末帧键盘本体才与小键盘等大
         var card = RectIn(PracticeCard);
-        double s = bigGrid.Width > 0 ? small.Width / bigGrid.Width : 0.5;           // 缩到大键盘本体=小键盘等宽
-        double dx = (small.Left + small.Width / 2) - (card.Left + card.Width / 2);  // 卡片中心对齐小键盘中心(键盘居中于卡片, 故键盘中心同步对齐)
-        double dy = (small.Top + small.Height / 2) - (card.Top + card.Height / 2);
+        // s/dx/dy 取绝对目标(除去当前缩放/位移), 这样即便从读谱静止态(已缩小下移)收回也能精确落到小键盘
+        double trueBigW = _pCardScale.ScaleX > 1e-3 ? bigGrid.Width / _pCardScale.ScaleX : bigGrid.Width;
+        double s = trueBigW > 0 ? small.Width / trueBigW : 0.5;                     // 缩到大键盘本体=小键盘等宽
+        double dx = (small.Left + small.Width / 2) - (card.Left + card.Width / 2) + _pCardTrans.X;  // 卡片中心对齐小键盘中心
+        double dy = (small.Top + small.Height / 2) - (card.Top + card.Height / 2) + _pCardTrans.Y;
 
         // 首次: 无动画在持有, 直接把卡片落到"小键盘"起点(之后每次开/关都从当前值续演)
         if (on && !_pInit)
@@ -1943,11 +1958,15 @@ public partial class MainWindow : Window
             _pInit = true;
         }
 
-        _pSmallScale = s;   // 供背景跟随钩子换算展开进度(0=小键盘, 1=全屏)
+        // 展开静止态: 读谱模式缩小并落到墙下方(ReadRest), 否则居中全尺寸
+        var (restScale, restTransY) = ReadRest();
+        _pSmallScale = s;                          // 供背景跟随钩子换算展开进度(0=小键盘, 1=展开态)
+        _pOpenScale = _readMode ? restScale : 1;   // 展开态缩放: 读谱下键盘只到 restScale, 背景进度按它算才能遮满
 
         // 打断适配: 按当前值到目标的剩余距离缩放时长, 反转一个快完成的动画只花很短时间, 不再整段橡皮筋
-        double cur = _pCardScale.ScaleX, target = on ? 1 : s, full = 1 - s;
-        double frac = full > 1e-6 ? Math.Clamp(Math.Abs(target - cur) / full, 0.15, 1) : 1;
+        double cur = _pCardScale.ScaleX, target = on ? restScale : s;
+        double full = Math.Max(Math.Abs(target - s), 1e-3);
+        double frac = Math.Clamp(Math.Abs(target - cur) / full, 0.15, 1);
         var dur = TimeSpan.FromMilliseconds((on ? 420 : 340) * frac);
         IEasingFunction ease = on
             ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 }    // 展开: 明显过冲弹一下
@@ -1960,31 +1979,49 @@ public partial class MainWindow : Window
         // 背景每帧跟着卡片当前缩放走 → 无论怎么中途打断都自洽(卡片≈小键盘才露主界面, 接近全屏就全遮)
         if (!_pRenderingHooked) { CompositionTarget.Rendering += PracticeBgFollow; _pRenderingHooked = true; }
 
-        // 缩放动画兼作"收尾驱动": 被后续动画替换时旧动画 Completed 不触发, 只有最新一次会跑 → 天然处理打断
+        // 收尾用"代次令牌"守护: 每次转场 +1, 只有最新一次的 Completed/兜底定时器能收尾 → 反复开关不串味
+        // 关键: 不只靠动画 Completed(被替换/被 resize 清空动画时不触发), 再挂一个 dur+120ms 的兜底定时器, 保证面板一定收起, 不会卡在半开态
+        int gen = ++_transitionGen;
+        _transitioning = true;
         var sx = new DoubleAnimation(target, dur) { EasingFunction = ease };
-        sx.Completed += (_, __) =>
-        {
-            CompositionTarget.Rendering -= PracticeBgFollow;
-            _pRenderingHooked = false;
-            PracticeBgFollow(null, EventArgs.Empty);       // 锁到终值
-            PracticeCard.CacheMode = null;                 // 交互态清晰 + 下次转场重建
-            WindowRoot.Effect = _rootShadow;               // 装回窗口阴影
-            if (!_practiceOpen) PracticePanel.Visibility = Visibility.Collapsed;
-        };
+        sx.Completed += (_, __) => FinishTransition(gen);
         _pCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
 
         Anim(_pCardScale, ScaleTransform.ScaleYProperty, target, dur, ease);
         Anim(_pCardTrans, TranslateTransform.XProperty, on ? 0 : dx, dur, ease);
-        Anim(_pCardTrans, TranslateTransform.YProperty, on ? 0 : dy, dur, ease);
+        Anim(_pCardTrans, TranslateTransform.YProperty, on ? restTransY : dy, dur, ease);
         Anim(PracticeBackBtn, UIElement.OpacityProperty, on ? 1 : 0, dur, ease);
+        Anim(ReadModeBar, UIElement.OpacityProperty, on ? 1 : 0, dur, ease);
+
+        _pFinishTimer?.Stop();
+        _pFinishTimer = new DispatcherTimer { Interval = dur + TimeSpan.FromMilliseconds(120) };
+        _pFinishTimer.Tick += (_, __) => { _pFinishTimer!.Stop(); FinishTransition(gen); };
+        _pFinishTimer.Start();
+    }
+
+    int _transitionGen;
+    bool _transitioning;
+    DispatcherTimer? _pFinishTimer;
+
+    // 转场收尾(幂等 + 代次守护): 撤渲染钩子/锁背景到终值/清缓存/装回阴影; 关闭态则真正收起面板
+    void FinishTransition(int gen)
+    {
+        if (gen != _transitionGen) return;   // 已被更晚的转场取代 → 由那次负责收尾
+        if (_pRenderingHooked) { CompositionTarget.Rendering -= PracticeBgFollow; _pRenderingHooked = false; }
+        PracticeBgFollow(null, EventArgs.Empty);
+        PracticeCard.CacheMode = null;
+        WindowRoot.Effect = _rootShadow;
+        _transitioning = false;
+        if (!_practiceOpen) PracticePanel.Visibility = Visibility.Collapsed;
     }
 
     double _pSmallScale = 0.5;
+    double _pOpenScale = 1;   // 键盘"完全展开"时的缩放: 普通=1, 读谱=restScale(明显<1) → 背景进度必须按这个算, 否则读谱下背景永远遮不满
     bool _pRenderingHooked;
-    // 背景不透明度 = 卡片展开进度的函数(走到 35% 即全遮); 纯当前缩放的函数, 故任意打断都一致
+    // 背景不透明度 = 卡片展开进度(小键盘→展开态)的函数(走到 35% 即全遮); 纯当前缩放的函数, 故任意打断都一致
     void PracticeBgFollow(object? sender, EventArgs e)
     {
-        double span = 1 - _pSmallScale;
+        double span = _pOpenScale - _pSmallScale;
         double t = span > 1e-6 ? (_pCardScale.ScaleX - _pSmallScale) / span : 1;
         PracticeBg.Opacity = Math.Clamp(t / 0.35, 0, 1);
     }
@@ -2045,6 +2082,7 @@ public partial class MainWindow : Window
             b.BeginAnimation(SolidColorBrush.ColorProperty, null);   // 清掉残留的按键闪动, 直接落基色
             b.Color = c;
         }
+        if (_readMode) SyncSheetToStep();   // 读谱: 当前步高亮/自动翻页跟着走
     }
 
     // 跟弹时按下某键: 当前步全部键"同时按住"才算过(和弦不能一个个先后按); 按错不动
@@ -2094,6 +2132,183 @@ public partial class MainWindow : Window
         while (s < _practiceStepMs.Count && _practiceStepMs[s] <= pos) s++;   // 第一个时间戳 > 当前位置 = 下一个要按的
         if (s >= _practiceSteps.Count) s = _practiceSteps.Count - 1;
         if (s != _practiceStep) { _practiceStep = s; RenderPracticeHints(); }
+    }
+
+    // ---- 读谱模式: 谱面缩略图墙 ----
+    // 预建 32 个空格(每格 5×3 键位), 翻页/推进只改颜色与尺寸, 不重建控件
+    void BuildSheetWall()
+    {
+        var cellBg = (Brush)Application.Current.Resources["PanelBg"];
+        var cellBd = (Brush)Application.Current.Resources["ListBorder"];
+        for (int c = 0; c < SheetPerPage; c++)
+        {
+            var mini = new System.Windows.Controls.Primitives.UniformGrid { Rows = 3, Columns = 5 };
+            var dots = new Border[15];
+            for (int k = 0; k < 15; k++)
+            {
+                var dot = new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                    Background = new SolidColorBrush()
+                };
+                dots[k] = dot;
+                mini.Children.Add(dot);
+            }
+            _sheetDots[c] = dots;
+            var cell = new Border
+            {
+                Width = 128, Height = 86, Margin = new Thickness(5), CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8), Background = cellBg, BorderBrush = cellBd, BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand, Child = mini
+            };
+            int slot = c;
+            cell.MouseLeftButtonUp += (_, __) => SheetCellClick(slot);
+            _sheetCells[c] = cell;
+            SheetWall.Children.Add(cell);
+        }
+    }
+
+    void ReadMode_Toggle(object sender, RoutedEventArgs e)
+    {
+        _readMode = ReadModeSwitch.IsChecked == true;
+        if (_readMode && _sheetCells[0] == null) BuildSheetWall();
+        SheetArea.Visibility = _readMode ? Visibility.Visible : Visibility.Collapsed;
+        if (_readMode) { _sheetPage = _practiceStep / SheetPerPage; RenderSheet(); }
+        ApplyReadLayout(animate: true);
+    }
+
+    // 大键盘静止态: 读谱→缩小并落到墙与底部之间(上下留白); 关→回居中全尺寸
+    // animate: 开关时平滑过渡; resize 时即时跟手(停动画直接落值)
+    void ApplyReadLayout(bool animate)
+    {
+        PracticePanel.UpdateLayout();   // 保证 ReadModeBar/PracticeCard 尺寸已算好, ReadRest 才拿得到正确宽高
+        var (scale, transY) = ReadRest();
+        _pOpenScale = scale;                       // 展开态缩放基准更新, 供之后关练习的背景淡出换算
+        if (_practiceOpen) PracticeBg.Opacity = 1;   // 读谱切换/resize 只是键盘缩放, 面板始终展开 → 背景保持全遮(不淡出)
+        if (animate)
+        {
+            var dur = TimeSpan.FromMilliseconds(300);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            Anim(_pCardScale, ScaleTransform.ScaleXProperty, scale, dur, ease);
+            Anim(_pCardScale, ScaleTransform.ScaleYProperty, scale, dur, ease);
+            Anim(_pCardTrans, TranslateTransform.YProperty, transY, dur, ease);
+        }
+        else
+        {
+            _pCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            _pCardScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            _pCardTrans.BeginAnimation(TranslateTransform.YProperty, null);
+            _pCardScale.ScaleX = _pCardScale.ScaleY = scale;
+            _pCardTrans.Y = transY;
+        }
+    }
+
+    // 读谱模式下大键盘的静止缩放/纵移: 谱面墙限高 42% 面板后, 键盘缩到墙下方可用高, 居中于 [墙底+gap, 面板底-gap]
+    (double scale, double transY) ReadRest()
+    {
+        double panelH = PracticePanel.ActualHeight, panelW = PracticePanel.ActualWidth;
+        double cardH = PracticeCard.ActualHeight, cardW = PracticeCard.ActualWidth;
+        if (panelH <= 0 || cardH <= 0 || cardW <= 0) return (1, 0);
+        const double gap = 40;
+
+        double topReserve = 0;   // 顶部留给谱面墙(读谱)的高度; 非读谱为 0
+        if (_readMode)
+        {
+            SheetWallBox.MaxHeight = panelH * 0.42;   // 谱面墙最多占面板 42% 高, Viewbox 随之等比缩
+            SheetArea.UpdateLayout();
+            topReserve = SheetArea.Margin.Top + SheetArea.ActualHeight;   // 读谱区(墙与翻页列取高者)底边
+        }
+        // 键盘居中于顶部保留区下方; 缩放同时受"下方可用高"和"两侧要避开右上控件栏"约束, 小窗口自动缩小不遮挡
+        double availH = panelH - topReserve - 2 * gap;
+        double ctrlW = ReadModeBar.ActualWidth + 24;                 // 右上控件栏总宽 + 右边距
+        double availW = panelW - 2 * (ctrlW + gap);                  // 键盘居中 → 两侧对称留出控件宽
+        double s = Math.Clamp(Math.Min(Math.Min(availH / cardH, availW / cardW), 1), 0.4, 1);
+        return (s, topReserve / 2);   // 纵移把卡片中心从面板正中移到保留区下方区域正中(read-off topReserve=0 → 居中)
+    }
+
+    // 打点模式(节拍器): 独立咔哒声, 只在练习界面内响
+    void Metro_Toggle(object sender, RoutedEventArgs e)
+    {
+        _metroOn = MetroSwitch.IsChecked == true;
+        if (_metroOn && _practiceOpen) AudioEngine.MetronomeOn(_metroBpm);
+        else AudioEngine.MetronomeOff();
+    }
+
+    // 点击胶囊输入 BPM(30–300)
+    void MetroBpm_Click(object sender, RoutedEventArgs e)
+    {
+        var s = InputBox.Ask(this, "打点速度", "节拍器速度", "每分钟拍数 (BPM, 30–300):");
+        if (s == null || !int.TryParse(s.Trim(), out int bpm)) return;
+        _metroBpm = Math.Clamp(bpm, 30, 300);
+        MetroBpmPill.Content = _metroBpm.ToString();
+        AudioEngine.MetronomeBpm(_metroBpm);   // 在响则立即变速
+    }
+
+    void SheetPrev_Click(object sender, RoutedEventArgs e) { if (_sheetPage > 0) { _sheetPage--; RenderSheet(); } }
+    void SheetNext_Click(object sender, RoutedEventArgs e) { if ((_sheetPage + 1) * SheetPerPage < _practiceSteps.Count) { _sheetPage++; RenderSheet(); } }
+
+    // 点某格 → 跳到那一步
+    void SheetCellClick(int slot)
+    {
+        int step = _sheetPage * SheetPerPage + slot;
+        if (step >= _practiceSteps.Count) return;
+        _practiceStep = step; _practiceHeld.Clear();
+        RenderPracticeHints();   // 内部会回刷谱面高亮
+        UpdateProgUi();
+    }
+
+    // 当前步变了 → 若不在本页则翻到它所在页, 再刷新
+    void SyncSheetToStep()
+    {
+        int page = _practiceSteps.Count == 0 ? 0 : Math.Min(_practiceStep, _practiceSteps.Count - 1) / SheetPerPage;
+        if (page != _sheetPage) _sheetPage = page;
+        RenderSheet();
+    }
+
+    // 按当前页填色: 该步键=蓝方块(当前步→白+外框描边), 其余=灰点; 越界格空置
+    void RenderSheet()
+    {
+        if (!_readMode || _sheetCells[0] == null) return;
+        var accent = ((SolidColorBrush)Application.Current.Resources["Accent"]).Color;
+        var cellBd = (Brush)Application.Current.Resources["ListBorder"];
+        var dotOff = Color.FromArgb(110, 128, 128, 128);
+        int start = _sheetPage * SheetPerPage;
+        int total = _practiceSteps.Count;
+        for (int c = 0; c < SheetPerPage; c++)
+        {
+            int step = start + c;
+            var cell = _sheetCells[c];
+            if (step >= total)                               // 越界: 空框
+            {
+                cell.Opacity = 0.35; cell.BorderBrush = cellBd; cell.BorderThickness = new Thickness(1);
+                foreach (var d in _sheetDots[c]) SetDot(d, dotOff, false);
+                continue;
+            }
+            cell.Opacity = 1;
+            bool isCur = step == _practiceStep;
+            cell.BorderBrush = isCur ? new SolidColorBrush(accent) : cellBd;
+            cell.BorderThickness = new Thickness(isCur ? 2 : 1);
+            var keys = _practiceSteps[step];
+            var onColor = isCur ? Colors.White : accent;    // 当前步高亮=白
+            for (int k = 0; k < 15; k++)
+            {
+                bool on = Array.IndexOf(keys, k) >= 0;
+                SetDot(_sheetDots[c][k], on ? onColor : dotOff, on);
+            }
+        }
+        int totalPages = Math.Max(1, (total + SheetPerPage - 1) / SheetPerPage);
+        SheetRangeL.Text = (_sheetPage + 1).ToString();   // 当前页
+        SheetRangeR.Text = totalPages.ToString();          // 总页数
+        SheetPrevBtn.IsEnabled = _sheetPage > 0;
+        SheetNextBtn.IsEnabled = (_sheetPage + 1) * SheetPerPage < total;
+    }
+
+    // 键位: 按下=大圆角方块, 未按=小圆点
+    static void SetDot(Border d, Color color, bool on)
+    {
+        d.Width = d.Height = on ? 16 : 5;
+        d.CornerRadius = new CornerRadius(on ? 4 : 2.5);
+        ((SolidColorBrush)d.Background).Color = color;
     }
 
     static Color Lerp(Color a, Color b, double t) => Color.FromRgb(
@@ -2400,6 +2615,8 @@ public partial class MainWindow : Window
     IntPtr WndProc(IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled)
     {
         const int WM_HOTKEY = 0x0312;
+        const int WM_GETMINMAXINFO = 0x0024;
+        if (msg == WM_GETMINMAXINFO) { FixMaxSize(h, lp); return IntPtr.Zero; }   // 无边框窗口最大化: 限到工作区(不遮任务栏/不溢出)
         if (msg == WM_HOTKEY)
         {
             switch (wp.ToInt32())
@@ -2414,6 +2631,38 @@ public partial class MainWindow : Window
         }
         return IntPtr.Zero;
     }
+
+    // 无边框窗口最大化会盖住任务栏并溢出屏幕: 把最大尺寸/位置钳到所在显示器的工作区
+    static void FixMaxSize(IntPtr hwnd, IntPtr lParam)
+    {
+        var mmi = System.Runtime.InteropServices.Marshal.PtrToStructure<MINMAXINFO>(lParam);
+        const int MONITOR_DEFAULTTONEAREST = 2;
+        IntPtr mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (mon != IntPtr.Zero)
+        {
+            var mi = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+            if (GetMonitorInfo(mon, ref mi))
+            {
+                mmi.ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
+                mmi.ptMaxPosition.y = mi.rcWork.top - mi.rcMonitor.top;
+                mmi.ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
+                mmi.ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
+                System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
+            }
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+#pragma warning disable CS0649   // 互操作结构: 部分字段仅为布局占位, 不直接赋值
+    struct POINTL { public int x, y; }
+    struct RECTL { public int left, top, right, bottom; }
+    struct MINMAXINFO { public POINTL ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize; }
+    struct MONITORINFO { public int cbSize; public RECTL rcMonitor, rcWork; public int dwFlags; }
+#pragma warning restore CS0649
+
+    void Max_Click(object sender, RoutedEventArgs e) => ToggleMax();
+    void ToggleMax() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     // 调速: 改滑块值(ValueChanged 会同步 SpeedLabel + SkyPlayer.SpeedFactor)
     void AdjustSpeed(double delta)
