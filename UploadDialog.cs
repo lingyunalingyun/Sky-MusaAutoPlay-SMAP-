@@ -38,6 +38,40 @@ public class UploadDialog : ChromeWindow
         var descBox = Field("");
         var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0x6b, 0x6b)), FontSize = 11, TextWrapping = TextWrapping.Wrap, MinHeight = 18 };
 
+        // ── 封面（可选，软件自动压缩）──
+        byte[]? cover = CoverUtil.ReadEmbedded(filePath);   // 默认读曲谱已内嵌的封面
+        var coverImg = new Image { Stretch = Stretch.UniformToFill };
+        var coverHint = new TextBlock { Text = "无封面", Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var coverGrid = new Grid();
+        coverGrid.Children.Add(coverHint);
+        coverGrid.Children.Add(coverImg);
+        var coverBorder = new Border
+        {
+            Width = 84, Height = 84, CornerRadius = new CornerRadius(8), ClipToBounds = true,
+            Background = new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            Child = coverGrid
+        };
+        if (cover != null) { coverImg.Source = CoverUtil.FromBytes(cover); coverHint.Visibility = Visibility.Collapsed; }
+        var pickBtn = new Button { Content = "选择封面", Height = 30, Padding = new Thickness(14, 0, 14, 0), Cursor = System.Windows.Input.Cursors.Hand, Background = new SolidColorBrush(Color.FromRgb(0x4a, 0x4a, 0x4a)), Foreground = Brushes.White, BorderThickness = new Thickness(0) };
+        var clearBtn = new Button { Content = "移除", Height = 30, Padding = new Thickness(14, 0, 14, 0), Margin = new Thickness(8, 0, 0, 0), Cursor = System.Windows.Input.Cursors.Hand, Background = new SolidColorBrush(Color.FromRgb(0x4a, 0x4a, 0x4a)), Foreground = Brushes.White, BorderThickness = new Thickness(0) };
+        pickBtn.Click += (_, __) =>
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Title = "选择封面", Filter = "图片 (*.jpg;*.png;*.webp;*.bmp)|*.jpg;*.jpeg;*.png;*.webp;*.bmp" };
+            if (dlg.ShowDialog() != true) return;
+            var bytes = CoverUtil.CompressToJpeg(dlg.FileName);
+            if (bytes == null) { error.Text = "封面读取失败"; return; }
+            cover = bytes; coverImg.Source = CoverUtil.FromBytes(bytes); coverHint.Visibility = Visibility.Collapsed; error.Text = "";
+        };
+        clearBtn.Click += (_, __) => { cover = null; coverImg.Source = null; coverHint.Visibility = Visibility.Visible; };
+        var coverBtns = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        var coverBtnRow = new StackPanel { Orientation = Orientation.Horizontal };
+        coverBtnRow.Children.Add(pickBtn); coverBtnRow.Children.Add(clearBtn);
+        coverBtns.Children.Add(coverBtnRow);
+        coverBtns.Children.Add(new TextBlock { Text = "自动压缩，最长边 512", Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), FontSize = 10, Margin = new Thickness(0, 6, 0, 0) });
+        var coverRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        coverRow.Children.Add(coverBorder); coverRow.Children.Add(coverBtns);
+
         var upload = new Button { Content = "☁ 上传", Height = 38, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Background = new SolidColorBrush(Color.FromRgb(0x4d, 0x8e, 0xff)), IsDefault = true, Margin = new Thickness(0, 6, 0, 0) };
 
         async void DoUpload()
@@ -46,8 +80,12 @@ public class UploadDialog : ChromeWindow
             if (title.Length == 0) { error.Text = "曲名不能为空"; return; }
             upload.IsEnabled = false; upload.Content = "上传中..."; error.Text = "";
             var err = await CloudApi.UploadAsync(filePath, title, artistBox.Text.Trim(), transBox.Text.Trim(),
-                diff.SelectedIndex + 1, tagsBox.Text.Trim(), descBox.Text.Trim());
-            if (err == null) DialogResult = true;
+                diff.SelectedIndex + 1, tagsBox.Text.Trim(), descBox.Text.Trim(), cover);
+            if (err == null)
+            {
+                if (cover != null) CoverUtil.WriteEmbedded(filePath, cover);   // 本地曲谱内嵌封面, 播放时也显示
+                DialogResult = true;
+            }
             else { error.Text = err; upload.IsEnabled = true; upload.Content = "☁ 上传"; }
         }
         upload.Click += (_, __) => DoUpload();
@@ -55,6 +93,8 @@ public class UploadDialog : ChromeWindow
         var panel = new StackPanel { Margin = new Thickness(28, 8, 28, 20) };
         panel.Children.Add(header);
         panel.Children.Add(sub);
+        panel.Children.Add(new TextBlock { Text = "封面（可选）", Foreground = new SolidColorBrush(Color.FromRgb(0xaa, 0xaa, 0xaa)), FontSize = 11, Margin = new Thickness(0, 0, 0, 3) });
+        panel.Children.Add(coverRow);
         panel.Children.Add(Labeled("曲名", titleBox));
         panel.Children.Add(Labeled("原唱 / 作曲", artistBox));
         panel.Children.Add(Labeled("创谱人", transBox));

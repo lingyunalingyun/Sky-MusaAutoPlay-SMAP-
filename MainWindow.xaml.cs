@@ -153,6 +153,9 @@ public partial class MainWindow : Window
         CreateRightBtn.Content = Lang.S("right.create");
         PracticeBtn.Content = Lang.S("right.practice");
         PracticeBackBtn.Content = Lang.S("practice.back");
+        ReadModeLbl.Text = Lang.S("practice.readmode");
+        MetroModeLbl.Text = Lang.S("practice.metro");
+        MetroSpeedLbl.Text = Lang.S("practice.metrospeed");
         SearchBox.ToolTip = Lang.S("search.hint");
         PrevBtn.ToolTip = Lang.S("tip.prev");
         NextBtn.ToolTip = Lang.S("tip.next");
@@ -314,6 +317,15 @@ public partial class MainWindow : Window
         ProgTipText.Text = $"00:00 / {TotalText.Text}";
         ProgFill.Width = 0;
         ProgBar.Visibility = Visibility.Visible;
+        SetPlayerCover(s.File);
+    }
+
+    // 播放条封面: 曲谱内嵌封面则显示, 否则回退 logo
+    void SetPlayerCover(string? file)
+    {
+        var img = file != null ? CoverUtil.FromBytes(CoverUtil.ReadEmbedded(file)) : null;
+        if (img != null) { PlayerCover.Source = img; PlayerCover.Visibility = Visibility.Visible; PlayerCoverLogo.Visibility = Visibility.Collapsed; }
+        else { PlayerCover.Source = null; PlayerCover.Visibility = Visibility.Collapsed; PlayerCoverLogo.Visibility = Visibility.Visible; }
     }
 
     // 无曲目播放: 只显封面 + 提示, 隐藏作者/创谱者/星
@@ -328,6 +340,7 @@ public partial class MainWindow : Window
         ProgTipText.Text = "00:00 / 00:00";
         ProgFill.Width = 0;
         ProgBar.Visibility = Visibility.Collapsed;
+        SetPlayerCover(null);
     }
 
     void AddToPlaylist(SongInfo s)
@@ -2138,8 +2151,6 @@ public partial class MainWindow : Window
     // 预建 32 个空格(每格 5×3 键位), 翻页/推进只改颜色与尺寸, 不重建控件
     void BuildSheetWall()
     {
-        var cellBg = (Brush)Application.Current.Resources["PanelBg"];
-        var cellBd = (Brush)Application.Current.Resources["ListBorder"];
         for (int c = 0; c < SheetPerPage; c++)
         {
             var mini = new System.Windows.Controls.Primitives.UniformGrid { Rows = 3, Columns = 5 };
@@ -2158,9 +2169,10 @@ public partial class MainWindow : Window
             var cell = new Border
             {
                 Width = 128, Height = 86, Margin = new Thickness(5), CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8), Background = cellBg, BorderBrush = cellBd, BorderThickness = new Thickness(1),
+                Padding = new Thickness(8), BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand, Child = mini
             };
+            cell.SetResourceReference(Border.BackgroundProperty, "PanelBg");   // 动态资源: 跟随主题深/浅
             int slot = c;
             cell.MouseLeftButtonUp += (_, __) => SheetCellClick(slot);
             _sheetCells[c] = cell;
@@ -2237,7 +2249,7 @@ public partial class MainWindow : Window
     // 点击胶囊输入 BPM(30–300)
     void MetroBpm_Click(object sender, RoutedEventArgs e)
     {
-        var s = InputBox.Ask(this, "打点速度", "节拍器速度", "每分钟拍数 (BPM, 30–300):");
+        var s = InputBox.Ask(this, Lang.S("metro.title"), Lang.S("practice.metro"), Lang.S("metro.prompt"));
         if (s == null || !int.TryParse(s.Trim(), out int bpm)) return;
         _metroBpm = Math.Clamp(bpm, 30, 300);
         MetroBpmPill.Content = _metroBpm.ToString();
@@ -2271,7 +2283,9 @@ public partial class MainWindow : Window
         if (!_readMode || _sheetCells[0] == null) return;
         var accent = ((SolidColorBrush)Application.Current.Resources["Accent"]).Color;
         var cellBd = (Brush)Application.Current.Resources["ListBorder"];
-        var dotOff = Color.FromArgb(110, 128, 128, 128);
+        bool dark = Theme.Dark;
+        var dotOff = dark ? Color.FromArgb(110, 128, 128, 128) : Color.FromArgb(140, 120, 120, 130);   // 未按键位: 深浅主题各取可见灰
+        var curColor = dark ? Colors.White : Color.FromRgb(0x1c, 0x1c, 0x28);                          // 当前步高亮: 深色→白, 浅色→近黑(浅底上才看得见)
         int start = _sheetPage * SheetPerPage;
         int total = _practiceSteps.Count;
         for (int c = 0; c < SheetPerPage; c++)
@@ -2289,7 +2303,7 @@ public partial class MainWindow : Window
             cell.BorderBrush = isCur ? new SolidColorBrush(accent) : cellBd;
             cell.BorderThickness = new Thickness(isCur ? 2 : 1);
             var keys = _practiceSteps[step];
-            var onColor = isCur ? Colors.White : accent;    // 当前步高亮=白
+            var onColor = isCur ? curColor : accent;    // 当前步高亮(主题相关) / 其余步=Accent 蓝
             for (int k = 0; k < 15; k++)
             {
                 bool on = Array.IndexOf(keys, k) >= 0;
