@@ -182,7 +182,10 @@ public static class CloudApi
             form.Add(new StringContent(tags), "tags");
             form.Add(new StringContent(desc), "description");
             var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(filePath));
-            form.Add(fileContent, "file", Path.GetFileName(filePath));
+            // 文件名去掉非 ASCII(中文名 multipart 编码后 PHP pathinfo 取不到扩展名 → 误判"非txt")；扩展名必须保留
+            var ext = Path.GetExtension(filePath);
+            if (string.IsNullOrEmpty(ext)) ext = ".txt";
+            form.Add(fileContent, "file", "sheet" + ext);
             if (cover is { Length: > 0 })
             {
                 var cc = new ByteArrayContent(cover);
