@@ -33,7 +33,7 @@ public class UploadDialog : ChromeWindow
         var titleBox = Field(dTitle);
         var artistBox = Field(dArtist);
         var transBox = Field(dTrans);
-        var diff = new ComboBox { Height = 30, ItemsSource = new[] { "★ 简单", "★★ 普通", "★★★ 中等", "★★★★ 困难", "★★★★★ 大师" }, SelectedIndex = 2 };
+        var diff = new ComboBox { Height = 34, ItemsSource = new[] { "★ 简单", "★★ 普通", "★★★ 中等", "★★★★ 困难", "★★★★★ 大师" }, SelectedIndex = 2, Background = B("ComboBg"), Foreground = B("TextFg"), Template = ComboTpl() };
         var tagsBox = Field("");
         var descBox = Field("");
         var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0x6b, 0x6b)), FontSize = 11, TextWrapping = TextWrapping.Wrap, MinHeight = 18 };
@@ -72,7 +72,7 @@ public class UploadDialog : ChromeWindow
         var coverRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         coverRow.Children.Add(coverBorder); coverRow.Children.Add(coverBtns);
 
-        var upload = new Button { Content = "☁ 上传", Height = 38, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Background = new SolidColorBrush(Color.FromRgb(0x4d, 0x8e, 0xff)), IsDefault = true, Margin = new Thickness(0, 6, 0, 0) };
+        var upload = new Button { Content = "☁ 上传", Height = 42, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Background = new SolidColorBrush(Color.FromRgb(0x4d, 0x8e, 0xff)), BorderThickness = new Thickness(0), IsDefault = true, Margin = new Thickness(0, 6, 0, 0), Cursor = System.Windows.Input.Cursors.Hand, Template = BtnTpl() };
 
         async void DoUpload()
         {
@@ -109,14 +109,15 @@ public class UploadDialog : ChromeWindow
 
     Button MiniBtn(string text) => new()
     {
-        Content = text, Height = 30, Padding = new Thickness(14, 0, 14, 0), Cursor = System.Windows.Input.Cursors.Hand,
-        Background = B("NeutralBtnBg"), Foreground = B("NeutralBtnFg"), BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1)
+        Content = text, Height = 34, Padding = new Thickness(14, 0, 14, 0), Cursor = System.Windows.Input.Cursors.Hand,
+        Background = B("NeutralBtnBg"), Foreground = B("NeutralBtnFg"), BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1), Template = BtnTpl()
     };
 
     TextBox Field(string val) => new()
     {
-        Text = val, Height = 30, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 13,
-        Background = B("BoxBg"), Foreground = B("TextFg"), CaretBrush = B("TextFg"), BorderBrush = B("BoxBorder")
+        Text = val, Height = 34, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 13,
+        Background = B("BoxBg"), Foreground = B("TextFg"), CaretBrush = B("TextFg"), BorderBrush = B("BoxBorder"),
+        BorderThickness = new Thickness(1), Template = ChromeWindow.TextBoxTpl()
     };
 
     StackPanel Labeled(string label, Control field)

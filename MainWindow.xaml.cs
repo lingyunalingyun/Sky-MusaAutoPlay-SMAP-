@@ -2131,10 +2131,14 @@ public partial class MainWindow : Window
         {
             var c = Theme.KeySquare;
             if (Array.IndexOf(nxt, i) >= 0) c = faded;
-            if (Array.IndexOf(cur, i) >= 0) c = accent;   // 当前步优先于下一步
+            bool isCur = Array.IndexOf(cur, i) >= 0;
+            if (isCur) c = accent;   // 当前步优先于下一步
             var b = (SolidColorBrush)_pBtn[i].Background;
             b.BeginAnimation(SolidColorBrush.ColorProperty, null);   // 清掉残留的按键闪动, 直接落基色
             b.Color = c;
+            // 当前步(Accent 蓝底): 字母+菱形转白, 否则回主题色(浅色深字在蓝底上看不清)
+            ((SolidColorBrush)_pLabels[i].Foreground).Color = isCur ? Colors.White : Theme.KeyLetter;
+            ((SolidColorBrush)_pDiamond[i].BorderBrush).Color = isCur ? Colors.White : Theme.KeyDiamond;
         }
         if (_readMode) SyncSheetToStep();   // 读谱: 当前步高亮/自动翻页跟着走
     }

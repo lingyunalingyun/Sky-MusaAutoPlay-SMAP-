@@ -81,4 +81,36 @@ public class ChromeWindow : Window
             </Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
+
+    // 圆角输入框模板(细边+8圆角), 供对话框统一风格
+    public static ControlTemplate TextBoxTpl() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        @"<ControlTemplate TargetType='TextBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+            <Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='8'>
+              <ScrollViewer x:Name='PART_ContentHost' Margin='10,0' VerticalAlignment='Center'/>
+            </Border>
+          </ControlTemplate>");
+
+    // 圆角下拉框模板(与主界面 RoundCombo 一致), 颜色走动态资源随主题
+    public static ControlTemplate ComboTpl() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        @"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+            <Grid>
+              <ToggleButton Focusable='False' ClickMode='Press' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType='ToggleButton'>
+                    <Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
+                      <Grid TextElement.Foreground='{DynamicResource TextFg}'>
+                        <ContentPresenter Margin='10,0,26,0' HorizontalAlignment='Left' VerticalAlignment='Center' Content='{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}'/>
+                        <Path Data='M0,0 L4,4 L8,0 Z' Fill='#999' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0'/>
+                      </Grid>
+                    </Border>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'>
+                <Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' Margin='0,2,0,0' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}' TextElement.Foreground='{DynamicResource TextFg}'>
+                  <ScrollViewer MaxHeight='240'><ItemsPresenter/></ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+          </ControlTemplate>");
 }

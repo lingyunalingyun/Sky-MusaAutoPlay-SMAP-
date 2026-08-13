@@ -49,8 +49,8 @@ public class InfoDialog : ChromeWindow
         var coverRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         coverRow.Children.Add(coverBorder); coverRow.Children.Add(coverBtns);
 
-        var ok = new Button { Content = "确定", Width = 80, Height = 30, IsDefault = true };
-        var cancel = new Button { Content = "取消", Width = 80, Height = 30, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
+        var ok = new Button { Content = "确定", Width = 84, Height = 34, IsDefault = true, Cursor = System.Windows.Input.Cursors.Hand, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xD0)), BorderThickness = new Thickness(0), Template = BtnTpl() };
+        var cancel = new Button { Content = "取消", Width = 84, Height = 34, IsCancel = true, Margin = new Thickness(8, 0, 0, 0), Cursor = System.Windows.Input.Cursors.Hand, Foreground = B("NeutralBtnFg"), Background = B("NeutralBtnBg"), BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1), Template = BtnTpl() };
         ok.Click += (_, __) =>
         {
             doc.Name = name.Box.Text.Trim();          // 允许留空, 保存时补 -未命名N-
@@ -76,8 +76,8 @@ public class InfoDialog : ChromeWindow
 
     Button MiniBtn(string text) => new()
     {
-        Content = text, Height = 28, Padding = new Thickness(12, 0, 12, 0), Cursor = System.Windows.Input.Cursors.Hand,
-        Background = B("NeutralBtnBg"), Foreground = B("NeutralBtnFg"), BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1)
+        Content = text, Height = 30, Padding = new Thickness(14, 0, 14, 0), Cursor = System.Windows.Input.Cursors.Hand,
+        Background = B("NeutralBtnBg"), Foreground = B("NeutralBtnFg"), BorderBrush = B("BtnBorder"), BorderThickness = new Thickness(1), Template = BtnTpl()
     };
 
     (StackPanel Row, TextBox Box) Field(string label, string val)
@@ -85,8 +85,9 @@ public class InfoDialog : ChromeWindow
         var lbl = new TextBlock { Text = label, Foreground = B("TextFg"), Margin = new Thickness(0, 0, 0, 3) };
         var box = new TextBox
         {
-            Text = val, Height = 26, VerticalContentAlignment = VerticalAlignment.Center,
-            Background = B("BoxBg"), Foreground = B("TextFg"), CaretBrush = B("TextFg"), BorderBrush = B("BoxBorder")
+            Text = val, Height = 30, VerticalContentAlignment = VerticalAlignment.Center,
+            Background = B("BoxBg"), Foreground = B("TextFg"), CaretBrush = B("TextFg"), BorderBrush = B("BoxBorder"),
+            BorderThickness = new Thickness(1), Template = ChromeWindow.TextBoxTpl()
         };
         var row = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
         row.Children.Add(lbl);
