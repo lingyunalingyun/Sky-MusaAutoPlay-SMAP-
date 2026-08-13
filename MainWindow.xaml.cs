@@ -2124,9 +2124,12 @@ public partial class MainWindow : Window
     {
         var accent = ((SolidColorBrush)Application.Current.Resources["Accent"]).Color;
         var faded = Lerp(Theme.KeySquare, accent, 0.45);
-        var cur = _practiceStep < _practiceSteps.Count ? _practiceSteps[_practiceStep] : Array.Empty<int>();
-        int nStep = NextNoteStep(_practiceStep + 1);
-        var nxt = nStep < _practiceSteps.Count ? _practiceSteps[nStep] : Array.Empty<int>();   // 下一个有音符的格(跳过休止)
+        // 键盘高亮的步: 练习展示中领先一个音符(显示"下一个要弹的", 好提前准备); 跟弹时=当前步。网格高亮仍是 _practiceStep(当前格, 不提前)
+        bool playing = _playing || _previewing;
+        int kbStep = playing ? NextNoteStep(_practiceStep + 1) : _practiceStep;
+        var cur = kbStep < _practiceSteps.Count ? _practiceSteps[kbStep] : Array.Empty<int>();
+        int nStep = NextNoteStep(kbStep + 1);
+        var nxt = nStep < _practiceSteps.Count ? _practiceSteps[nStep] : Array.Empty<int>();   // 键盘下一格(再下一个音符)
         for (int i = 0; i < 15; i++)
         {
             var c = Theme.KeySquare;
@@ -2183,14 +2186,13 @@ public partial class MainWindow : Window
         return best;
     }
 
-    // 练习展示中: 高亮=即将播放的那一步(比正在响的音快一格, 好提前准备)
+    // 练习展示中: 高亮=当前正在响的那一格(按拍网格下, 取最后一个时间戳已到的格; 空拍则停在空拍上)
     void SyncPracticeHighlightToPlayback()
     {
         if (_practiceSteps.Count == 0) return;
         double pos = _player.PositionMs;
         int s = 0;
-        while (s < _practiceStepMs.Count && _practiceStepMs[s] <= pos) s++;   // 第一个时间戳 > 当前位置 = 下一个要按的
-        if (s >= _practiceSteps.Count) s = _practiceSteps.Count - 1;
+        while (s + 1 < _practiceStepMs.Count && _practiceStepMs[s + 1] <= pos + 1e-6) s++;   // 下一格时间已到就前进 → s=当前格
         if (s != _practiceStep) { _practiceStep = s; RenderPracticeHints(); }
     }
 
@@ -2541,7 +2543,7 @@ public partial class MainWindow : Window
             UpdateFoldersHeader();
         };
         cm.Items.Add(open); cm.Items.Add(rename); cm.Items.Add(del);
-        cm.IsOpen = true;
+        OpenRowMenu(cm, e.OriginalSource);   // 走统一开菜单(设 PlacementTarget → 解析到窗口的圆角深色菜单样式)
         e.Handled = true;
     }
 

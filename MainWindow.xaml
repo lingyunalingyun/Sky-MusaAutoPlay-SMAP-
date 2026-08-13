@@ -482,8 +482,12 @@
 
                     <!-- 封面 + 播放/暂停叠层 -->
                     <Grid Grid.Column="0" Width="46" Height="46" MouseLeftButtonDown="PlaylistItemPlay_Click">
-                        <Border CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"/>
-                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" ClipToBounds="True">
+                            <Grid>
+                                <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image Source="{Binding Cover}" Stretch="UniformToFill"/>
+                            </Grid>
+                        </Border>
                         <Border x:Name="ovl" CornerRadius="6" Background="#66000000" Visibility="Collapsed">
                             <Path x:Name="ovlIcon" Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform" Width="18" Height="18"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
