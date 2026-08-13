@@ -122,6 +122,11 @@ public static class Lang
         ["right.create"] = new[] { "创建", "創建", "Create", "新規" },
         ["right.practice"]=new[] { "练习", "練習", "Practice", "練習" },
         ["practice.back"] = new[] { "‹ 返回", "‹ 返回", "‹ Back", "‹ 戻る" },
+        ["practice.readmode"]  = new[] { "读谱模式", "讀譜模式", "Sheet Mode", "譜面モード" },
+        ["practice.metro"]     = new[] { "打点模式", "打點模式", "Metronome", "メトロノーム" },
+        ["practice.metrospeed"]= new[] { "打点速度", "打點速度", "Tempo", "テンポ" },
+        ["metro.title"]        = new[] { "打点速度", "打點速度", "Metronome Tempo", "テンポ" },
+        ["metro.prompt"]       = new[] { "每分钟拍数 (BPM, 30–300):", "每分鐘拍數 (BPM, 30–300):", "Beats per minute (BPM, 30–300):", "1分間の拍数 (BPM, 30–300):" },
 
         // ── 底部播放器 ──
         ["player.nosong"]= new[] { "未有正在播放的歌曲", "沒有正在播放的歌曲", "Nothing playing", "再生中の曲なし" },

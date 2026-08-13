@@ -599,8 +599,23 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1">
-                        <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="6" Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" ClipToBounds="True">
+                        <Grid>
+                            <TextBlock Text="♪" FontSize="20" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image Stretch="UniformToFill">
+                                <Image.Style>
+                                    <Style TargetType="Image">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasCover}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Setter Property="Source" Value="{Binding CoverUrl}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Image.Style>
+                            </Image>
+                        </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">
                         <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextFg}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
@@ -916,13 +931,13 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="读谱模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
+                    <TextBlock x:Name="ReadModeLbl" Grid.Row="0" Grid.Column="0" Text="读谱模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
                     <CheckBox Grid.Row="0" Grid.Column="1" x:Name="ReadModeSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10"
                               Checked="ReadMode_Toggle" Unchecked="ReadMode_Toggle"/>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="打点模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
+                    <TextBlock x:Name="MetroModeLbl" Grid.Row="1" Grid.Column="0" Text="打点模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
                     <CheckBox Grid.Row="1" Grid.Column="1" x:Name="MetroSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10"
                               Checked="Metro_Toggle" Unchecked="Metro_Toggle"/>
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="打点速度" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock x:Name="MetroSpeedLbl" Grid.Row="2" Grid.Column="0" Text="打点速度" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <Button Grid.Row="2" Grid.Column="1" x:Name="MetroBpmPill" Content="120" MinWidth="52" Style="{StaticResource PillBtn}"
                             FontSize="15" HorizontalAlignment="Left" VerticalAlignment="Center" Click="MetroBpm_Click" ToolTip="点击输入节拍速度 (BPM)"/>
                 </Grid>
@@ -980,7 +995,10 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                                 <Border Width="52" Height="52" CornerRadius="8" Background="{DynamicResource BoxBg}"
                                         BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" ClipToBounds="True">
-                                    <Image Source="/Assets/logo.png" Stretch="Uniform" Margin="6"/>
+                                    <Grid>
+                                        <Image x:Name="PlayerCoverLogo" Source="/Assets/logo.png" Stretch="Uniform" Margin="6"/>
+                                        <Image x:Name="PlayerCover" Stretch="UniformToFill" Visibility="Collapsed"/>
+                                    </Grid>
                                 </Border>
                                 <StackPanel VerticalAlignment="Center" Margin="12,0,0,0" MaxWidth="180">
                                     <TextBlock x:Name="PlayerSongName" Text="未有正在播放的歌曲" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>

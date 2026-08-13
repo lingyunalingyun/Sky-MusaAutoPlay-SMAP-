@@ -24,8 +24,10 @@ public class CloudSheet
     public string Uploader { get; set; } = "";
     public string Description { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
+    public string CoverUrl { get; set; } = "";
     public string UploadTime { get; set; } = "";
     public bool Recommended { get; set; }
+    public bool HasCover => !string.IsNullOrEmpty(CoverUrl);
 
     public string Stars => new string('★', Math.Clamp(Difficulty, 0, 5));
     public string ArtistText => string.IsNullOrWhiteSpace(Artist) ? Lang.S("song.noartist") : Artist;
@@ -136,6 +138,7 @@ public static class CloudApi
                         Uploader = GetStr(it, "uploader"),
                         Description = GetStr(it, "description"),
                         DownloadUrl = GetStr(it, "download_url"),
+                        CoverUrl = GetStr(it, "cover_url"),
                         UploadTime = GetStr(it, "created_at")
                     });
             return new(true, null, GetInt(root, "total"), Math.Max(1, GetInt(root, "pages")), items);
@@ -164,8 +167,8 @@ public static class CloudApi
         catch (Exception ex) { onErr("下载错误: " + ex.Message); return null; }
     }
 
-    /// <summary>上传曲谱; 成功返回 null, 失败返回错误信息。</summary>
-    public static async Task<string?> UploadAsync(string filePath, string title, string artist, string trans, int difficulty, string tags, string desc)
+    /// <summary>上传曲谱; 成功返回 null, 失败返回错误信息。cover 为已压缩的 JPEG 字节(可选)。</summary>
+    public static async Task<string?> UploadAsync(string filePath, string title, string artist, string trans, int difficulty, string tags, string desc, byte[]? cover = null)
     {
         try
         {
@@ -180,6 +183,12 @@ public static class CloudApi
             form.Add(new StringContent(desc), "description");
             var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(filePath));
             form.Add(fileContent, "file", Path.GetFileName(filePath));
+            if (cover is { Length: > 0 })
+            {
+                var cc = new ByteArrayContent(cover);
+                cc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                form.Add(cc, "cover", "cover.jpg");
+            }
 
             using var resp = await Http.PostAsync(Base + "/api/sheets/upload.php", form);
             var text = await resp.Content.ReadAsStringAsync();
