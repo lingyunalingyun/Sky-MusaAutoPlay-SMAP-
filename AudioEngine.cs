@@ -155,9 +155,81 @@ sealed class LoopProvider : ISampleProvider
     }
 }
 
+// 节拍器: 永远在混音器里, 每隔 intervalFrames 帧注入一段合成"咔哒"声 → 采样精确, 零抖动, 不占定时器
+sealed class MetronomeProvider : ISampleProvider
+{
+    readonly float[] _click;              // 合成的单声道咔哒包络
+    volatile int _intervalFrames;
+    int _frameCounter;                    // 距上次咔哒的帧数
+    int _clickFrame = -1;                 // >=0: 正在播咔哒的帧游标
+    public MetronomeProvider(WaveFormat fmt) { WaveFormat = fmt; _click = MakeClick(); _frameCounter = int.MaxValue; }
+    public WaveFormat WaveFormat { get; }
+    public int Bpm { set { _intervalFrames = Math.Max(1, 44100 * 60 / Math.Clamp(value, 20, 400)); } }
+    public void Restart() { _frameCounter = _intervalFrames; _clickFrame = -1; }   // 下一帧立即打一下
+
+    public int Read(float[] buffer, int offset, int count)
+    {
+        int frames = count / 2;
+        for (int f = 0; f < frames; f++)
+        {
+            if (_frameCounter >= _intervalFrames) { _frameCounter = 0; _clickFrame = 0; }   // 触发一次咔哒
+            float s = 0f;
+            if (_clickFrame >= 0 && _clickFrame < _click.Length) s = _click[_clickFrame++];
+            else _clickFrame = -1;
+            buffer[offset + f * 2] = s;
+            buffer[offset + f * 2 + 1] = s;
+            _frameCounter++;
+        }
+        return count;   // 常驻输出(含静音), 配合 mixer ReadFully
+    }
+
+    // 合成一声清脆"咔哒": 高频正弦 + 少量噪声, 极快指数衰减(~30ms)
+    static float[] MakeClick()
+    {
+        const int sr = 44100;
+        int n = (int)(sr * 0.035);
+        var b = new float[n];
+        var rnd = new Random(1);
+        for (int i = 0; i < n; i++)
+        {
+            double t = i / (double)sr;
+            double env = Math.Exp(-t * 130);
+            double tone = Math.Sin(2 * Math.PI * 2000 * t);
+            double noise = rnd.NextDouble() * 2 - 1;
+            b[i] = (float)((tone * 0.7 + noise * 0.3) * env * 0.5);
+        }
+        return b;
+    }
+}
+
 /// <summary>光遇 15 键音频引擎: 复用 Sky Studio 提取的乐器 wav, NAudio 混音复音播放。</summary>
 public static class AudioEngine
 {
+    static MetronomeProvider? _metro;
+
+    /// <summary>开启节拍器(常驻混音器, 按 BPM 采样精确打点)。</summary>
+    public static void MetronomeOn(int bpm)
+    {
+        lock (_lock)
+        {
+            if (_out == null) Init();
+            if (_metro == null) _metro = new MetronomeProvider(_dryMixer!.WaveFormat);
+            _metro.Bpm = bpm;
+            _dryMixer!.RemoveMixerInput(_metro);   // 先移除避免重复添加
+            _metro.Restart();                      // 立即打第一下
+            _dryMixer!.AddMixerInput(_metro);      // 走干信号终混, 不经洞穴混响
+        }
+    }
+
+    /// <summary>调整节拍器速度(BPM), 不打断。</summary>
+    public static void MetronomeBpm(int bpm) { if (_metro != null) _metro.Bpm = bpm; }
+
+    /// <summary>关闭节拍器(从终混移除)。</summary>
+    public static void MetronomeOff()
+    {
+        lock (_lock) { if (_metro != null) _dryMixer?.RemoveMixerInput(_metro); }
+    }
+
     const int Keys = 15;
     static readonly string Dir = Path.Combine(AppContext.BaseDirectory, "Assets", "Instruments");
     public static readonly string[] Instruments =
@@ -167,7 +239,8 @@ public static class AudioEngine
 
     static readonly object _lock = new();
     static IWavePlayer? _out;
-    static MixingSampleProvider? _mixer;
+    static MixingSampleProvider? _mixer;      // 乐器混音(经洞穴混响)
+    static MixingSampleProvider? _dryMixer;   // 终混: 混响输出 + 干信号(节拍器走这里, 不吃混响)
     static Reverb? _reverb;
     static bool _cave;
     static readonly Dictionary<string, CachedSound?[]> _cache = new();
@@ -188,10 +261,13 @@ public static class AudioEngine
         lock (_lock)
         {
             if (_out != null) return;
-            _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(44100, 2)) { ReadFully = true };
-            _reverb = new Reverb(_mixer) { Enabled = _cave };   // 洞穴混响接在混音器后
+            var fmt = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
+            _mixer = new MixingSampleProvider(fmt) { ReadFully = true };
+            _reverb = new Reverb(_mixer) { Enabled = _cave };   // 洞穴混响接在乐器混音器后
+            _dryMixer = new MixingSampleProvider(fmt) { ReadFully = true };   // 终混: 混响后的乐器 + 干信号(节拍器不吃混响)
+            _dryMixer.AddMixerInput(_reverb);
             _out = new WaveOutEvent { DesiredLatency = 100 };
-            _out.Init(_reverb);
+            _out.Init(_dryMixer);
             _out.Play();
             Load(_instrument);
         }

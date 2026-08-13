@@ -91,6 +91,49 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BtnBorder}"/>
         </Style>
+        <!-- 拨动开关 (读谱模式): 灰轨→绿轨, 白圆滑到右 -->
+        <Style x:Key="SwitchToggle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="trk" Width="48" Height="26" CornerRadius="13" Background="#6b6b6b">
+                            <Ellipse x:Name="thumb" Width="20" Height="20" Fill="White"
+                                     HorizontalAlignment="Left" Margin="3,0,0,0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="trk" Property="Background" Value="#35C759"/>
+                                <Setter TargetName="thumb" Property="Margin" Value="25,0,0,0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 圆形翻页按钮 (读谱谱面墙左右) -->
+        <Style x:Key="RoundPageBtn" TargetType="Button">
+            <Setter Property="Width" Value="62"/>
+            <Setter Property="Height" Value="62"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource SubTextFg}"/>
+            <Setter Property="Background" Value="#33808080"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="31"
+                                BorderBrush="#40FFFFFF" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="#55808080"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="bd" Property="Opacity" Value="0.3"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- 标题栏小按钮 -->
         <Style x:Key="CaptionBtn" TargetType="Button">
             <Setter Property="Width" Value="38"/>
@@ -605,6 +648,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
                         <Button Content="—" Style="{StaticResource CaptionBtn}" Click="Min_Click"/>
+                        <Button x:Name="MaxBtn" Content="☐" FontSize="13" Style="{StaticResource CaptionBtn}" Click="Max_Click"/>
                         <Button Content="✕" Style="{StaticResource CaptionBtn}" Click="Close_Click"/>
                     </StackPanel>
                 </Grid>
@@ -857,9 +901,61 @@
             <Grid x:Name="PracticePanel" Grid.Row="1" Panel.ZIndex="8" Visibility="Collapsed" Margin="4,12,4,4">
                 <!-- 背景层: 单独淡入淡出, 好让卡片保持实心飞入 -->
                 <Border x:Name="PracticeBg" Background="{DynamicResource WindowBg}"/>
-                <Button x:Name="PracticeBackBtn" Content="‹ 返回" Style="{StaticResource NeutralBtn}"
+                <Button x:Name="PracticeBackBtn" Content="‹ 返回" Style="{StaticResource NeutralBtn}" Panel.ZIndex="10"
                         HorizontalAlignment="Left" VerticalAlignment="Top" Padding="18,8" Margin="8,4,0,0"
                         Click="PracticeBack_Click"/>
+
+                <!-- 右上控制栏: 读谱模式 / 打点模式(节拍器) / 打点速度; 两列(标签|控件)对齐 -->
+                <Grid x:Name="ReadModeBar" Panel.ZIndex="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,16,0" Opacity="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="读谱模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
+                    <CheckBox Grid.Row="0" Grid.Column="1" x:Name="ReadModeSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10"
+                              Checked="ReadMode_Toggle" Unchecked="ReadMode_Toggle"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="打点模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="MetroSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10"
+                              Checked="Metro_Toggle" Unchecked="Metro_Toggle"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="打点速度" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <Button Grid.Row="2" Grid.Column="1" x:Name="MetroBpmPill" Content="120" MinWidth="52" Style="{StaticResource PillBtn}"
+                            FontSize="15" HorizontalAlignment="Left" VerticalAlignment="Center" Click="MetroBpm_Click" ToolTip="点击输入节拍速度 (BPM)"/>
+                </Grid>
+
+                <!-- 读谱区: 三列(左翻页 | 谱面墙 | 右翻页), 顶部对齐; 谱面墙放进 Viewbox 随窗口自动缩放 -->
+                <Grid x:Name="SheetArea" VerticalAlignment="Top" Margin="0,58,0,0" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <!-- 左翻页: 箭头 + 当前页; 整列垂直居中于谱面墙 -->
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="24,0,8,0">
+                        <Button x:Name="SheetPrevBtn" Style="{StaticResource RoundPageBtn}" Click="SheetPrev_Click">
+                            <Path Data="M8,0 L0,7 L8,14 Z" Fill="{DynamicResource SubTextFg}"/>
+                        </Button>
+                        <TextBlock x:Name="SheetRangeL" HorizontalAlignment="Center" Margin="0,10,0,0"
+                                   Foreground="{DynamicResource SubTextFg}" FontSize="18"/>
+                    </StackPanel>
+                    <!-- 谱面墙: Viewbox 等比缩放, 只缩不放大(大窗口保持本体尺寸) -->
+                    <Viewbox Grid.Column="1" x:Name="SheetWallBox" Stretch="Uniform" StretchDirection="DownOnly">
+                        <UniformGrid x:Name="SheetWall" Rows="4" Columns="8"/>
+                    </Viewbox>
+                    <!-- 右翻页: 箭头 + 总页数 -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0,24,0">
+                        <Button x:Name="SheetNextBtn" Style="{StaticResource RoundPageBtn}" Click="SheetNext_Click">
+                            <Path Data="M0,0 L8,7 L0,14 Z" Fill="{DynamicResource SubTextFg}"/>
+                        </Button>
+                        <TextBlock x:Name="SheetRangeR" HorizontalAlignment="Center" Margin="0,10,0,0"
+                                   Foreground="{DynamicResource SubTextFg}" FontSize="18"/>
+                    </StackPanel>
+                </Grid>
+
                 <Border x:Name="PracticeCard" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
                         CornerRadius="18" Padding="40,32" RenderTransformOrigin="0.5,0.5">
