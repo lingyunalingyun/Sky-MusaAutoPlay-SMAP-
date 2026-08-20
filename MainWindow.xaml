@@ -557,7 +557,7 @@
                     <Grid Grid.Column="2" VerticalAlignment="Center" MinWidth="56" Margin="4,0,0,0">
                         <TextBlock x:Name="dur" Text="{Binding DurationText}" FontSize="12" Foreground="{DynamicResource SubTextFg}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                         <StackPanel x:Name="actions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
-                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.6" Fill="Transparent"
+                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="{DynamicResource FavoriteBrush}" StrokeThickness="1.6" Fill="Transparent"
                                   Stretch="Uniform" Width="17" Height="17" Cursor="Hand" VerticalAlignment="Center"
                                   MouseLeftButtonDown="PlaylistFav_Click" ToolTip="收藏/取消收藏"/>
                             <Button Style="{StaticResource IconBtn}" Margin="6,0,0,0" Click="PlaylistMore_Click" ToolTip="更多">
@@ -581,7 +581,7 @@
                     <Setter TargetName="eq" Property="Visibility" Value="Visible"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Fav}" Value="True">
-                    <Setter TargetName="favStar" Property="Fill" Value="#E6B52A"/>
+                    <Setter TargetName="favStar" Property="Fill" Value="{DynamicResource FavoriteBrush}"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -613,7 +613,7 @@
                     <Grid Grid.Column="2" VerticalAlignment="Center" MinWidth="56" Margin="4,0,0,0">
                         <!-- 非悬浮: 已收藏显金星 + 时长 -->
                         <StackPanel x:Name="idle" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Path x:Name="favIdle" Data="{StaticResource IconStar}" Fill="#E6B52A" Stretch="Uniform" Width="15" Height="15" Margin="0,0,6,0" Visibility="Collapsed"/>
+                            <Path x:Name="favIdle" Data="{StaticResource IconStar}" Fill="{DynamicResource FavoriteBrush}" Stretch="Uniform" Width="15" Height="15" Margin="0,0,6,0" Visibility="Collapsed"/>
                             <TextBlock x:Name="dur" Text="{Binding DurationText}" FontSize="12" Foreground="{DynamicResource SubTextFg}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <!-- 悬浮: 加入播放列表 / 收藏 / 更多 -->
@@ -621,7 +621,7 @@
                             <Button Style="{StaticResource IconBtn}" Click="LibAdd_Click" ToolTip="加入播放列表">
                                 <Path Data="{StaticResource IconAdd}" Stroke="{DynamicResource TextFg}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Width="16" Height="16"/>
                             </Button>
-                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.6" Fill="Transparent"
+                            <Path x:Name="favStar" Data="{StaticResource IconStar}" Stroke="{DynamicResource FavoriteBrush}" StrokeThickness="1.6" Fill="Transparent"
                                   Stretch="Uniform" Width="17" Height="17" Cursor="Hand" VerticalAlignment="Center" Margin="4,0,0,0"
                                   MouseLeftButtonDown="LibFav_Click" ToolTip="收藏/取消收藏"/>
                             <Button Style="{StaticResource IconBtn}" Margin="4,0,0,0" Click="LibMore_Click" ToolTip="更多">
@@ -634,7 +634,7 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding Fav}" Value="True">
                     <Setter TargetName="favIdle" Property="Visibility" Value="Visible"/>
-                    <Setter TargetName="favStar" Property="Fill" Value="#E6B52A"/>
+                    <Setter TargetName="favStar" Property="Fill" Value="{DynamicResource FavoriteBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
                     <Setter TargetName="row" Property="Background" Value="{DynamicResource RowSel}"/>
@@ -679,7 +679,7 @@
                         <TextBlock Text="{Binding ArtistText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding TranscriberText}" FontSize="11" Foreground="{DynamicResource SubTextFg}"/>
-                            <TextBlock Text="{Binding Stars}" FontSize="11" Foreground="#E6B52A" Margin="8,0,0,0"/>
+                            <TextBlock Text="{Binding Stars}" FontSize="11" Foreground="{DynamicResource FavoriteBrush}" Margin="8,0,0,0"/>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -780,6 +780,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Grid Grid.Column="0" Width="56" Height="56">
                                 <Ellipse Fill="#D9D9D9"/>
+                                <Ellipse x:Name="AvatarPhoto" Visibility="Collapsed"/>
                                 <TextBlock x:Name="AvatarInitial" Text="?" FontSize="24" FontWeight="Bold" Foreground="#333333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
@@ -898,7 +899,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="{DynamicResource CreateActionBg}" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Click="Create_Click"/>
+                            <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="{DynamicResource CreateActionBg}" Foreground="{DynamicResource CreateActionFg}" FontWeight="Bold" Click="Create_Click"/>
                             <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="{DynamicResource PracticeActionBg}" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Click="Practice_Click"/>
                         </Grid>
 
@@ -1068,7 +1069,7 @@
                                     <TextBlock x:Name="PlayerAuthor" Text="作者" FontSize="11" Foreground="{DynamicResource SubTextFg}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                                     <TextBlock x:Name="PlayerTranscriber" Text="创谱者" FontSize="11" Foreground="{DynamicResource SubTextFg}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                                 </StackPanel>
-                                <Path x:Name="FavStar" Data="{StaticResource IconStar}" Stroke="#E6B52A" StrokeThickness="1.5" Fill="Transparent"
+                                <Path x:Name="FavStar" Data="{StaticResource IconStar}" Stroke="{DynamicResource FavoriteBrush}" StrokeThickness="1.5" Fill="Transparent"
                                       Width="22" Height="22" Stretch="Uniform" Cursor="Hand" Visibility="Collapsed"
                                       VerticalAlignment="Center" Margin="12,0,0,0" MouseLeftButtonDown="FavStar_Click" ToolTip="收藏/取消收藏"/>
                             </StackPanel>

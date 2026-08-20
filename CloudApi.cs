@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SMAP_WPF;
@@ -44,20 +45,21 @@ public static class CloudApi
     public static int UserId;
     public static string? Username;
     public static string? Mid;   // 鉴权 token
+    public static string? Avatar;
     public static bool LoggedIn => !string.IsNullOrEmpty(Mid);
 
     // ---- 登录态持久化 ----
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP");
     static readonly string AuthFile = Path.Combine(Dir, "auth.json");
 
-    class Auth { public int UserId { get; set; } public string? Username { get; set; } public string? Mid { get; set; } }
+    class Auth { public int UserId { get; set; } public string? Username { get; set; } public string? Mid { get; set; } public string? Avatar { get; set; } }
 
     public static void LoadAuth()
     {
         try
         {
             if (File.Exists(AuthFile) && JsonSerializer.Deserialize<Auth>(File.ReadAllText(AuthFile)) is { } a)
-            { UserId = a.UserId; Username = a.Username; Mid = a.Mid; }
+            { UserId = a.UserId; Username = a.Username; Mid = a.Mid; Avatar = a.Avatar; }
         }
         catch { /* 忽略 */ }
     }
@@ -65,12 +67,12 @@ public static class CloudApi
     static void SaveAuth()
     {
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(AuthFile, JsonSerializer.Serialize(new Auth { UserId = UserId, Username = Username, Mid = Mid }));
+        File.WriteAllText(AuthFile, JsonSerializer.Serialize(new Auth { UserId = UserId, Username = Username, Mid = Mid, Avatar = Avatar }));
     }
 
     public static void Logout()
     {
-        UserId = 0; Username = null; Mid = null;
+        UserId = 0; Username = null; Mid = null; Avatar = null;
         try { if (File.Exists(AuthFile)) File.Delete(AuthFile); } catch { }
     }
 
@@ -92,12 +94,35 @@ public static class CloudApi
                 UserId = u.GetProperty("id").GetInt32();
                 Username = u.GetProperty("username").GetString();
                 Mid = u.GetProperty("mid").GetString();
+                Avatar = u.TryGetProperty("avatar", out var av) ? av.GetString() : null;
                 SaveAuth();
                 return null;
             }
             return root.TryGetProperty("error", out var e) ? e.GetString() : "登录失败";
         }
         catch (Exception ex) { return "网络错误: " + ex.Message; }
+    }
+
+    public static async Task<byte[]?> DownloadAvatarAsync()
+    {
+        if (!LoggedIn) return null;
+        try
+        {
+            // 旧版 auth.json 没存 avatar：从公开个人主页补齐，无需用户重新登录。
+            if (string.IsNullOrWhiteSpace(Avatar) && UserId > 0)
+            {
+                var html = await Http.GetStringAsync($"{Base}/pages/profile.php?id={UserId}");
+                var match = Regex.Match(html, @"uploads/avatars/([^""'<>?]+)", RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    Avatar = Uri.UnescapeDataString(match.Groups[1].Value);
+                    SaveAuth();
+                }
+            }
+            var file = Path.GetFileName(string.IsNullOrWhiteSpace(Avatar) ? "default.png" : Avatar);
+            return await Http.GetByteArrayAsync($"{Base}/api/avatar.php?f={Uri.EscapeDataString(file)}");
+        }
+        catch { return null; }
     }
 
     public record ListResult(bool Ok, string? Err, int Total, int Pages, List<CloudSheet> Items);
