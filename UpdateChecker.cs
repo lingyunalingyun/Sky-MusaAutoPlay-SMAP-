@@ -10,7 +10,7 @@ namespace SMAP_WPF;
 /// <summary>启动时查 GitHub Releases, 有更高版本则返回信息。</summary>
 public static class UpdateChecker
 {
-    public const string AppVersion = "2.1";   // C# WPF 版
+    public const string AppVersion = "2.2";   // C# WPF 版
     const string Repo = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     static readonly HttpClient DownloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
