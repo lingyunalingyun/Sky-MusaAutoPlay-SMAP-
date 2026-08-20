@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     SongInfo? _playCurrent;   // 当前播放上下文对应的播放列表条目(切歌/续播/自动续播用)
     SongInfo? _nowPlaying;    // 当前正在发声的曲目(不论从曲库还是列表启动)
     bool _previewMode = true;   // 默认试听(走扬声器); 关闭=演奏模式(发送游戏按键)。右下开关点亮=演奏
-    static readonly SolidColorBrush _gold = new(Color.FromRgb(0xE6, 0xB5, 0x2A));   // 收藏星填充色
+    static Brush FavoriteBrush => (Brush)Application.Current.Resources["FavoriteBrush"];
     enum PlayMode { RepeatAll, RepeatOne, Shuffle }   // 列表循环 / 单曲循环 / 随机播放
     PlayMode _playMode = PlayMode.RepeatAll;
     readonly Random _rng = new();
@@ -251,7 +251,7 @@ public partial class MainWindow : Window
         var s = _nowPlaying ?? Selected;
         if (s == null) return;
         ToggleFav(s);
-        FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        FavStar.Fill = s.Fav ? FavoriteBrush : System.Windows.Media.Brushes.Transparent;
         AnimateFavorite(FavStar);
     }
 
@@ -329,7 +329,7 @@ public partial class MainWindow : Window
         PlayerSongName.Text = s.Name;
         PlayerAuthor.Text = s.AuthorText;
         PlayerTranscriber.Text = s.TranscriberText;
-        FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        FavStar.Fill = s.Fav ? FavoriteBrush : System.Windows.Media.Brushes.Transparent;
         PlayerAuthor.Visibility = Visibility.Visible;
         PlayerTranscriber.Visibility = Visibility.Visible;
         FavStar.Visibility = Visibility.Visible;
@@ -408,7 +408,7 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
         ToggleFav(s);
-        if (ReferenceEquals(s, Selected) || ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        if (ReferenceEquals(s, Selected) || ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? FavoriteBrush : System.Windows.Media.Brushes.Transparent;
         AnimateFavorite((FrameworkElement)sender);
         e.Handled = true;
     }
@@ -723,7 +723,7 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
         ToggleFav(s);
-        if (ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        if (ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? FavoriteBrush : System.Windows.Media.Brushes.Transparent;
         AnimateFavorite((FrameworkElement)sender);
         e.Handled = true;
     }
@@ -1407,6 +1407,7 @@ public partial class MainWindow : Window
     {
         Theme.Apply((AppTheme)(((int)Theme.Current + 1) % 3));
         ApplyKeyTheme();
+        RefreshFavoriteBrush();
         SetLibTab(!_cloudMode);
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.LangKey)}";
         StatusText.Text = $"状态: 已切换到{Lang.S(Theme.LangKey)}主题";
@@ -1797,15 +1798,26 @@ public partial class MainWindow : Window
     }
 
     // ===== 侧边栏 (Stage1) =====
-    void UpdateProfileCard()
+    async void UpdateProfileCard()
     {
+        AvatarPhoto.Fill = null;
+        AvatarPhoto.Visibility = Visibility.Collapsed;
+        AvatarInitial.Visibility = Visibility.Visible;
         if (CloudApi.LoggedIn)
         {
+            int userId = CloudApi.UserId;
             var name = CloudApi.Username ?? "";
             ProfileName.Text = name;
             AvatarInitial.Text = name.Length > 0 ? name.Substring(0, 1).ToUpperInvariant() : "?";
             ProfileLevel.Text = Lang.S("profile.in");
             ProfileSign.Text = Lang.S("profile.acct");
+            var image = await AvatarUtil.LoadAsync();
+            if (image != null && CloudApi.LoggedIn && CloudApi.UserId == userId)
+            {
+                AvatarPhoto.Fill = new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+                AvatarPhoto.Visibility = Visibility.Visible;
+                AvatarInitial.Visibility = Visibility.Collapsed;
+            }
         }
         else
         {
@@ -1978,8 +1990,15 @@ public partial class MainWindow : Window
         if (theme == Theme.Current) return;
         Theme.Apply(theme);
         ApplyKeyTheme();
+        RefreshFavoriteBrush();
         SetLibTab(!_cloudMode);
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.LangKey)}";
+    }
+
+    void RefreshFavoriteBrush()
+    {
+        FavStar.Stroke = FavoriteBrush;
+        if ((_nowPlaying ?? Selected)?.Fav == true) FavStar.Fill = FavoriteBrush;
     }
     void SetWaitBox_Changed(object sender, TextChangedEventArgs e)
     {

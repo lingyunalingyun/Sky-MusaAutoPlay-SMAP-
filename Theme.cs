@@ -81,16 +81,20 @@ public static class Theme
         C("Accent",       "#5aa0ff", "#2f6fd0", "#F45FB7");
         C("ProgTrackBg",  "#40ffffff", "#33000000", "#35A66A91");
         C("ActionFg",     "#ffffff", "#ffffff", "#2E2530");
+        C("CreateActionFg", "#ffffff", "#ffffff", "#2E2530");
+        C("FavoriteBrush", "#E6B52A", "#F1C84B", "#FFD85C");
 
         r["TitleGrad"] = dark ? Grad("#1c1c3e", "#2a2352", "#241d47")
             : sunset ? Grad("#DD77F1", "#F4C0F4", "#F56AC8")
             : Grad("#4a63ff", "#6a4bff", "#8a52ff");
-        r["LocalActiveBg"] = sunset ? Grad("#BDEEFF", "#D8E8FF", "#FFD5DF") : Br(dark ? "#2F6FD0" : "#2F6FD0");
-        r["CloudActiveBg"] = sunset ? Grad("#BDF7DD", "#D9F6E5", "#FFD5DF") : Br(dark ? "#12795A" : "#12795A");
+        r["LocalActiveBg"] = sunset ? Grad("#BDEEFF", "#D8E8FF", "#FFD5DF") : Br(dark ? "#2F6FD0" : "#457FD6");
+        r["CloudActiveBg"] = sunset ? Grad("#BDF7DD", "#D9F6E5", "#FFD5DF") : Br(dark ? "#12795A" : "#278B69");
         r["NavInactiveBg"] = Br(sunset ? "#F6EAF5" : dark ? "#2B2B2B" : "#E5E7EB");
         r["SideActionBg"] = sunset ? Grad("#EBA8FF", "#F8B8ED", "#FFD9C7") : Br(dark ? "#3A3A3A" : "#EEF0F2");
-        r["CreateActionBg"] = sunset ? Grad("#FFF2A9", "#FFE5C1", "#FFD6E6") : Br("#D08A18");
-        r["PracticeActionBg"] = sunset ? Grad("#C9F7B8", "#DDF5C9", "#FFD8E7") : Br("#2F6FD0");
+        r["CreateActionBg"] = dark ? Br("#D08A18")
+            : sunset ? Grad("#FFF2A9", "#FFE5C1", "#FFD6E6")
+            : Br("#E6A82C");
+        r["PracticeActionBg"] = sunset ? Grad("#C9F7B8", "#DDF5C9", "#FFD8E7") : Br(dark ? "#2F6FD0" : "#457FD6");
 
         // 琴键色
         KeySquare  = Col(Pick("#4a4a4a", "#e2e2e6", "#FDEBFA"));

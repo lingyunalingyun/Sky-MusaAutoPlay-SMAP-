@@ -20,12 +20,16 @@ public class ProfileWindow : ChromeWindow
         var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 24) };
         var avatar = new Grid { Width = 100, Height = 100 };
         avatar.Children.Add(new System.Windows.Shapes.Ellipse { Fill = new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a)), Stroke = B("BtnBorder"), StrokeThickness = 1 });
-        avatar.Children.Add(new TextBlock
+        var avatarPhoto = new System.Windows.Shapes.Ellipse { Visibility = Visibility.Collapsed };
+        var avatarInitial = new TextBlock
         {
             Text = (CloudApi.Username ?? "?").Substring(0, 1).ToUpper(),
             FontSize = 40, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(0xb0, 0xb0, 0xc0)),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-        });
+        };
+        avatar.Children.Add(avatarPhoto);
+        avatar.Children.Add(avatarInitial);
+        LoadAvatar(avatarPhoto, avatarInitial);
         top.Children.Add(avatar);
         top.Children.Add(new TextBlock
         {
@@ -49,6 +53,15 @@ public class ProfileWindow : ChromeWindow
         body.Children.Add(btns);
 
         SetBody(body);
+    }
+
+    static async void LoadAvatar(System.Windows.Shapes.Ellipse photo, TextBlock initial)
+    {
+        var image = await AvatarUtil.LoadAsync();
+        if (image == null) return;
+        photo.Fill = new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+        photo.Visibility = Visibility.Visible;
+        initial.Visibility = Visibility.Collapsed;
     }
 
     static void Open(string url)
