@@ -68,12 +68,14 @@ public partial class MainWindow : Window
         Lang.Load();
         Theme.Apply(Theme.LoadDark());   // 资源就位后 InitializeComponent 里的 DynamicResource 才解析得到
         InitializeComponent();
+        _keyboardProc = KeyboardHook;   // 保持低级键盘回调强引用，防止被 GC 回收
         _player.Vk = KeyConfig.Load();
         BuildPianoGrid();
         BuildPracticeGrid();
         PracticeCard.RenderTransform = new TransformGroup { Children = { _pCardScale, _pCardTrans } };
         SizeChanged += (_, __) => { if (_practiceOpen && !_transitioning) ApplyReadLayout(animate: false); };   // 练习键盘布局随窗口尺寸即时重算(读谱/普通都要, 小窗口自动缩不遮控件; 转场中不插手免清动画)
         StateChanged += (_, __) => MaxBtn.Content = WindowState == WindowState.Maximized ? "❐" : "☐";   // 最大化钮字形随状态切换
+        Deactivated += (_, __) => CloseLibraryChoice(immediate: true);   // Popup 是独立顶层窗，切到别的软件时必须同步关闭
         _rootShadow = WindowRoot.Effect;   // 练习转场期间临时摘除, 免整窗子树每帧重渲染进阴影 Effect 拖垮帧率
         BuildSettingsGrid();
         System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
@@ -130,7 +132,7 @@ public partial class MainWindow : Window
         CaveBtn.Content = $"{Lang.S("cave")}: {Lang.S(AudioEngine.Cave ? "on" : "off")}";
         InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(_instrumentName)}";
         InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(_instrumentName)}";
-        _instrumentMenu = null;   // 语言变了, 重建带翻译的音色菜单
+        InstrumentList.Items.Clear();   // 语言变了, 下次展开时重建翻译后的音色列表
         RefreshPitchPill();
         ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
         AboutBtn.Content = Lang.S("about");
@@ -138,6 +140,7 @@ public partial class MainWindow : Window
         int si = SortCombo.SelectedIndex < 0 ? 0 : SortCombo.SelectedIndex;
         SortCombo.ItemsSource = new[] { Lang.S("sort.az"), Lang.S("sort.za"), Lang.S("sort.fav") };
         SortCombo.SelectedIndex = si;
+        SortChoiceBtn.Content = SortCombo.SelectedItem;
 
         RebuildFilterOptions();
 
@@ -156,6 +159,7 @@ public partial class MainWindow : Window
         ReadModeLbl.Text = Lang.S("practice.readmode");
         MetroModeLbl.Text = Lang.S("practice.metro");
         MetroSpeedLbl.Text = Lang.S("practice.metrospeed");
+        GamePracticeLbl.Text = Lang.S("practice.game");
         SearchBox.ToolTip = Lang.S("search.hint");
         PrevBtn.ToolTip = Lang.S("tip.prev");
         NextBtn.ToolTip = Lang.S("tip.next");
@@ -211,7 +215,7 @@ public partial class MainWindow : Window
         PlaylistView.Items.Refresh();
         CloudList.Items.Refresh();
         FolderList.Items.Refresh();
-        _instrumentMenu = null;
+        InstrumentList.Items.Clear();
 
         OnSongSelected();
     }
@@ -352,7 +356,7 @@ public partial class MainWindow : Window
         ShowToast(string.Format(Lang.S("t.addedQueue"), s.Name));
     }
 
-    void PlayPlaylistItem(SongInfo s)
+    void PlayPlaylistItem(SongInfo s, bool skipCountdown = false)
     {
         _advanceTimer?.Stop();
         if (_playing || _previewing) StopPlaying();
@@ -367,7 +371,7 @@ public partial class MainWindow : Window
             double total = _notes.Count > 0 ? _notes[^1].ms : 0;
             RenderProg(total > 0 ? _pendingResumeMs / total : 0, _pendingResumeMs, total);
         }
-        int sec = (_previewMode || _practiceOpen) ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
+        int sec = skipCountdown || _previewMode || _practiceOpen ? 0 : (int.TryParse(CountdownBox.Text, out int x) ? Math.Max(0, x) : 0);
         BeginCountdown(sec);
     }
 
@@ -645,6 +649,7 @@ public partial class MainWindow : Window
         var items = new List<string> { Lang.S("filter.all"), Lang.S("filter.fav") };
         FilterCombo.ItemsSource = items;
         FilterCombo.SelectedIndex = idx < items.Count ? idx : 0;
+        FilterChoiceBtn.Content = FilterCombo.SelectedItem;
     }
 
     void ApplyFilter()
@@ -1166,16 +1171,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 练习界面 ←/→ 调节进度(后退/前进一步)
-        if (_practiceOpen && e.Key is System.Windows.Input.Key.Left or System.Windows.Input.Key.Right)
-        {
-            PracticeSeek(e.Key == System.Windows.Input.Key.Right ? 1 : -1);
-            e.Handled = true;
-            return;
-        }
-
         // 物理键盘触发对应琴键(发声+动画); 焦点在输入框时放行, 忽略长按重复
-        if (!e.IsRepeat && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
+        if (!_gamePracticeOn && !e.IsRepeat && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
         {
             var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
             int vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);
@@ -1195,7 +1192,7 @@ public partial class MainWindow : Window
     protected override void OnPreviewKeyUp(System.Windows.Input.KeyEventArgs e)
     {
         // 松开物理键 -> 停对应琴键的持续长音
-        if (System.Windows.Input.Keyboard.FocusedElement is not TextBox)
+        if (!_gamePracticeOn && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
         {
             var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
             int vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);
@@ -1215,32 +1212,123 @@ public partial class MainWindow : Window
         SavePrefs();
     }
 
-    ContextMenu? _instrumentMenu;
     void Instrument_Click(object sender, RoutedEventArgs e)
     {
-        if (_instrumentMenu == null)
+        if (InstrumentList.Items.Count == 0)
         {
-            _instrumentMenu = new ContextMenu { MaxHeight = 296 };   // 约8项高, 超出滚轮翻动
             foreach (var name in AudioEngine.Instruments)
-            {
-                var it = new MenuItem { Header = Lang.Instrument(name) };
-                var n = name;
-                it.Click += (_, __) =>
-                {
-                    System.Threading.Tasks.Task.Run(() => AudioEngine.SetInstrument(n));
-                    _instrumentName = n;
-                    InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(n)}";
-                    InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(n)}";
-                    RefreshPitchPill();
-                    SavePrefs();
-                    ShowToast($"{Lang.S("instrument")} → {Lang.Instrument(n)}");
-                };
-                _instrumentMenu.Items.Add(it);
-            }
+                InstrumentList.Items.Add(new ListBoxItem { Content = Lang.Instrument(name), Tag = name });
         }
-        _instrumentMenu.PlacementTarget = (sender as UIElement) ?? InstrumentBtn;
-        _instrumentMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;   // 向上展开
-        _instrumentMenu.IsOpen = true;
+        InstrumentPopup.PlacementTarget = (sender as UIElement) ?? InstrumentBtn;
+        var selected = InstrumentList.Items.OfType<ListBoxItem>().FirstOrDefault(item => Equals(item.Tag, _instrumentName));
+        InstrumentList.SelectedItem = selected;
+        InstrumentPopup.IsOpen = true;
+        if (selected != null)
+            Dispatcher.BeginInvoke(() => InstrumentList.ScrollIntoView(selected), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    void InstrumentList_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source ||
+            ItemsControl.ContainerFromElement(InstrumentList, source) is not ListBoxItem item ||
+            item.Tag is not string name) return;
+        System.Threading.Tasks.Task.Run(() => AudioEngine.SetInstrument(name));
+        _instrumentName = name;
+        InstrumentBtn.Content = $"{Lang.S("instrument")}: {Lang.Instrument(name)}";
+        InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(name)}";
+        RefreshPitchPill();
+        SavePrefs();
+        ShowToast($"{Lang.S("instrument")} → {Lang.Instrument(name)}");
+        InstrumentPopup.IsOpen = false;
+        e.Handled = true;
+    }
+
+    ComboBox? _libraryChoiceModel;
+    int _libraryChoiceGeneration;
+
+    void FilterChoice_Click(object sender, RoutedEventArgs e) => ToggleLibraryChoice(FilterCombo, FilterChoiceBtn);
+    void SortChoice_Click(object sender, RoutedEventArgs e) => ToggleLibraryChoice(SortCombo, SortChoiceBtn);
+
+    void ToggleLibraryChoice(ComboBox model, Button target)
+    {
+        if (LibraryChoicePopup.IsOpen && ReferenceEquals(_libraryChoiceModel, model)) { CloseLibraryChoice(); return; }
+        _libraryChoiceModel = model;
+        LibraryChoiceList.Items.Clear();
+        for (int i = 0; i < model.Items.Count; i++)
+            LibraryChoiceList.Items.Add(new ListBoxItem { Content = model.Items[i], Tag = i });
+        LibraryChoiceList.SelectedIndex = model.SelectedIndex;
+        LibraryChoicePopup.PlacementTarget = target;
+        LibraryChoiceChrome.BeginAnimation(OpacityProperty, null);
+        LibraryChoiceMove.BeginAnimation(TranslateTransform.YProperty, null);
+        LibraryChoiceScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        LibraryChoiceChrome.Opacity = 0;
+        LibraryChoiceMove.Y = -10;
+        LibraryChoiceScale.ScaleY = 0.92;
+        LibraryChoiceChrome.IsHitTestVisible = true;
+        LibraryChoicePopup.IsOpen = true;
+        var generation = ++_libraryChoiceGeneration;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (generation != _libraryChoiceGeneration || !LibraryChoicePopup.IsOpen) return;
+            LibraryChoiceChrome.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(190))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            LibraryChoiceMove.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-10, 0, TimeSpan.FromMilliseconds(260))
+            { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.45 } });
+            LibraryChoiceScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.92, 1, TimeSpan.FromMilliseconds(240))
+            { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 } });
+        }, System.Windows.Threading.DispatcherPriority.Render);
+    }
+
+    void CloseLibraryChoice(bool immediate = false)
+    {
+        if (!LibraryChoicePopup.IsOpen) return;
+        var generation = ++_libraryChoiceGeneration;
+        if (immediate)
+        {
+            LibraryChoiceChrome.BeginAnimation(OpacityProperty, null);
+            LibraryChoiceMove.BeginAnimation(TranslateTransform.YProperty, null);
+            LibraryChoiceScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            LibraryChoicePopup.IsOpen = false;
+            LibraryChoiceChrome.Opacity = 1;
+            LibraryChoiceMove.Y = 0;
+            LibraryChoiceScale.ScaleY = 1;
+            LibraryChoiceChrome.IsHitTestVisible = true;
+            return;
+        }
+        LibraryChoiceChrome.IsHitTestVisible = false;
+        var fade = new DoubleAnimation(LibraryChoiceChrome.Opacity, 0, TimeSpan.FromMilliseconds(170))
+        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+        fade.Completed += (_, __) =>
+        {
+            if (generation != _libraryChoiceGeneration) return;
+            LibraryChoicePopup.IsOpen = false;
+            LibraryChoiceChrome.Opacity = 1;
+            LibraryChoiceMove.Y = 0;
+            LibraryChoiceScale.ScaleY = 1;
+            LibraryChoiceChrome.IsHitTestVisible = true;
+        };
+        LibraryChoiceChrome.BeginAnimation(OpacityProperty, fade);
+        LibraryChoiceMove.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(LibraryChoiceMove.Y, -8, TimeSpan.FromMilliseconds(170))
+        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+        LibraryChoiceScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(LibraryChoiceScale.ScaleY, 0.94, TimeSpan.FromMilliseconds(170))
+        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+    }
+
+    void LibraryChoiceList_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_libraryChoiceModel == null || ClickedOption(LibraryChoiceList, e) is not { Tag: int index }) return;
+        _libraryChoiceModel.SelectedIndex = index;
+        if (ReferenceEquals(_libraryChoiceModel, FilterCombo)) FilterChoiceBtn.Content = FilterCombo.SelectedItem;
+        else SortChoiceBtn.Content = SortCombo.SelectedItem;
+        CloseLibraryChoice();
+        e.Handled = true;
+    }
+
+    void RootScale_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!LibraryChoicePopup.IsOpen || e.OriginalSource is not DependencyObject source) return;
+        if (FilterChoiceBtn.IsAncestorOf(source) || SortChoiceBtn.IsAncestorOf(source)) return;
+        CloseLibraryChoice();
     }
 
     // ---- 音高(每乐器移调, 存 %APPDATA%\SMAP\pitch.json) ----
@@ -1257,33 +1345,24 @@ public partial class MainWindow : Window
 
     void Pitch_Click(object sender, RoutedEventArgs e)
     {
-        var menu = new ContextMenu { MaxHeight = 296 };
         int cur = AudioEngine.GetOffset(_instrumentName);
-        foreach (int semi in new[] { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -12, -24 })
+        if (PitchList.Items.Count == 0)
         {
-            var s = semi;
-            var it = new MenuItem { IsChecked = s == cur };
-            var hg = new Grid { Width = 64 };
-            hg.ColumnDefinitions.Add(new ColumnDefinition());
-            hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var numTb = new TextBlock { Text = (s > 0 ? "+" : "") + s };                       // 数字左对齐
-            var noteTb = new TextBlock { Text = NoteName(s), HorizontalAlignment = HorizontalAlignment.Right };  // 音名右对齐
-            Grid.SetColumn(noteTb, 1);
-            hg.Children.Add(numTb);
-            hg.Children.Add(noteTb);
-            it.Header = hg;
-            it.Click += (_, __) =>
-            {
-                var inst = _instrumentName;
-                AudioEngine.SetOffset(inst, s);   // 内部同步存值 + 异步重载采样
-                RefreshPitchPill();               // 立即读回新值, 胶囊即时更新
-                ShowToast($"{Lang.S("pitch")} {Lang.Instrument(inst)} → {PitchLabel(s)}");
-            };
-            menu.Items.Add(it);
+            foreach (int semi in new[] { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -12, -24 })
+                PitchList.Items.Add(new ListBoxItem { Content = PitchLabel(semi), Tag = semi });
         }
-        menu.PlacementTarget = (sender as UIElement) ?? PitchPill;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;   // 向上展开
-        menu.IsOpen = true;
+        OpenOptionPopup(PitchPopup, PitchList, (sender as UIElement) ?? PitchPill, cur);
+    }
+
+    void PitchList_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ClickedOption(PitchList, e) is not { Tag: int semi }) return;
+        var inst = _instrumentName;
+        AudioEngine.SetOffset(inst, semi);
+        RefreshPitchPill();
+        ShowToast($"{Lang.S("pitch")} {Lang.Instrument(inst)} → {PitchLabel(semi)}");
+        PitchPopup.IsOpen = false;
+        e.Handled = true;
     }
 
     void SetPitchReset_Click(object sender, RoutedEventArgs e)
@@ -1647,7 +1726,7 @@ public partial class MainWindow : Window
 
     void Pause_Click(object sender, RoutedEventArgs e)
     {
-        if (!_playing) return;
+        if (!_playing && !_previewing) return;
         SetPaused(!_paused);
     }
     void Refresh_Click(object sender, RoutedEventArgs e) => RefreshLibrary();
@@ -1928,7 +2007,7 @@ public partial class MainWindow : Window
     // 练习: 进入全屏大键盘界面(跟弹展示后续再接入); 返回退出
     // 转场: ①背景快速盖住(先隐藏主界面) ②练习卡片从右侧小键盘的位置/尺寸带过冲非线性放大展开
     //       动画只给终点不锁起点 → 从当前值续演, 中途点返回/再进可平滑打断反向
-    bool _practiceOpen, _pInit;
+    bool _practiceOpen, _pInit, _practicePaused;
     System.Windows.Media.Effects.Effect? _rootShadow;
     readonly ScaleTransform _pCardScale = new(1, 1);
     readonly TranslateTransform _pCardTrans = new(0, 0);
@@ -1960,7 +2039,13 @@ public partial class MainWindow : Window
         if (_practiceOpen == on) return;
         _practiceOpen = on;
         if (on) { PracticePanel.Visibility = Visibility.Visible; PracticePanel.UpdateLayout(); StartPractice(); if (_metroOn) AudioEngine.MetronomeOn(_metroBpm); }
-        else { AudioEngine.MetronomeOff(); if (!_playing && !_previewing) { SetIdlePlayer(); UpdateProgUi(); } }   // 退出练习: 停节拍器; 无播放则底部条回空闲
+        else
+        {
+            AudioEngine.MetronomeOff();
+            if (GamePracticeSwitch.IsChecked == true) GamePracticeSwitch.IsChecked = false;
+            else StopGamePractice();
+            if (!_playing && !_previewing) { SetIdlePlayer(); UpdateProgUi(); }
+        }   // 退出练习: 停节拍器/游戏练习; 无播放则底部条回空闲
 
         var small = RectIn(PianoGrid);
         var bigGrid = RectIn(PracticePianoGrid);   // 用大键盘本体(不含卡片内边距)算缩放, 末帧键盘本体才与小键盘等大
@@ -2055,7 +2140,7 @@ public partial class MainWindow : Window
     // ---- 跟弹交互: 高亮下一个/下下个要按的键, 按对整步才前进 ----
     void StartPractice()
     {
-        _practiceStep = 0; _practiceHeld.Clear();
+        _practiceStep = 0; _practiceHeld.Clear(); _practicePaused = false;
         var song = _nowPlaying ?? Selected;         // 优先播放条上那首(与播放键一致), 其次库里选中
         _practiceSong = song;
         if (song != null) TryLoad(song);
@@ -2149,6 +2234,7 @@ public partial class MainWindow : Window
     // 跟弹时按下某键: 当前步全部键"同时按住"才算过(和弦不能一个个先后按); 按错不动
     void PracticePress(int key)
     {
+        if (_practicePaused) return;
         if (_practiceStep >= _practiceSteps.Count) return;
         var cur = _practiceSteps[_practiceStep];
         if (Array.IndexOf(cur, key) < 0) return;          // 不是当前步该按的键
@@ -2170,8 +2256,31 @@ public partial class MainWindow : Window
         _practiceStep = deltaSteps > 0 ? NextNoteStep(_practiceStep + 1) : PrevNoteStep(_practiceStep - 1);
         _practiceStep = Math.Clamp(_practiceStep, 0, _practiceSteps.Count - 1);
         _practiceHeld.Clear();
+        if ((_playing || _previewing) && _practiceStep < _practiceStepMs.Count)
+            _player.Seek(_practiceStepMs[_practiceStep]);
         RenderPracticeHints();
         UpdateProgUi();
+    }
+
+    void PracticeSeekMs(double deltaMs)
+    {
+        if (_practiceSteps.Count == 0) return;
+        double current = _practiceStep < _practiceStepMs.Count ? _practiceStepMs[_practiceStep] : 0;
+        int step = NearestStep(Math.Clamp(current + deltaMs, 0, _practiceTotalMs));
+        if (_practiceSteps[step].Length == 0)
+            step = deltaMs >= 0 ? NextNoteStep(step) : PrevNoteStep(step);
+        _practiceStep = Math.Clamp(step, 0, _practiceSteps.Count - 1);
+        _practiceHeld.Clear();
+        RenderPracticeHints();
+        UpdateProgUi();
+    }
+
+    void TogglePracticePaused()
+    {
+        _practicePaused = !_practicePaused;
+        _practiceHeld.Clear();
+        StatusText.Text = _practicePaused ? "状态: ⏸ 练习已暂停" : "状态: 练习已继续";
+        ShowToast(_practicePaused ? "练习已暂停" : "练习已继续");
     }
 
     // 按整曲时间找最近的步(供进度条按时间比例跳转, 使落点与高亮对齐)
@@ -2294,6 +2403,101 @@ public partial class MainWindow : Window
         if (_metroOn && _practiceOpen) AudioEngine.MetronomeOn(_metroBpm);
         else AudioEngine.MetronomeOff();
     }
+
+    // 游戏练习: 窗口置顶 + 低级键盘钩子观察全局按键；不吞键，游戏仍会正常收到输入
+    bool _gamePracticeOn;
+    IntPtr _keyboardHook;
+    readonly LowLevelKeyboardProc _keyboardProc;
+    readonly HashSet<uint> _gamePracticeDown = new();
+
+    void GamePractice_Toggle(object sender, RoutedEventArgs e)
+    {
+        bool on = GamePracticeSwitch.IsChecked == true;
+        if (on)
+        {
+            if (!StartGamePractice())
+            {
+                ShowToast("无法启动全局按键监听");
+                GamePracticeSwitch.IsChecked = false;
+            }
+        }
+        else StopGamePractice();
+    }
+
+    bool StartGamePractice()
+    {
+        if (_gamePracticeOn) return true;
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        using var module = process.MainModule;
+        IntPtr moduleHandle = module == null ? IntPtr.Zero : GetModuleHandle(module.ModuleName);
+        _keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
+        if (_keyboardHook == IntPtr.Zero) return false;
+        _gamePracticeOn = true;
+        Topmost = true;
+        return true;
+    }
+
+    void StopGamePractice()
+    {
+        _gamePracticeOn = false;
+        Topmost = false;
+        _gamePracticeDown.Clear();
+        if (_keyboardHook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_keyboardHook);
+            _keyboardHook = IntPtr.Zero;
+        }
+        AudioEngine.StopAll();
+    }
+
+    IntPtr KeyboardHook(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (code >= 0 && _gamePracticeOn && _practiceOpen)
+        {
+            var data = System.Runtime.InteropServices.Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            if ((data.flags & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) == 0)
+            {
+                int idx = Array.IndexOf(_player.Vk, (ushort)data.vkCode);
+                if (idx >= 0)
+                {
+                    int message = wParam.ToInt32();
+                    if (message is WM_KEYDOWN or WM_SYSKEYDOWN)
+                    {
+                        if (_gamePracticeDown.Add(data.vkCode))
+                            Dispatcher.BeginInvoke(() =>
+                            {
+                                if (!_gamePracticeOn || !_practiceOpen) return;
+                                AudioEngine.NoteOn(idx);
+                                FlashKey(idx);
+                                _practiceHeld.Add(idx);
+                                PracticePress(idx);
+                            });
+                    }
+                    else if (message is WM_KEYUP or WM_SYSKEYUP)
+                    {
+                        _gamePracticeDown.Remove(data.vkCode);
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            AudioEngine.NoteOff(idx);
+                            _practiceHeld.Remove(idx);
+                        });
+                    }
+                }
+            }
+        }
+        return CallNextHookEx(_keyboardHook, code, wParam, lParam);
+    }
+
+    const int WH_KEYBOARD_LL = 13;
+    const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105;
+    const uint LLKHF_LOWER_IL_INJECTED = 0x02, LLKHF_INJECTED = 0x10;
+    delegate IntPtr LowLevelKeyboardProc(int code, IntPtr wParam, IntPtr lParam);
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public UIntPtr dwExtraInfo; }
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc callback, IntPtr module, uint threadId);
+    [DllImport("user32.dll", SetLastError = true)] static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)] static extern IntPtr GetModuleHandle(string? moduleName);
 
     // 点击胶囊输入 BPM(30–300)
     void MetroBpm_Click(object sender, RoutedEventArgs e)
@@ -2649,10 +2853,11 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---- 全局热键 (光遇里也能控制): F1开始停止 F2暂停 F3减速 F4加速 F5后退5s F6前进10s ----
+    // ---- 全局热键 (光遇里也能控制): F1从头播放/停止 F2暂停/继续 F3/F4变速 F5/F6切歌 ←/→跳转2s ----
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-    const int HK_START = 1, HK_PAUSE = 2, HK_SLOW = 3, HK_FAST = 4, HK_BACK = 5, HK_FWD = 6;
+    const int HK_START = 1, HK_PAUSE = 2, HK_SLOW = 3, HK_FAST = 4,
+              HK_PREV = 5, HK_NEXT = 6, HK_BACK = 7, HK_FWD = 8;
     IntPtr _hwnd;
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -2664,8 +2869,10 @@ public partial class MainWindow : Window
         RegisterHotKey(_hwnd, HK_PAUSE, 0, 0x71);   // F2
         RegisterHotKey(_hwnd, HK_SLOW, 0, 0x72);    // F3 减速
         RegisterHotKey(_hwnd, HK_FAST, 0, 0x73);    // F4 加速
-        RegisterHotKey(_hwnd, HK_BACK, 0, 0x74);    // F5 后退 5s
-        RegisterHotKey(_hwnd, HK_FWD, 0, 0x75);     // F6 前进 10s
+        RegisterHotKey(_hwnd, HK_PREV, 0, 0x74);    // F5 上一首
+        RegisterHotKey(_hwnd, HK_NEXT, 0, 0x75);    // F6 下一首
+        RegisterHotKey(_hwnd, HK_BACK, 0, 0x25);    // ← 回退 2s
+        RegisterHotKey(_hwnd, HK_FWD, 0, 0x27);     // → 前进 2s
         HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
     }
 
@@ -2686,12 +2893,24 @@ public partial class MainWindow : Window
         {
             switch (wp.ToInt32())
             {
-                case HK_START: StartAuto(false); handled = true; break;   // 热键: 无倒计时
-                case HK_PAUSE: Pause_Click(this, new RoutedEventArgs()); handled = true; break;
+                case HK_START: if (_practiceOpen) RestartPractice(); else HotkeyStartStop(); handled = true; break;
+                case HK_PAUSE:
+                    if (_practiceOpen && !_playing && !_previewing) TogglePracticePaused();
+                    else Pause_Click(this, new RoutedEventArgs());
+                    handled = true;
+                    break;
                 case HK_SLOW: AdjustSpeed(-0.1); handled = true; break;
                 case HK_FAST: AdjustSpeed(+0.1); handled = true; break;
-                case HK_BACK: SeekRelative(-5000); handled = true; break;
-                case HK_FWD: SeekRelative(+10000); handled = true; break;
+                case HK_PREV: StepSong(-1); handled = true; break;
+                case HK_NEXT: StepSong(+1); handled = true; break;
+                case HK_BACK:
+                    if (_practiceOpen) PracticeSeek(-1); else SeekRelative(-2000);
+                    handled = true;
+                    break;
+                case HK_FWD:
+                    if (_practiceOpen) PracticeSeek(+1); else SeekRelative(+2000);
+                    handled = true;
+                    break;
             }
         }
         return IntPtr.Zero;
@@ -2736,6 +2955,28 @@ public partial class MainWindow : Window
         StatusText.Text = $"状态: 速度 {_speed:0.0}x";
     }
 
+    void HotkeyStartStop()
+    {
+        if (_playing || _previewing) { StopPlaying(); return; }
+        var target = _playCurrent ?? _nowPlaying ?? _playlist.FirstOrDefault();
+        if (target == null) { ShowToast(Lang.S("t.emptyQueue")); return; }
+        _pendingResumeMs = 0;
+        _resumeSong = null;
+        PlayPlaylistItem(target, skipCountdown: true);
+    }
+
+    void RestartPractice()
+    {
+        if (_practiceSteps.Count == 0) return;
+        _practicePaused = false;
+        _practiceStep = NextNoteStep(0);
+        _practiceHeld.Clear();
+        if (_playing || _previewing) _player.Seek(0);
+        RenderPracticeHints();
+        RenderProg(0, 0, _practiceTotalMs > 0 ? _practiceTotalMs : _player.TotalMs);
+        StatusText.Text = "状态: 练习已回到开头";
+    }
+
     // 播放速度: 胶囊显示 + 立即变速
     void SetSpeed(double v)
     {
@@ -2748,24 +2989,41 @@ public partial class MainWindow : Window
 
     void Speed_Click(object sender, RoutedEventArgs e)
     {
-        var menu = new ContextMenu { MaxHeight = 296 };
-        var rnd = new MenuItem { Header = Lang.S("speed.random"), IsChecked = _player.RandomSpeed };
-        rnd.Click += (_, __) =>
+        SpeedList.Items.Clear();
+        SpeedList.Items.Add(new ListBoxItem { Content = Lang.S("speed.random"), Tag = "random" });
+        foreach (double speed in new[] { 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5 })
+            SpeedList.Items.Add(new ListBoxItem { Content = $"{speed:0.0}x", Tag = speed });
+        object selected = _player.RandomSpeed ? "random" : _speed;
+        OpenOptionPopup(SpeedPopup, SpeedList, (sender as UIElement) ?? SpeedPill, selected);
+    }
+
+    void SpeedList_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ClickedOption(SpeedList, e) is not { } item) return;
+        if (Equals(item.Tag, "random"))
         {
-            _player.RandomSpeed = true;                    // 每音符随机变速
+            _player.RandomSpeed = true;
             SpeedPill.Content = Lang.S("speed.random");
-        };
-        menu.Items.Add(rnd);
-        foreach (double v in new[] { 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5 })
-        {
-            var s = v;
-            var it = new MenuItem { Header = $"{s:0.0}x", IsChecked = !_player.RandomSpeed && Math.Abs(s - _speed) < 0.01 };
-            it.Click += (_, __) => SetSpeed(s);
-            menu.Items.Add(it);
         }
-        menu.PlacementTarget = (sender as UIElement) ?? SpeedPill;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
-        menu.IsOpen = true;
+        else if (item.Tag is double speed) SetSpeed(speed);
+        else return;
+        SpeedPopup.IsOpen = false;
+        e.Handled = true;
+    }
+
+    static ListBoxItem? ClickedOption(ListBox list, System.Windows.Input.MouseButtonEventArgs e) =>
+        e.OriginalSource is DependencyObject source
+            ? ItemsControl.ContainerFromElement(list, source) as ListBoxItem
+            : null;
+
+    void OpenOptionPopup(System.Windows.Controls.Primitives.Popup popup, ListBox list, UIElement target, object selectedTag)
+    {
+        var selected = list.Items.OfType<ListBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedTag));
+        list.SelectedItem = selected;
+        popup.PlacementTarget = target;
+        popup.IsOpen = true;
+        if (selected != null)
+            Dispatcher.BeginInvoke(() => list.ScrollIntoView(selected), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     // 相对跳转(仅播放/试听中); 夹到 [0, 总时长]
@@ -2779,8 +3037,9 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopGamePractice();
         if (_hwnd != IntPtr.Zero)
-            foreach (int id in new[] { HK_START, HK_PAUSE, HK_SLOW, HK_FAST, HK_BACK, HK_FWD })
+            foreach (int id in new[] { HK_START, HK_PAUSE, HK_SLOW, HK_FAST, HK_PREV, HK_NEXT, HK_BACK, HK_FWD })
                 UnregisterHotKey(_hwnd, id);
         _player.Stop();
         base.OnClosed(e);
