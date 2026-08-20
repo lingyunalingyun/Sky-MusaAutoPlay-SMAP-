@@ -125,6 +125,7 @@ public static class Lang
         ["practice.readmode"]  = new[] { "读谱模式", "讀譜模式", "Sheet Mode", "譜面モード" },
         ["practice.metro"]     = new[] { "打点模式", "打點模式", "Metronome", "メトロノーム" },
         ["practice.metrospeed"]= new[] { "打点速度", "打點速度", "Tempo", "テンポ" },
+        ["practice.game"]      = new[] { "游戏练习", "遊戲練習", "Game Practice", "ゲーム練習" },
         ["metro.title"]        = new[] { "打点速度", "打點速度", "Metronome Tempo", "テンポ" },
         ["metro.prompt"]       = new[] { "每分钟拍数 (BPM, 30–300):", "每分鐘拍數 (BPM, 30–300):", "Beats per minute (BPM, 30–300):", "1分間の拍数 (BPM, 30–300):" },
         ["midi.title"]     = new[] { "导入 MIDI", "匯入 MIDI", "Import MIDI", "MIDI インポート" },

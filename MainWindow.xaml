@@ -228,6 +228,55 @@
             </Setter>
         </Style>
 
+        <!-- 不带菜单边缘自动滚动的 Popup 选项 -->
+        <Style x:Key="PopupOptionItem" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2d5a88"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LibraryChoiceButton" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
+            <Setter Property="Background" Value="{DynamicResource ComboBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BoxBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
+                            <Grid>
+                                <ContentPresenter Margin="14,0,34,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <Path Data="M0,0 L5,5 L10,0 Z" Fill="#999" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Opacity" Value="0.88"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 深色细滚动条 -->
         <Style x:Key="ScrollThumb" TargetType="Thumb">
             <Setter Property="Template">
@@ -272,7 +321,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1" CornerRadius="8" Padding="4">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" local:SmoothScroll.Enabled="True">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True">
                                 <StackPanel IsItemsHost="True"/>
                             </ScrollViewer>
                         </Border>
@@ -654,7 +703,7 @@
     <!-- 圆角窗体 -->
     <Border x:Name="WindowRoot" Background="{DynamicResource WindowBg}" CornerRadius="16" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
         <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
-        <Grid x:Name="RootScale" Margin="10">
+        <Grid x:Name="RootScale" Margin="10" ClipToBounds="True" PreviewMouseLeftButtonDown="RootScale_PreviewMouseLeftButtonDown">
             <Grid.LayoutTransform><ScaleTransform x:Name="UiScale"/></Grid.LayoutTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -814,8 +863,10 @@
                     <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库" FontWeight="Bold" FontSize="16" Margin="2,0,0,10"/>
                     <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Height="36" Margin="0,0,0,8" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
                     <StackPanel x:Name="LocalFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-                        <ComboBox x:Name="FilterCombo" Width="128" Style="{StaticResource RoundCombo}" ToolTip="筛选"/>
-                        <ComboBox x:Name="SortCombo" Width="140" Margin="10,0,0,0" Style="{StaticResource RoundCombo}" ToolTip="排序"/>
+                        <ComboBox x:Name="FilterCombo" Visibility="Collapsed"/>
+                        <ComboBox x:Name="SortCombo" Visibility="Collapsed"/>
+                        <Button x:Name="FilterChoiceBtn" Width="128" Style="{StaticResource LibraryChoiceButton}" ToolTip="筛选" Click="FilterChoice_Click"/>
+                        <Button x:Name="SortChoiceBtn" Width="140" Margin="10,0,0,0" Style="{StaticResource LibraryChoiceButton}" ToolTip="排序" Click="SortChoice_Click"/>
                     </StackPanel>
                     <!-- 云端筛选/排序 (仅云端模式显示) -->
                     <StackPanel x:Name="CloudFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10" Visibility="Collapsed">
@@ -928,13 +979,14 @@
                         HorizontalAlignment="Left" VerticalAlignment="Top" Padding="18,8" Margin="8,4,0,0"
                         Click="PracticeBack_Click"/>
 
-                <!-- 右上控制栏: 读谱模式 / 打点模式(节拍器) / 打点速度; 两列(标签|控件)对齐 -->
-                <Grid x:Name="ReadModeBar" Panel.ZIndex="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,16,0" Opacity="0">
+                <!-- 右下控制栏: 读谱模式 / 打点模式(节拍器) / 打点速度 / 游戏练习; 两列(标签|控件)对齐 -->
+                <Grid x:Name="ReadModeBar" Panel.ZIndex="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16" Opacity="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -945,9 +997,12 @@
                     <TextBlock x:Name="MetroModeLbl" Grid.Row="1" Grid.Column="0" Text="打点模式" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
                     <CheckBox Grid.Row="1" Grid.Column="1" x:Name="MetroSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10"
                               Checked="Metro_Toggle" Unchecked="Metro_Toggle"/>
-                    <TextBlock x:Name="MetroSpeedLbl" Grid.Row="2" Grid.Column="0" Text="打点速度" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock x:Name="MetroSpeedLbl" Grid.Row="2" Grid.Column="0" Text="打点速度" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,10"/>
                     <Button Grid.Row="2" Grid.Column="1" x:Name="MetroBpmPill" Content="120" MinWidth="52" Style="{StaticResource PillBtn}"
-                            FontSize="15" HorizontalAlignment="Left" VerticalAlignment="Center" Click="MetroBpm_Click" ToolTip="点击输入节拍速度 (BPM)"/>
+                            FontSize="15" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,10" Click="MetroBpm_Click" ToolTip="点击输入节拍速度 (BPM)"/>
+                    <TextBlock x:Name="GamePracticeLbl" Grid.Row="3" Grid.Column="0" Text="游戏练习" Foreground="{DynamicResource TextFg}" FontSize="16" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <CheckBox Grid.Row="3" Grid.Column="1" x:Name="GamePracticeSwitch" Style="{StaticResource SwitchToggle}" HorizontalAlignment="Left" VerticalAlignment="Center"
+                              Checked="GamePractice_Toggle" Unchecked="GamePractice_Toggle"/>
                 </Grid>
 
                 <!-- 读谱区: 三列(左翻页 | 谱面墙 | 右翻页), 顶部对齐; 谱面墙放进 Viewbox 随窗口自动缩放 -->
@@ -1093,12 +1148,12 @@
 
             <!-- 点击任意处收回播放列表的透明背板 -->
             <Border x:Name="PlaylistBackdrop" Grid.Row="1" Grid.RowSpan="2" Background="Transparent"
-                    Visibility="Collapsed" Panel.ZIndex="9" MouseLeftButtonDown="PlaylistBackdrop_Click"/>
+                    Visibility="Collapsed" Panel.ZIndex="49" MouseLeftButtonDown="PlaylistBackdrop_Click"/>
 
             <!-- 播放列表浮层 (右侧滑出) -->
             <Border x:Name="PlaylistPanel" Grid.Row="1" Grid.RowSpan="2" HorizontalAlignment="Right" Width="470" Margin="0,0,4,4"
                     Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
-                    CornerRadius="14" Visibility="Collapsed" Panel.ZIndex="10">
+                    CornerRadius="14" Visibility="Collapsed" Panel.ZIndex="50">
                 <Border.Effect><DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
                 <Border.RenderTransform><TranslateTransform x:Name="PlaylistSlide"/></Border.RenderTransform>
                 <DockPanel Margin="14,12,10,12">
@@ -1119,6 +1174,54 @@
                               MouseDoubleClick="PlaylistView_DoubleClick"/>
                 </DockPanel>
             </Border>
+
+            <!-- 音色选择不用 ContextMenu，避免鼠标越过菜单边缘时触发原生自动滚动 -->
+            <Popup x:Name="InstrumentPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
+                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
+                        CornerRadius="8" Padding="4" MaxHeight="296"
+                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=InstrumentPopup}">
+                    <ListBox x:Name="InstrumentList" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
+                             PreviewMouseLeftButtonUp="InstrumentList_Click"/>
+                </Border>
+            </Popup>
+
+            <Popup x:Name="PitchPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
+                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
+                        CornerRadius="8" Padding="4" MaxHeight="296" MinWidth="104">
+                    <ListBox x:Name="PitchList" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
+                             PreviewMouseLeftButtonUp="PitchList_Click"/>
+                </Border>
+            </Popup>
+
+            <Popup x:Name="SpeedPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
+                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
+                        CornerRadius="8" Padding="4" MaxHeight="296"
+                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=SpeedPopup}">
+                    <ListBox x:Name="SpeedList" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
+                             PreviewMouseLeftButtonUp="SpeedList_Click"/>
+                </Border>
+            </Popup>
+
+            <Popup x:Name="LibraryChoicePopup" Placement="Bottom" AllowsTransparency="True" StaysOpen="True" PopupAnimation="None">
+                <Border x:Name="LibraryChoiceChrome" Background="{DynamicResource ComboBg}" BorderBrush="{DynamicResource BoxBorder}"
+                        BorderThickness="1" CornerRadius="10" Padding="4" RenderTransformOrigin="0.5,0"
+                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=LibraryChoicePopup}">
+                    <Border.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="LibraryChoiceScale" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="LibraryChoiceMove" Y="0"/>
+                        </TransformGroup>
+                    </Border.RenderTransform>
+                    <ListBox x:Name="LibraryChoiceList" Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource PopupOptionItem}" PreviewMouseLeftButtonUp="LibraryChoiceList_Click"/>
+                </Border>
+            </Popup>
 
             <!-- 轻提示 toast -->
             <Border x:Name="Toast" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,18"
