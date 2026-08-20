@@ -17,7 +17,9 @@ An auto-play (auto-piano) helper for **Sky: Children of the Light** — reimagin
 SMAP plays Sky's instruments for you: import or create a sheet, and it performs it in-game.
 The latest release is a **full C# WPF rewrite** with a **music-player UI** — an account + collections sidebar, a cover-art library in the middle, the virtual keys on the right, and a full-width player bar at the bottom, plus a play queue, an inline cloud library, and a settings view.
 
-> 🎹 **v2.1 "YunYun"**: adds a **Practice (follow-along) mode** — a full-screen keyboard highlighting the next / next-next keys, chords must be held together, with demo playback; the bottom-right toggle is now "Perform mode" (preview by default); on exit it remembers the last played song + position and your instrument / cave / speed settings; fixes the window not centering on launch.
+> 🍬 **v2.2 "YunYun"**: Practice now includes a **sheet wall, beat mode, and Game Practice** with an always-on-top window and global key listening while Sky has focus; global playback hotkeys have been redesigned; adds sheet-cover upload/display, website account avatars, and the new "Sunset Candy" theme; dropdowns and favorites gain nonlinear motion; updates can now download, install, and restart entirely in-app.
+
+> 🎹 v2.1: introduced full-screen follow-along practice, demo playback, and playback/settings persistence.
 
 > 🎵 v2.0: game instrument timbres filled out to **37** (incl. 27 original Sky sounds), per-instrument transpose, hold-to-sustain, and random-speed playback.
 
@@ -40,18 +42,20 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 - **Progress bar** — a full-width thin line pinned to the container's top edge; on hover it thickens and shows a white handle + a time pill that track the play position in real time. Drag to seek, even while paused.
 - **Play queue** — a slide-out queue on the right; double-click a library song to enqueue and play; three modes (repeat-all / repeat-one / shuffle); auto-advance to the next track after a **2-second gap**.
 - **Remembers last state** — on exit it keeps the last played song + position; reopen to see it and resume from there; instrument / cave / perform mode / speed are remembered too.
-- **Live speed control** + **global hotkeys**: F1 start/stop · F2 pause · F3 slower · F4 faster · F5 back 5s · F6 forward 10s.
+- **Live speed control** + **global hotkeys**: F1 restart/stop · F2 pause/resume · F3/F4 speed −/+0.1x · F5/F6 previous/next track · `←`/`→` seek −/+2 seconds.
 
 ### Practice (follow-along)
 - **Full-screen keyboard** — click "Practice" on the main screen; the keys zoom out of their original spot into a full-screen keyboard (springy, interruptible animation); `Esc` returns.
 - **Follow-along hints** — highlights the next key (accent) + the next-next key (dimmed); you only advance by pressing the current key, and **chords must be held together**.
 - **Demo playback** — press play to demo the whole song: sound via speaker + highlights leading the sound by one step; it **never sends game keys** in practice.
-- **Seeking** — reuses the bottom progress bar; `←` / `→` or drag / click to move; prev / next switches the practice song via the play queue.
+- **Sheet wall & beat mode** — a 4×8 miniature sheet follows the current step, flips pages automatically, and can advance at a configurable beat rate.
+- **Game Practice** — keeps SMAP on top and listens globally for the 15 instrument keys, so follow-along continues while Sky has focus without consuming the game's input.
+- **Practice hotkeys** — F1 restarts at the first cell, F2 pauses/resumes, F3/F4 change speed, F5/F6 switch songs, and `←`/`→` jump one playable cell.
 
 ### Library & Collections
 - **Local library** — rich rows with cover art (title / artist / transcriber / duration); hover reveals add-to-queue / favorite / more; right-click menu with 7 actions (add to queue / add to collection / remove from library / open file location / edit / song info / upload).
 - **My Collections (playlists)** — create / rename / delete / **drag to reorder** (with a drop indicator); the ⭐ star means "saved in any collection" (music-player style).
-- **Inline cloud library** — browse the MuseTreehouse online library right in the middle pane, with **infinite scroll**, sort (newest / hottest / downloads) + difficulty filter, and one-click download.
+- **Inline cloud library** — browse the MuseTreehouse online library right in the middle pane, with **infinite scroll**, sort (newest / hottest / downloads) + difficulty filter, one-click download, and sheet-cover upload/display.
 - **Import** — `.json` / `.txt` / `.mid` (MIDI is auto-transposed to C major).
 
 ### Authoring & Sound
@@ -62,10 +66,12 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 - **Hold to sustain** — wind / bowed-string instruments sound continuously while a key is held.
 
 ### UI & Settings
-- **Custom rounded window** + **live dark/light theme** + **Sky-style diamond keys** (with a flip animation on trigger).
+- **Custom rounded window** + **live Dark / Light / Sunset Candy themes** + **Sky-style diamond keys** (with a flip animation on trigger).
+- **Website account profile** — shows the MuseTreehouse avatar directly in the sidebar card and profile window.
+- **Polished motion** — interruptible nonlinear animations for filter/sort popups, favorite stars, and practice transitions.
 - **Languages** — Simplified Chinese / Traditional Chinese / English / Japanese.
 - **Settings view** (slides in from the middle/right panels) — language / theme / check updates / upload logs / UI scale / font scale / start countdown / key mapping.
-- **Auto-requests admin** on launch + **automatic update check**.
+- **Auto-requests admin** on launch + **automatic update check**; new versions download, install, and restart in-app.
 
 ## Shortcuts
 
@@ -73,9 +79,10 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 
 | Key | Action | Key | Action |
 |---|---|---|---|
-| `F1` | Start / Stop | `F2` | Pause |
-| `F3` | Slower | `F4` | Faster |
-| `F5` | Back 5s | `F6` | Forward 10s |
+| `F1` | Restart / Stop | `F2` | Pause / Resume |
+| `F3` | Speed −0.1x | `F4` | Speed +0.1x |
+| `F5` | Previous track | `F6` | Next track |
+| `←` | Back 2 seconds | `→` | Forward 2 seconds |
 
 **Virtual keys** (15 keys, remappable in Settings):
 
