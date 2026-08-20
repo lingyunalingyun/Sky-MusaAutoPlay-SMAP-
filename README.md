@@ -117,4 +117,4 @@ SMAP 是一款《光·遇》自动弹琴助手：导入或制作曲谱，即可�
 
 ## 许可证
 
-见 [LICENSE](LICENSE)。仅供学习交流，曲谱版权归原创谱者所有。
+本项目采用 [GNU General Public License v3.0](LICENSE) 开源。曲谱版权归原创谱者所有。

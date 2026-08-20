@@ -140,7 +140,7 @@ Drop `.json` or `.txt` Sky Music score files into `songs/` and they appear in th
 
 ## 📜 License & disclaimer
 
-- Source code: **MIT License** (see [LICENSE](LICENSE))
+- Source code: **GNU General Public License v3.0** (see [LICENSE](LICENSE))
 - Score files are user-contributed; copyrights belong to their original creators
 - This tool is **for personal practice and entertainment only**. Automated key input may violate the *Sky* End User License Agreement; **use at your own risk**.
 

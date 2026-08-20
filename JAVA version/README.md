@@ -153,7 +153,7 @@ cd Sky-Automatic-Piano-Assistant
 
 ## 📜 版权与免责
 
-- 本项目代码采用 **MIT License**（详见 [LICENSE](LICENSE)）
+- 本项目代码采用 **GNU General Public License v3.0**（详见 [LICENSE](LICENSE)）
 - 曲谱由用户社区贡献，版权归原作者
 - 本工具**仅供个人娱乐学习**，请勿用于商业用途；自动弹琴可能违反《光遇》用户协议，**使用风险自行承担**
 
