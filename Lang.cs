@@ -61,6 +61,7 @@ public static class Lang
         ["theme"]        = new[] { "主题", "主題", "Theme", "テーマ" },
         ["theme.dark"]   = new[] { "深色模式", "深色模式", "Dark", "ダーク" },
         ["theme.light"]  = new[] { "浅色模式", "淺色模式", "Light", "ライト" },
+        ["theme.sunset"] = new[] { "落日粉", "落日粉", "Sunset Pink", "サンセットピンク" },
         ["about"]        = new[] { "软件信息", "軟體資訊", "About", "ソフト情報" },
 
         ["menu.fav"]     = new[] { "收藏", "收藏", "Favorite", "お気に入り" },

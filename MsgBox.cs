@@ -18,12 +18,15 @@ public static class MsgBox
     }
 
     public static bool Confirm(Window? owner, string message, string title = "确认")
+        => Choice(owner, message, title, "是", "否");
+
+    public static bool Choice(Window? owner, string message, string title, string primaryText, string secondaryText)
     {
         var win = Shell(owner, title, message, out var btns);
         bool yes = false;
-        var ok = Btn("是"); ok.IsDefault = true;
+        var ok = Btn(primaryText); ok.IsDefault = true;
         ok.Click += (_, __) => { yes = true; win.DialogResult = true; };
-        var no = Btn("否"); no.IsCancel = true; no.Margin = new Thickness(10, 0, 0, 0);
+        var no = Btn(secondaryText); no.IsCancel = true; no.Margin = new Thickness(10, 0, 0, 0);
         no.Click += (_, __) => win.DialogResult = false;
         btns.Children.Add(ok); btns.Children.Add(no);
         win.ShowDialog();

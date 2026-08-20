@@ -148,8 +148,7 @@ public class AboutWindow : Window
         btn.IsEnabled = true;
         if (r is { } rel)
         {
-            if (MsgBox.Confirm(this, $"发现新版本 v{rel.Tag}\n当前 v{UpdateChecker.AppVersion}\n\n前往 GitHub 下载?", Lang.S("about.check")))
-                Open(rel.Url.Length > 0 ? rel.Url : Repo);
+            if (Owner is MainWindow main) main.OfferUpdate(rel, this);
         }
         else MsgBox.Info(this, Lang.S("about.latest"), Lang.S("about.check"));
     }

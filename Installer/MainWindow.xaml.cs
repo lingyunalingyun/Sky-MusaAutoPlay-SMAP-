@@ -14,12 +14,64 @@ public partial class MainWindow : Window
     readonly Grid[] _steps;
     int _step;
     string _installedExe = "";
+    string? _updateTarget, _restartExe;
+    int _waitPid;
 
     public MainWindow()
     {
         InitializeComponent();
         _steps = new[] { Step1, Step2, Step3, Step4, Step5 };
         LicenseText.Text = License;
+        ReadUpdateArguments();
+        if (_updateTarget != null) Loaded += AutoUpdate_Loaded;
+    }
+
+    void ReadUpdateArguments()
+    {
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 1; i + 1 < args.Length; i++)
+        {
+            if (args[i] == "--update") _updateTarget = args[++i];
+            else if (args[i] == "--restart") _restartExe = args[++i];
+            else if (args[i] == "--wait-pid" && int.TryParse(args[++i], out int pid)) _waitPid = pid;
+        }
+        if (_updateTarget == null) return;
+        _updateTarget = Path.GetFullPath(_updateTarget);
+        _restartExe = _restartExe == null ? null : Path.GetFullPath(_restartExe);
+        if (_restartExe == null || !string.Equals(Path.GetDirectoryName(_restartExe), _updateTarget, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetFileName(_restartExe), "SMAP.exe", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Path.GetPathRoot(_updateTarget), _updateTarget, StringComparison.OrdinalIgnoreCase))
+            _updateTarget = null;
+    }
+
+    async void AutoUpdate_Loaded(object sender, RoutedEventArgs e)
+    {
+        ShowStep(3);
+        SetProgress(0);
+        Log("正在等待 SMAP 退出……");
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (_waitPid > 0)
+                {
+                    try { System.Diagnostics.Process.GetProcessById(_waitPid).WaitForExit(); }
+                    catch (ArgumentException) { }
+                }
+                Extract(_updateTarget!);
+            });
+            _installedExe = _restartExe!;
+            try { CreateShortcuts(_updateTarget!); Log("已更新快捷方式。"); }
+            catch (Exception se) { Log("⚠ 快捷方式更新失败: " + se.Message); }
+            Log("更新完成，正在重新启动 SMAP……");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_installedExe) { UseShellExecute = true });
+            Close();
+        }
+        catch (Exception ex)
+        {
+            Log("❌ 更新失败: " + ex.Message);
+            MessageBox.Show(this, "自动更新失败:\n" + ex.Message, "SMAP 更新");
+        }
     }
 
     // ---- 窗口控制 ----

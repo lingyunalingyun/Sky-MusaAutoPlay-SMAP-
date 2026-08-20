@@ -219,8 +219,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#2d5a88"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource RowSel}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -244,8 +244,8 @@
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#2d5a88"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource RowSel}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -716,7 +716,7 @@
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                         <Ellipse Width="14" Height="14" Fill="#e8e8f5"/>
-                        <TextBlock Text="SMAP - 光遇自动演奏" Foreground="#ffffff" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="SMAP - 光遇自动演奏" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
                         <Button Content="—" Style="{StaticResource CaptionBtn}" Click="Min_Click"/>
@@ -791,12 +791,12 @@
                     </Border>
 
                     <!-- 本地 / 云端 切换 -->
-                    <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="White" FontWeight="Bold" Margin="0,14,0,0" Click="ShowLocal_Click"/>
-                    <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="White" FontWeight="Bold" Margin="0,10,0,0" Click="ShowCloud_Click"/>
+                    <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,14,0,0" Click="ShowLocal_Click"/>
+                    <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,10,0,0" Click="ShowCloud_Click"/>
 
                     <!-- 底部: 导入 / 设置 -->
-                    <Button x:Name="SideSettingsBtn" DockPanel.Dock="Bottom" Content="设置" Style="{StaticResource NeutralBtn}" Click="Settings_Click"/>
-                    <Button x:Name="SideImportBtn" DockPanel.Dock="Bottom" Content="导入" Style="{StaticResource NeutralBtn}" Margin="0,0,0,10" Click="Import_Click"/>
+                    <Button x:Name="SideSettingsBtn" DockPanel.Dock="Bottom" Content="设置" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Click="Settings_Click"/>
+                    <Button x:Name="SideImportBtn" DockPanel.Dock="Bottom" Content="导入" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Margin="0,0,0,10" Click="Import_Click"/>
 
                     <!-- 我的收藏夹 (Stage2) -->
                     <Grid DockPanel.Dock="Top" Margin="0,18,0,6">
@@ -898,8 +898,8 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="#D08A18" Foreground="White" FontWeight="Bold" Click="Create_Click"/>
-                            <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="#2F6FD0" Foreground="White" FontWeight="Bold" Click="Practice_Click"/>
+                            <Button x:Name="CreateRightBtn" Grid.Column="0" Content="创建" Background="{DynamicResource CreateActionBg}" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Click="Create_Click"/>
+                            <Button x:Name="PracticeBtn" Grid.Column="2" Content="练习" Background="{DynamicResource PracticeActionBg}" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Click="Practice_Click"/>
                         </Grid>
 
                         <!-- 旧按钮: 迁移至 设置/底部栏, 隐藏保留供现有逻辑引用 -->
@@ -1090,7 +1090,9 @@
                             </Button>
                             <Button x:Name="PlayBtn" Style="{StaticResource CircleBtn}" Background="{DynamicResource TitleGrad}"
                                     Width="52" Height="52" Margin="14,0" Click="PlayPause_Click">
-                                <Path x:Name="PlayIcon" Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform" Width="22" Height="22"/>
+                                <Path x:Name="PlayIcon" Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform" Width="22" Height="22">
+                                    <Path.RenderTransform><TranslateTransform x:Name="PlayIconOffset" X="2.5"/></Path.RenderTransform>
+                                </Path>
                             </Button>
                             <Button x:Name="NextBtn" Style="{StaticResource IconBtn}" Click="NextSong_Click" ToolTip="下一首">
                                 <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconNext}"/>
