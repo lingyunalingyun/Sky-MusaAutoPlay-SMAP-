@@ -36,11 +36,14 @@ public class ProfileWindow : ChromeWindow
         body.Children.Add(top);
 
         // 个人主页 / 退出账号
-        var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        var home = Neutral("个人主页"); home.Width = 280;
+        var btns = new Grid();
+        btns.ColumnDefinitions.Add(new ColumnDefinition());
+        btns.ColumnDefinitions.Add(new ColumnDefinition());
+        var home = Neutral("个人主页"); home.Margin = new Thickness(0, 0, 12, 0);
         home.Click += (_, __) => Open("http://musetreehouse.com");
-        var logout = Neutral("退出账号"); logout.Width = 280; logout.Margin = new Thickness(24, 0, 0, 0);
+        var logout = Neutral("退出账号"); logout.Margin = new Thickness(12, 0, 0, 0);
         logout.Click += (_, __) => { CloudApi.Logout(); LoggedOut = true; Close(); };
+        Grid.SetColumn(logout, 1);
         btns.Children.Add(home);
         btns.Children.Add(logout);
         body.Children.Add(btns);

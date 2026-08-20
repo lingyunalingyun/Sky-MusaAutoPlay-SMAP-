@@ -45,7 +45,7 @@ public class ChromeWindow : Window
         var g = new Grid();
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         left.Children.Add(new System.Windows.Shapes.Ellipse { Width = 13, Height = 13, Fill = new SolidColorBrush(Color.FromRgb(0xe8, 0xe8, 0xf5)) });
-        left.Children.Add(new TextBlock { Text = title, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        left.Children.Add(new TextBlock { Text = title, Foreground = B("CaptionFg"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         var dots = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
         dots.Children.Add(Dot(0xc9c9c9, () => WindowState = WindowState.Minimized));
         dots.Children.Add(Dot(0xe6b52a, () => WindowState = WindowState.Minimized));

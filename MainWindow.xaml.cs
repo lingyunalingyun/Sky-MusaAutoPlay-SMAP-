@@ -66,7 +66,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         Lang.Load();
-        Theme.Apply(Theme.LoadDark());   // 资源就位后 InitializeComponent 里的 DynamicResource 才解析得到
+        Theme.Apply(Theme.Load());   // 资源就位后 InitializeComponent 里的 DynamicResource 才解析得到
         InitializeComponent();
         _keyboardProc = KeyboardHook;   // 保持低级键盘回调强引用，防止被 GC 回收
         _player.Vk = KeyConfig.Load();
@@ -134,7 +134,7 @@ public partial class MainWindow : Window
         InstrumentPill.Content = $"{Lang.S("instrument")}:{Lang.Instrument(_instrumentName)}";
         InstrumentList.Items.Clear();   // 语言变了, 下次展开时重建翻译后的音色列表
         RefreshPitchPill();
-        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
+        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.LangKey)}";
         AboutBtn.Content = Lang.S("about");
 
         int si = SortCombo.SelectedIndex < 0 ? 0 : SortCombo.SelectedIndex;
@@ -252,6 +252,22 @@ public partial class MainWindow : Window
         if (s == null) return;
         ToggleFav(s);
         FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        AnimateFavorite(FavStar);
+    }
+
+    static void AnimateFavorite(FrameworkElement star)
+    {
+        star.RenderTransformOrigin = new Point(0.5, 0.5);
+        if (star.RenderTransform is not ScaleTransform scale)
+            star.RenderTransform = scale = new ScaleTransform(1, 1);
+
+        var bounce = new DoubleAnimationUsingKeyFrames();
+        bounce.KeyFrames.Add(new EasingDoubleKeyFrame(0.72, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(65)),
+            new CubicEase { EasingMode = EasingMode.EaseOut }));
+        bounce.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)),
+            new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 2, Springiness = 6 }));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, bounce, HandoffBehavior.SnapshotAndReplace);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce, HandoffBehavior.SnapshotAndReplace);
     }
 
     void PrevSong_Click(object sender, RoutedEventArgs e) => StepSong(-1);
@@ -393,6 +409,7 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
         ToggleFav(s);
         if (ReferenceEquals(s, Selected) || ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        AnimateFavorite((FrameworkElement)sender);
         e.Handled = true;
     }
 
@@ -623,10 +640,22 @@ public partial class MainWindow : Window
     {
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) return;
-        if (MsgBox.Confirm(this,
-            $"当前版本: v{UpdateChecker.AppVersion}\n最新版本: v{rel.Tag}\n\n前往 GitHub 下载最新版本?",
-            $"发现新版本 — SMAP {rel.Name}") && rel.Url.Length > 0)
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true });
+        OfferUpdate(rel);
+    }
+
+    internal void OfferUpdate(UpdateChecker.Release rel, Window? promptOwner = null)
+    {
+        var owner = promptOwner ?? this;
+        bool major = UpdateChecker.IsMajorUpdate(rel.Tag);
+        bool install = MsgBox.Choice(owner,
+            $"当前版本: v{UpdateChecker.AppVersion}\n最新版本: v{rel.Tag}\n\n{(major ? "此大版本更新为必须更新。" : "是否立即下载并安装更新？")}",
+            $"发现新版本 — SMAP {rel.Name}", "立即更新", major ? "退出软件" : "暂不更新");
+        if (!install)
+        {
+            if (major) Application.Current.Shutdown();
+            return;
+        }
+        if (UpdateProgressWindow.Run(owner, rel)) Application.Current.Shutdown();
     }
 
     // ---- 曲库: 搜索 / 筛选 / 排序 / 收藏 / 标签 ----
@@ -695,6 +724,7 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not SongInfo s) return;
         ToggleFav(s);
         if (ReferenceEquals(s, _nowPlaying)) FavStar.Fill = s.Fav ? _gold : System.Windows.Media.Brushes.Transparent;
+        AnimateFavorite((FrameworkElement)sender);
         e.Handled = true;
     }
 
@@ -1375,10 +1405,11 @@ public partial class MainWindow : Window
 
     void Theme_Click(object sender, RoutedEventArgs e)
     {
-        Theme.Apply(!Theme.Dark);
+        Theme.Apply((AppTheme)(((int)Theme.Current + 1) % 3));
         ApplyKeyTheme();
-        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
-        StatusText.Text = $"状态: 已切换到{(Theme.Dark ? "深色" : "浅色")}主题";
+        SetLibTab(!_cloudMode);
+        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.LangKey)}";
+        StatusText.Text = $"状态: 已切换到{Lang.S(Theme.LangKey)}主题";
     }
 
     void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(this).ShowDialog();
@@ -1558,6 +1589,7 @@ public partial class MainWindow : Window
     void SetPlayGlyph(bool playing)
     {
         PlayIcon.Data = (Geometry)FindResource(playing ? "IconPause" : "IconPlay");
+        PlayIconOffset.X = playing ? 0 : 2.5;
         var st = new ScaleTransform(1, 1);
         PlayBtn.RenderTransformOrigin = new Point(0.5, 0.5);
         PlayBtn.RenderTransform = st;
@@ -1807,8 +1839,8 @@ public partial class MainWindow : Window
 
     void SetLibTab(bool local)
     {
-        LocalLibBtn.Background = local ? new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xD0)) : new SolidColorBrush(Color.FromRgb(0x3a, 0x3a, 0x3a));
-        CloudLibBtn.Background = local ? new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)) : new SolidColorBrush(Color.FromRgb(0x12, 0x79, 0x5A));
+        LocalLibBtn.Background = (Brush)Application.Current.Resources[local ? "LocalActiveBg" : "NavInactiveBg"];
+        CloudLibBtn.Background = (Brush)Application.Current.Resources[local ? "NavInactiveBg" : "CloudActiveBg"];
     }
 
     // ===== 云端曲库(内联) Stage3 =====
@@ -1923,8 +1955,8 @@ public partial class MainWindow : Window
             _settingsInit = true;
         }
         SetLangCombo.SelectedIndex = (int)Lang.Current;
-        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light") };
-        SetThemeCombo.SelectedIndex = Theme.Dark ? 0 : 1;
+        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light"), Lang.S("theme.sunset") };
+        SetThemeCombo.SelectedIndex = (int)Theme.Current;
         SetWaitBox.Text = CountdownBox.Text;
         SetUiCombo.SelectedIndex = ScaleIndex(_uiScale);
         SetFontCombo.SelectedIndex = ScaleIndex(_fontScale);
@@ -1936,17 +1968,18 @@ public partial class MainWindow : Window
         if (!_settingsInit || SetLangCombo.SelectedIndex < 0) return;
         Lang.Set((AppLang)SetLangCombo.SelectedIndex);
         ApplyLanguage();
-        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light") };
-        SetThemeCombo.SelectedIndex = Theme.Dark ? 0 : 1;
+        SetThemeCombo.ItemsSource = new[] { Lang.S("theme.dark"), Lang.S("theme.light"), Lang.S("theme.sunset") };
+        SetThemeCombo.SelectedIndex = (int)Theme.Current;
     }
     void SetThemeCombo_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_settingsInit || SetThemeCombo.SelectedIndex < 0) return;
-        bool dark = SetThemeCombo.SelectedIndex == 0;
-        if (dark == Theme.Dark) return;
-        Theme.Apply(dark);
+        var theme = (AppTheme)SetThemeCombo.SelectedIndex;
+        if (theme == Theme.Current) return;
+        Theme.Apply(theme);
         ApplyKeyTheme();
-        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.Dark ? "theme.dark" : "theme.light")}";
+        SetLibTab(!_cloudMode);
+        ThemeBtn.Content = $"{Lang.S("theme")}: {Lang.S(Theme.LangKey)}";
     }
     void SetWaitBox_Changed(object sender, TextChangedEventArgs e)
     {
@@ -1993,8 +2026,7 @@ public partial class MainWindow : Window
     {
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) { ShowToast(Lang.S("t.latest")); return; }
-        if (MsgBox.Confirm(this, $"发现新版本 v{rel.Tag}\n当前 v{UpdateChecker.AppVersion}\n\n前往 GitHub 下载?", Lang.S("set.checkupd")) && rel.Url.Length > 0)
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true });
+        OfferUpdate(rel);
     }
 
     async System.Threading.Tasks.Task UploadLogAsync()
