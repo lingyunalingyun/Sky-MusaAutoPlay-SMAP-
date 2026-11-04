@@ -279,12 +279,22 @@ static class Program
             string identity=PerformanceIdentity.ForProject(session.Project);int history=session.UndoCount;
             Centered("Initial");Check(roll.PlayheadBeat==0&&roll.KeysAtPlayhead().SetEquals(new[]{4})&&EditorWindow.PreviewSequence(session.Project).Notes.Min(n=>n.StartMicroseconds)==0,"Centering changed beat zero, key highlight or first note start");
             session.Select(new[]{track.Notes[0].Id});window.HandleKey(Key.Right,0);Centered("Right");Check(roll.PlayheadBeat==1m/grid,"Right changed semantic grid step");window.HandleKey(Key.Left,0);Centered("Left");window.HandleKey(Key.Left,0);Check(roll.PlayheadBeat==0,"Left crossed zero");
+            foreach(decimal paused in new[]{.37m,1.3m,.01m,2.875m})foreach(var direction in new[]{Key.Left,Key.Right})
+            {
+                roll.CenterCursor=false;roll.PlayheadBeat=paused;
+                window.HandleKey(direction,0);Centered("Arrow after fractional pause");
+                decimal expected=Math.Max(0,(decimal.Floor(paused*grid)+(direction==Key.Left?-1:1))/grid);
+                Check(Math.Abs(roll.PlayheadBeat-expected)<.000000000001m,"Fractional pause offset survived arrow navigation");
+                decimal center=roll.CursorDisplayBeat*grid-.5m;Check(Math.Abs(center-decimal.Round(center))<.000000000001m,"Paused cursor is not at a global grid-cell center");
+            }
+            window.HandleKey(Key.Home,0);for(int i=1;i<=6;i++){window.HandleKey(Key.Right,0,true);Check(Math.Abs(roll.PlayheadBeat-i/(decimal)grid)<.000000000001m,"Repeated arrows stalled on fractional grid boundary");}
+            window.HandleKey(Key.Home,0);
             roll.SetZoom(2,1);roll.SetView(0);Centered("Zoom");
             var overview=(PianoRollOverview)window.FindName("Overview");overview.RefreshView();var red=Color.FromRgb(228,121,104);
             var line=Geometry(((DrawingVisual)Field(overview,"_view")!).Drawing).Single(g=>g.Geometry is LineGeometry&&g.Pen?.Brush is SolidColorBrush b&&b.Color==red);
             Check(Math.Abs(((LineGeometry)line.Geometry).StartPoint.X-(double)(roll.CursorDisplayBeat/overview.ExtentBeats)*overview.ActualWidth)<.000001,"Overview cursor disagrees with centered roll cursor");
             roll.CenterCursor=false;roll.PlayheadBeat=.37m;Pump();Check(Math.Abs(CursorX()-(PianoRoll.LaneWidth+(double)(.37m-roll.ViewBeat)*roll.BeatWidth))<.000001,"Continuous playback cursor gained a half-cell time offset");
-            window.HandleKey(Key.Home,0);Centered("Home");roll.SnapEnabled=false;roll.PlayheadBeat=.37m;Pump();Check(roll.CursorDisplayBeat==.37m,"Free positioning was snapped or offset");roll.SnapEnabled=true;
+            window.HandleKey(Key.Home,0);Centered("Home");roll.SnapEnabled=false;roll.PlayheadBeat=.37m;Pump();Check(roll.CursorDisplayBeat==.37m,"Free positioning was snapped or offset");window.HandleKey(Key.Right,0);Check(Math.Abs(roll.PlayheadBeat-(.37m+1m/grid))<.000000000001m&&roll.CursorDisplayBeat==roll.PlayheadBeat,"Free arrow positioning was quantized");roll.SnapEnabled=true;
             roll.PointerDown(new Point(PianoRoll.LaneWidth+roll.BeatWidth*1.2,10),MouseButton.Left,0);Centered("Ruler");
             Check(session.UndoCount==history&&PerformanceIdentity.ForProject(session.Project)==identity,"Cursor centering changed notes or undo history");
             if(output!=null&&grid==4)Capture(window,Path.Combine(output,"cursor-cell-center.png"));

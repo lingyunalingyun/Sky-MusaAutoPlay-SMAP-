@@ -302,7 +302,13 @@ public partial class EditorWindow
         else if (key is Key.Left or Key.Right)
         {
             decimal delta = (key == Key.Left ? -1 : 1) / (decimal)_session.Project.GridSubdiv;
-            Roll.CenterCursor = true; Roll.PlayheadBeat = Math.Max(0, Roll.PlayheadBeat + delta); Roll.EnsurePlayheadVisible(); Roll.PlayheadChanged?.Invoke();
+            decimal position = Roll.PlayheadBeat + delta;
+            if (Roll.SnapEnabled)
+            {
+                decimal cell = decimal.Floor(decimal.Round(Roll.PlayheadBeat * _session.Project.GridSubdiv, 12));
+                position = (cell + (key == Key.Left ? -1 : 1)) / _session.Project.GridSubdiv;
+            }
+            Roll.CenterCursor = true; Roll.PlayheadBeat = Math.Max(0, position); Roll.EnsurePlayheadVisible(); Roll.PlayheadChanged?.Invoke();
         }
         else if (key is Key.Up or Key.Down)
         { if (_session.Selected.Count > 0) Edit(() => _session.MoveSelected(0, key == Key.Up ? 1 : -1)); else Roll.SetView(Roll.ViewBeat, Roll.VerticalOffset + (key == Key.Up ? -22 : 22)); }
