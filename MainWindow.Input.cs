@@ -20,6 +20,7 @@ public partial class MainWindow
     bool _inputSettingsOpen;
     long _captureFence;
     bool _textInputSuspended,_previewLoading;
+    internal Func<IntPtr> ShortcutForeground {get;set;}=GameWindows.GetForegroundWindow;
     readonly HashSet<ushort> _localPerformanceDown=new();
     internal Action<int,bool> PracticeAudioInput {get;set;}=(key,down)=>{if(down)AudioEngine.NoteOn(key);else AudioEngine.NoteOff(key);};
     bool TextInputFocused=>Keyboard.FocusedElement is TextBoxBase or PasswordBox || Keyboard.FocusedElement is ComboBox{IsEditable:true};
@@ -40,9 +41,20 @@ public partial class MainWindow
     }
     static string PreviewInstrumentText(string name)=>name=="Custom4"?Lang.S("map.custom4"):Lang.Instrument(name);
     void UpdateInputFocus(object? sender,ProcessInputEventArgs e)
+        => RefreshShortcutFocus();
+    bool EditorForeground(IntPtr hwnd)
     {
-        bool focused=AppForeground(GameWindows.GetForegroundWindow())&&TextInputFocused;
+        var editors=Application.Current.Windows.OfType<EditorWindow>().Select(w=>new WindowInteropHelper(w).Handle).ToHashSet();
+        while(hwnd!=IntPtr.Zero){if(editors.Contains(hwnd))return true;hwnd=ShortcutOwner(hwnd,4);}
+        return false;
+    }
+    [DllImport("user32.dll",EntryPoint="GetWindow")]static extern IntPtr ShortcutOwner(IntPtr hwnd,uint command);
+    void RefreshShortcutFocus()
+    {
+        var foreground=ShortcutForeground();
+        bool focused=EditorForeground(foreground)||AppForeground(foreground)&&TextInputFocused;
         if(focused==_textInputSuspended)return;_textInputSuspended=focused;
+        _shortcuts.Clear();
         try{_registrations?.Apply(_inputs.Functions,_mapping!=null||_inputSettingsOpen||focused);}
         catch(Exception error){Logger.Exception("快捷键焦点路由更新失败",error);ShowToast(Lang.S("map.applyFailed"));}
     }
@@ -101,7 +113,8 @@ public partial class MainWindow
     void ObservedInput(ObservedKey e)
     {
         if(e.Timestamp<=_captureFence)return;
-        if(e.Foreground!=GameWindows.GetForegroundWindow()){_shortcuts.Clear();return;}
+        if(e.Foreground!=ShortcutForeground()){_shortcuts.Clear();return;}
+        if(EditorForeground(e.Foreground)){_shortcuts.Clear();return;}
         var context=Context(e.Foreground);
         var action=_shortcuts.KeyEvent(e.Key,e.Modifiers,e.Down,context);
         if(action is {} command){ExecuteShortcut(command);return;}
@@ -116,14 +129,16 @@ public partial class MainWindow
     }
     bool RegisteredShortcut(int id)
     {
+        if(EditorForeground(ShortcutForeground())){_shortcuts.Clear();return true;}
         if(_mapping!=null || _registrations==null)return false;
         var found=_registrations.Registered.FirstOrDefault(p=>p.Value==id);
         if(found.Value!=id)return false;
-        if(_shortcuts.KeyEvent(found.Key.Key,found.Key.Modifiers,true,Context(GameWindows.GetForegroundWindow()),true) is {} action)ExecuteShortcut(action);
+        if(_shortcuts.KeyEvent(found.Key.Key,found.Key.Modifiers,true,Context(ShortcutForeground()),true) is {} action)ExecuteShortcut(action);
         return true;
     }
     void ExecuteShortcut(ShortcutAction action)
     {
+        if(EditorForeground(ShortcutForeground()))return;
         if(!FeatureAvailability.ShortcutAvailable(action))return;
         if(_mapping!=null)
         {

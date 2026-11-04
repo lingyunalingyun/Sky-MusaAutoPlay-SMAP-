@@ -72,6 +72,7 @@ static class Program
             else if(args.Contains("editor-window-mode"))EditorWindowMode();
             else if(args.Contains("roll-note-preview"))RollNotePreview(args.Length>1?args[1]:null);
             else if(args.Contains("overview-range"))OverviewRange(args.Length>1?args[1]:null);
+            else if(args.Contains("editor-reference-keys"))EditorReferenceKeys(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -261,6 +262,40 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void EditorReferenceKeys(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        var first=new ProjectTrack {Name="Editing"};first=first with {Notes=new(){new(){TrackId=first.Id,Key=4,Beat=2}}};
+        var other=new ProjectTrack {Name="Reference"};other=other with {Notes=new(){new(){TrackId=other.Id,Key=9,Beat=4,Action=NoteAction.Hold,LengthBeats=2}}};
+        var harp=new ProjectTrack {Name="Harp reference",PreviewInstrument="Harp"};harp=harp with {Notes=new(){new(){TrackId=harp.Id,Key=12,Beat=6}}};
+        string path=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap");SmapFile.Save(new(){Tracks=new(){first,other,harp}},path);
+        var registrar=new Registrar();var observer=new Observer();var main=CreateMain(registrar,observer);
+        Call(main,"OpenEditor",new SongInfo{File=path,Name="Reference and routing"});Pump();var editor=((HashSet<EditorWindow>)Field(main,"_editors")!).Single();
+        editor.Activate();Until(()=>editor.IsActive);Pump();var roll=editor.Viewport;editor.ToggleAdvanced();Pump();
+        IntPtr foreground=new WindowInteropHelper(editor).Handle;main.ShortcutForeground=()=>foreground;Call(main,"RefreshShortcutFocus");
+        IEnumerable<Drawing> Drawings(Drawing d){if(d is DrawingGroup g)foreach(var c in g.Children)foreach(var x in Drawings(c))yield return x;else yield return d;}
+        int Ghosts()=>Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is RectangleGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
+        Check(Ghosts()==2,"Ordinary piano/harp tracks did not render grey key-position references");
+        var gray=Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Geometry is RectangleGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
+        Check(gray.All(d=>((SolidColorBrush)d.Brush).Color==((SolidColorBrush)editor.FindResource("SubTextFg")).Color),"Reference retained colored track fill instead of grey");
+        var bounds=roll.Bounds(other.Notes[0]);Check(roll.HitNotes(new Point(bounds.Left+5,bounds.Top+5)).Length==0,"Reference note became editable");
+        roll.References=false;Pump();Check(Ghosts()==0,"Reference visibility switch did not hide grey notes");roll.References=true;Pump();
+        string identity=PerformanceIdentity.ForProject(editor.Session.Project);int history=editor.Session.UndoCount;editor.Session.Select(new[]{first.Notes[0].Id});roll.PlayheadBeat=2;
+        editor.HandleKey(Key.Right,0);Check(roll.PlayheadBeat==2.25m,"Right arrow moved selected note instead of cursor");editor.HandleKey(Key.Left,0);Check(roll.PlayheadBeat==2,"Left arrow did not move cursor by grid step");
+        roll.PlayheadBeat=0;editor.HandleKey(Key.Left,0);Check(roll.PlayheadBeat==0,"Left arrow crossed beat zero");editor.HandleKey(Key.Right,0,true);Check(roll.PlayheadBeat==.25m,"Held arrow did not advance cursor");
+        Check(PerformanceIdentity.ForProject(editor.Session.Project)==identity&&editor.Session.UndoCount==history,"Arrow cursor navigation mutated notes or history");
+        var snap=(JoinedChoiceButton)Field(editor,"_snapChoice")!;snap.ReduceMotion=true;snap.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();decimal cursor=roll.PlayheadBeat;
+        editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(editor)!,Environment.TickCount,Key.Right){RoutedEvent=Keyboard.PreviewKeyDownEvent});Check(roll.PlayheadBeat==cursor,"Open selector routed arrow into roll");snap.Close(true);
+        Check(registrar.Active.Count==0,"Main global hotkeys still intercept editor keys");double speed=(double)Field(main,"_speed")!;
+        Call(main,"ExecuteShortcut",ShortcutAction.Faster);Call(main,"RegisteredShortcut",1201);Check((double)Field(main,"_speed")! ==speed,"Main command ran while editor foreground");
+        observer.Send(new(0x72,0,true,foreground,Stopwatch.GetTimestamp()));Check((double)Field(main,"_speed")! ==speed,"Observed key triggered main while editor foreground");
+        var child=new Window{Owner=editor,Width=200,Height=120,ShowActivated=false};child.Show();Pump();foreground=new WindowInteropHelper(child).Handle;Call(main,"RefreshShortcutFocus");Call(main,"ExecuteShortcut",ShortcutAction.Faster);Check(registrar.Active.Count==0&&(double)Field(main,"_speed")! ==speed,"Editor-owned native window did not retain shortcut priority");child.Close();foreground=new WindowInteropHelper(editor).Handle;
+        if(output!=null)Capture(editor,Path.Combine(output,"grey-reference.png"));
+        foreground=new WindowInteropHelper(main).Handle;main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Main shortcuts did not restore after leaving editor");Call(main,"RegisteredShortcut",registrar.Active.Single(p=>p.Value.Key==0x72).Key);Check(Math.Abs((double)Field(main,"_speed")!-(speed-.1))<.000001,"Main shortcut stopped working after editor focus");
+        foreground=new WindowInteropHelper(editor).Handle;editor.Activate();Until(()=>editor.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==0,"Returning to editor did not suspend hotkeys again");
+        foreground=new WindowInteropHelper(main).Handle;editor.Close();Pump();main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Closing editor did not restore registrations");main.Close();File.Delete(path);
+        Console.WriteLine("EDITOR_REFERENCE_KEYS grey=True;readonly=True;cursor=True;focus=True;restore=True");
     }
     static void OverviewRange(string? output)
     {

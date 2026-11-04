@@ -102,13 +102,16 @@ public partial class PianoRoll
         {
             int referenceCount = 0;
             var target = _session.ActiveTrack.GameTarget;
-            if (InstrumentCapabilities.ForTrack(_session.ActiveTrack)!=null) foreach (var track in _session.Project.Tracks.Where(t => t.Id != _session.ActiveTrackId))
+            foreach (var track in _session.Project.Tracks.Where(t => t.Id != _session.ActiveTrackId))
             {
                 if (referenceCount >= 4000) break;
-                var fill = new SolidColorBrush(TrackColor?.Invoke(track.Id) ?? Color.FromRgb(184, 160, 245)) { Opacity = .25 }; fill.Freeze();
+                var fill = Resource("SubTextFg", "#9a9ab0").Clone(); fill.Opacity = .45; fill.Freeze();
                 foreach (var n in _indexes[track.Id].Query(left, right, tapWidth: 1m / _session.Project.GridSubdiv))
                 {
                     int key = PerformanceCompatibility.ReferenceKey(track, n, _session.ActiveTrack);
+                    if (key < 0 && InstrumentCapabilities.ForTrack(track) == null && InstrumentCapabilities.ForTrack(_session.ActiveTrack) == null
+                        && track.KeyDomain == _session.ActiveTrack.KeyDomain
+                        && n.Key >= 0 && n.Key < _session.KeyCount) key = n.Key;
                     if (key < 0) { ReferenceOutOfRange++; continue; }
                     if (++referenceCount > 4000) break;
                     DrawNote(dc, n with { Key = key }, fill, ghost: true);

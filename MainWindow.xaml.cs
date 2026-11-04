@@ -842,10 +842,13 @@ public partial class MainWindow : Window
             win.Top = Top + (ActualHeight - win.Height) / 2;
             if (song != null) { win.LoadSong(song); FilePathBox.Text = song.Name; }
             win.Saved += _ => RefreshLibrary();
+            win.Activated += (_, _) => { RefreshShortcutFocus(); Dispatcher.BeginInvoke(RefreshShortcutFocus); };
+            win.Deactivated += (_, _) => Dispatcher.BeginInvoke(RefreshShortcutFocus);
             _editors.Add(win);
             win.Closed += (_, _) =>
             {
                 _editors.Remove(win);
+                Dispatcher.BeginInvoke(RefreshShortcutFocus);
                 if (_editors.Count == 0) _practiceSession?.Pause(_practicePaused || _playing || _previewing);
             };
             win.Show();

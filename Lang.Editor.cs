@@ -67,7 +67,7 @@ public static partial class Lang
         Add("previewOffset", "试听半音偏移（默认 {0}）", "試聽半音偏移（預設 {0}）", "Preview semitone offset (default {0})", "試聴の半音調整（既定 {0}）");
         Add("pitchNotice", "试听移调不改变游戏发声音高。游戏配置尚需实机核实。", "試聽移調不改變遊戲發聲音高。遊戲配置仍需實機核實。", "Preview transpose does not change game pitches. Game profiles still need in-game verification.", "試聴の移調はゲーム音高を変えません。設定は実機検証が必要です。");
         Add("reference", "显示参考轨道", "顯示參考音軌", "Show reference tracks", "参照トラックを表示");
-        Add("referenceNotice", "仅编辑当前轨道；参考按目标音高对齐，缺少配置时不假造对齐。", "僅編輯目前音軌；參照按目標音高對齊，缺少配置時不假造對齊。", "Only the current track is editable. References use target pitches; unknown profiles are not projected.", "現在のトラックのみ編集できます。参照は対象音高で配置し、不明な設定は投影しません。");
+        Add("referenceNotice", "仅编辑当前轨道；有配置时按音高对齐，双方未配置时仅按键位参考。", "僅編輯目前音軌；有設定時按音高對齊，雙方未設定時僅按鍵位參照。", "Only the current track is editable. References align by configured pitch; when both tracks lack profiles, they show key positions only.", "現在のトラックのみ編集できます。設定済みの参照は音高で配置し、両方が未設定の場合はキー位置のみ表示します。");
         Add("outOfRange", "当前视口音域外参考音：{0}", "目前視口音域外參照音：{0}", "Reference notes outside this range: {0}", "表示音域外の参照音：{0}");
         Add("unmapped", "未映射", "未映射", "Unmapped", "未割当");
         Add("source", "音符 / MIDI 来源", "音符 / MIDI 來源", "Note / MIDI source", "音符 / MIDI ソース");
