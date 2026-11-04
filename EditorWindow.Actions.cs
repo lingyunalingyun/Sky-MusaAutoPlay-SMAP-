@@ -121,6 +121,7 @@ public partial class EditorWindow
     void ShowMore()
     {
         var menu = NewMenu(MoreButton);
+        AddMenu(menu, S("openProject"), OpenProject);
         AddMenu(menu, S("saveAs"), () => Save(true)); AddMenu(menu, S("metadata"), EditMetadata);
         AddMenu(menu, S("exportTrack"), () => ExportTrack(_session.ActiveTrackId));
         AddMenu(menu, S("exportLegacy"), ExportLegacy); AddMenu(menu, S("exportMidi"), ExportMidi);
@@ -153,6 +154,38 @@ public partial class EditorWindow
             _regionEndBeat = end is { } lastBeat ? timeline.MicrosecondsToBeat((decimal)lastBeat * 1000) : null; _ = StartPreview(_currentOnly);
         }
         catch (Exception error) { ShowError(error); }
+    }
+    void OpenProject()
+    {
+        if (_busy) return;
+        PauseForEdit();
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = S("openProject"), Filter = S("projectFiles") + "|*.smap;*.txt;*.json|SMAP (*.smap)|*.smap|TXT / JSON|*.txt;*.json",
+            CheckFileExists = true, Multiselect = false,
+            InitialDirectory = _path != null ? Path.GetDirectoryName(_path) : Directory.Exists(SongLibrary.SongsDir) ? SongLibrary.SongsDir : null
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try { OpenProjectFile(dialog.FileName); } catch (Exception error) { ShowError(error); }
+    }
+    static SmapProject ReadEditorProject(string path)
+        => Path.GetExtension(path).Equals(".smap", StringComparison.OrdinalIgnoreCase) ? SmapFile.Load(path) : LegacyProjectAdapter.Load(path);
+    internal bool OpenProjectFile(string path)
+    {
+        if (_busy) return false;
+        var project = ReadEditorProject(path);
+        PauseForEdit();
+        if (_session.IsDirty)
+        {
+            if (!ConfirmClose()) return false;
+            // Saving the old project may have changed the selected file, including opening the same path.
+            project = ReadEditorProject(path);
+        }
+        StopPlayback(); Roll.CancelGesture(); CloseEditorChoices(); _commandMenu?.Close(true); Overview.EndRangeDrag();
+        _regionEndBeat = null; _regionEnd = null; _displayTimeline = null;
+        _path = Path.GetExtension(path).Equals(".smap", StringComparison.OrdinalIgnoreCase) ? Path.GetFullPath(path) : null;
+        Attach(project); Roll.PlayheadBeat = 0; Roll.SetView(0); RefreshTitle();
+        return true;
     }
     internal bool Save(bool saveAs = false)
     {

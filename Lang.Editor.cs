@@ -7,6 +7,8 @@ public static partial class Lang
         void Add(string key, string zh, string tw, string en, string ja) => T["ed." + key] = new[] { zh, tw, en, ja };
         Add("title", "钢琴卷帘", "鋼琴卷簾", "Piano Roll", "ピアノロール");
         Add("untitled", "未命名", "未命名", "Untitled", "無題");
+        Add("openProject", "打开工程…", "開啟工程…", "Open project…", "プロジェクトを開く…");
+        Add("projectFiles", "工程与旧曲谱", "工程與舊曲譜", "Projects and legacy scores", "プロジェクトと旧楽譜");
         Add("track", "音轨", "音軌", "Track", "トラック");
         Add("tracks", "音轨列表", "音軌列表", "Tracks", "トラック一覧");
         Add("play", "▶ 试听", "▶ 試聽", "▶ Preview", "▶ 試聴");

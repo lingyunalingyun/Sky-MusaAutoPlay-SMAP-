@@ -73,6 +73,7 @@ static class Program
             else if(args.Contains("roll-note-preview"))RollNotePreview(args.Length>1?args[1]:null);
             else if(args.Contains("overview-range"))OverviewRange(args.Length>1?args[1]:null);
             else if(args.Contains("editor-reference-keys"))EditorReferenceKeys(args.Length>1?args[1]:null);
+            else if(args.Contains("editor-open"))EditorOpen();
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -262,6 +263,44 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void EditorOpen()
+    {
+        string folder=Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString());Directory.CreateDirectory(folder);
+        var window=new EditorWindow(EditorSession.NewProject()){AudioEnabled=false};window.Show();Pump();
+        try
+        {
+            string a=Path.Combine(folder,"A.smap"),b=Path.Combine(folder,"B.smap"),bad=Path.Combine(folder,"invalid.smap"),legacy=Path.Combine(folder,"old.json");
+            var track=new ProjectTrack();track=track with {Notes=new(){new(){TrackId=track.Id,Key=4,Beat=1,Action=NoteAction.Hold,LengthBeats=2}}};
+            SmapFile.Save(new(){Metadata=new(){Name="A"},Tracks=new(){track,new(){Name="Second"}}},a);SmapFile.Save(EditorSession.NewProject() with {Metadata=new(){Name="B"}},b);File.WriteAllText(bad,"broken");
+            bool Open(string file,string? answer=null)
+            {
+                bool prompted=false;var timer=new DispatcherTimer {Interval=TimeSpan.FromMilliseconds(100)};
+                timer.Tick+=(_,_)=> {timer.Stop();var prompt=Application.Current.Windows.OfType<ChromeWindow>().Single(w=>ReferenceEquals(w.Owner,window));prompted=true;Descendants<Button>(prompt).Single(x=>Equals(x.Content,answer)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));};
+                if(answer!=null)timer.Start();try{bool result=window.OpenProjectFile(file);if(answer!=null)Check(prompted,"Unsaved open bypassed confirmation");return result;}finally{timer.Stop();}
+            }
+            Check(Open(a)&&window.Session.Project.Metadata.Name=="A"&&window.Session.Project.Tracks.Count==2,"Native open lost metadata or tracks");
+            Check(window.Session.ActiveTrack.Notes[0].Action==NoteAction.Hold&&!window.Session.IsDirty&&Equals(Field(window,"_path"),a),"Native open lost holds, saved state or file path");
+            window.Session.Create(5,4);var current=window.Session;string identity=PerformanceIdentity.ForProject(current.Project);
+            Check(!Open(b,Lang.S("d.cancel"))&&ReferenceEquals(current,window.Session)&&window.Session.IsDirty&&PerformanceIdentity.ForProject(window.Session.Project)==identity,"Cancel open lost current edits");
+            Check(Open(a,Lang.S("ed.save"))&&window.Session.ActiveTrack.Notes.Count==2&&SmapFile.Load(a).Tracks[0].Notes.Count==2,"Saving then opening same file loaded stale contents");
+            window.Session.Create(6,5);Check(Open(b,Lang.S("ed.save"))&&window.Session.Project.Metadata.Name=="B"&&SmapFile.Load(a).Tracks[0].Notes.Count==3,"Save-before-open failed to preserve old project");
+            window.Session.Create(7,6);Check(Open(a,Lang.S("ed.discard"))&&window.Session.Project.Metadata.Name=="A"&&SmapFile.Load(b).Tracks[0].Notes.Count==0,"Discard-before-open wrote discarded changes");
+            current=window.Session;identity=PerformanceIdentity.ForProject(current.Project);bool failed=false;
+            try{Open(bad);}catch{failed=true;}Check(failed&&ReferenceEquals(current,window.Session)&&PerformanceIdentity.ForProject(current.Project)==identity&&Equals(Field(window,"_path"),a),"Invalid open replaced current session or path");
+            window.Viewport.PlayheadBeat=8;typeof(EditorWindow).GetField("_regionEndBeat",Private)!.SetValue(window,12m);
+            File.WriteAllText(legacy,JsonSerializer.Serialize(new{name="Legacy",bpm=120,songNotes=new[]{new{time=0,key="1Key2"},new{time=500,key="1Key3"}}}));string text=File.ReadAllText(legacy);
+            Check(Open(legacy)&&window.Session.Project.Metadata.Name=="Legacy"&&window.Session.ActiveTrack.Notes.Count==2&&Field(window,"_path")==null,"Legacy open failed or would overwrite JSON on normal save");
+            Check(window.Viewport.PlayheadBeat==0&&window.Viewport.ViewBeat==0&&Field(window,"_regionEndBeat")==null&&window.Session.UndoCount==0&&File.ReadAllText(legacy)==text,"Opening retained old cursor/region/history or modified source");
+            Call(window,"SetBusy",true);current=window.Session;Check(!Open(a)&&ReferenceEquals(current,window.Session),"Busy editor replaced current project");Call(window,"SetBusy",false);
+            foreach(var language in Enum.GetValues<AppLang>())
+            {
+                typeof(Lang).GetProperty(nameof(Lang.Current))!.SetValue(null,language);Call(window,"ShowMore");Pump();var more=(CommandMenuButton)window.FindName("MoreButton");
+                Check(Equals(((MenuItem)more.ContextMenu!.Items[0]).Header,Lang.S("ed.openProject"))&&Lang.S("ed.openProject")!="ed.openProject","Open entry missing or untranslated");more.Close(true);
+            }
+            window.Session.MarkSaved();window.Close();Console.WriteLine("EDITOR_OPEN native=True;legacy=True;cancel=True;save=True;discard=True;invalid=True;localized=True");
+        }
+        finally { if(window.IsVisible){window.Session.MarkSaved();window.Close();}Directory.Delete(folder,true); }
     }
     static void EditorReferenceKeys(string? output)
     {
