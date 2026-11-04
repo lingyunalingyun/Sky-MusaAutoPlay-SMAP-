@@ -11,6 +11,7 @@ public enum AppTheme { Dark, Light, SunsetPink }
 /// 彩色强调按钮两主题不变, 只切中性色(底/面板/文字/输入框/中性按钮/琴键)。</summary>
 public static class Theme
 {
+    public static event Action? Changed;
     public static AppTheme Current { get; private set; } = AppTheme.Dark;
     public static bool Dark => Current == AppTheme.Dark;
     public static string LangKey => Current switch { AppTheme.Light => "theme.light", AppTheme.SunsetPink => "theme.sunset", _ => "theme.dark" };
@@ -50,7 +51,9 @@ public static class Theme
     // 曲库列表悬停/选中色(代码建 ItemContainerStyle 用)
     public static Color ListHover, ListSel;
 
-    public static void Apply(AppTheme theme)
+    public static void Apply(AppTheme theme) => Apply(theme, true);
+
+    internal static void Apply(AppTheme theme, bool persist)
     {
         Current = theme;
         bool dark = theme == AppTheme.Dark;
@@ -105,7 +108,8 @@ public static class Theme
         ListHover  = Col(Pick("#2f2f2f", "#e6eaf2", "#FBE6F5"));
         ListSel    = Col(Pick("#2d5a88", "#cfe0f5", "#F2C9EF"));
 
-        Save();
+        if (persist) Save();
+        Changed?.Invoke();
     }
 
     static SolidColorBrush Br(string hex) { var b = new SolidColorBrush(Col(hex)); b.Freeze(); return b; }
