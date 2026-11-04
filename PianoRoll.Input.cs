@@ -18,6 +18,8 @@ public partial class PianoRoll
     int _minimumKey, _maximumKey;
     ProjectNote[] _originals = Array.Empty<ProjectNote>();
     ProjectNote? _created;
+    bool _quietSelection;
+    Guid? _hoverNote, _hoverHandle;
     readonly HashSet<Guid> _erase = new();
     readonly Dictionary<(decimal beat, int key), ProjectNote> _paint = new();
     readonly DispatcherTimer _autoScroll = new() { Interval = TimeSpan.FromMilliseconds(33) };
@@ -28,6 +30,17 @@ public partial class PianoRoll
         if (_gesture != Gesture.None) CaptureMouse(); e.Handled = true;
     }
     protected override void OnMouseMove(MouseEventArgs e) => PointerMove(e.GetPosition(this), Keyboard.Modifiers);
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        _hoverNote = _hoverHandle = null; DrawOverlay(); base.OnMouseLeave(e);
+    }
+    void UpdateHover(Point p)
+    {
+        var handle = HitNotes(p, true).FirstOrDefault();
+        Guid? note = (handle ?? HitNotes(p).FirstOrDefault())?.Id;
+        if (note == _hoverNote && handle?.Id == _hoverHandle) return;
+        _hoverNote = note; _hoverHandle = handle?.Id; DrawOverlay();
+    }
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         try { PointerUp(e.GetPosition(this), Keyboard.Modifiers); }
@@ -57,6 +70,7 @@ public partial class PianoRoll
     internal void PointerDown(Point p, MouseButton button, ModifierKeys modifiers)
     {
         CancelGesture(); _start = _last = p; _startView = _viewBeat; _startVertical = _verticalOffset;
+        UpdateHover(p);
         _free = (modifiers & ModifierKeys.Alt) != 0 || !SnapEnabled;
         if (button == MouseButton.Middle) { _gesture = Gesture.Pan; return; }
         if (p.Y < RulerHeight && p.X >= LaneWidth && button == MouseButton.Left)
@@ -75,7 +89,7 @@ public partial class PianoRoll
         var handle = HitNotes(p, handle: true).FirstOrDefault(); var hit = handle ?? HitNotes(p).FirstOrDefault();
         if (hit != null)
         {
-            if (!_session.Selected.Contains(hit.Id)) _session.Select(new[] { hit.Id });
+            if (!_session.Selected.Contains(hit.Id)) { _session.Select(new[] { hit.Id }); _quietSelection = true; }
             _originals = _session.SelectedNotes(); _copy = handle == null && (modifiers & ModifierKeys.Shift) != 0;
             _cycle = handle == null && (modifiers & ModifierKeys.Alt) != 0;
             _gesture = handle != null ? Gesture.Resize : Gesture.Move;
@@ -84,6 +98,7 @@ public partial class PianoRoll
         }
         else
         {
+            _session.Select(Array.Empty<Guid>());
             _created = new ProjectNote { TrackId = _session.ActiveTrackId, Key = KeyAt(p.Y), Beat = SnapBeat(BeatAt(p.X), _free), Action = NoteAction.Tap };
             _originals = new[] { _created }; _gesture = Gesture.Move;
         }
@@ -96,6 +111,7 @@ public partial class PianoRoll
         Point previous = _last; _last = p; _free = (modifiers & ModifierKeys.Alt) != 0 || !SnapEnabled;
         if (_gesture == Gesture.None)
         {
+            UpdateHover(p);
             Cursor = HitNotes(p, true).Length > 0 ? Cursors.SizeWE : HitNotes(p).Length > 0 ? Cursors.SizeAll : Cursors.Pen; return;
         }
         if (_gesture == Gesture.Pan)
@@ -174,7 +190,7 @@ public partial class PianoRoll
                 if (_erase.Count > 0) _session.PutNotes(Array.Empty<ProjectNote>(), _erase.ToArray()); else _session.Select(Array.Empty<Guid>());
             }
             else if (_gesture == Gesture.Paint)
-            { if (_paint.Count > 0) { var notes = _paint.Values.ToArray(); _session.PutNotes(notes); _session.Select(notes.Select(n => n.Id)); } }
+            { if (_paint.Count > 0) { var notes = _paint.Values.ToArray(); _session.PutNotes(notes); _session.Select(notes.Select(n => n.Id)); _quietSelection = true; } }
             else if (_gesture is Gesture.Move or Gesture.Resize)
             {
                 if (_cycle && !_moved)
@@ -185,12 +201,14 @@ public partial class PianoRoll
                 else if (_created != null || _moved)
                 {
                     if (_created != null && !_moved) EditStarting?.Invoke();
+                    bool quiet = _created != null || _quietSelection;
                     var notes = _originals.Select(PreviewNote).Select(n => _copy ? n with { Id = Guid.NewGuid(), SourceMidiNoteId = null } : n).ToArray();
                     _session.PutNotes(notes); _session.Select(notes.Select(n => n.Id));
+                    _quietSelection = quiet;
                 }
             }
         }
-        finally { CancelGesture(); }
+        finally { CancelGesture(); UpdateHover(p); }
     }
     internal void CancelGesture()
     {

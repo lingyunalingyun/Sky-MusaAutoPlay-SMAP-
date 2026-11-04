@@ -177,7 +177,7 @@ public partial class PianoRoll
             if (regions.Count > 0) Text(dc, "▦ ×" + lane.Count(), new Point(regions[0].left + 3, y), Brush("#163251"), 9);
         }
     }
-    void DrawNote(DrawingContext dc, ProjectNote note, Brush fill, bool ghost = false, bool selected = false)
+    void DrawNote(DrawingContext dc, ProjectNote note, Brush fill, bool ghost = false, bool selected = false, bool resizeHandle = false)
     {
         var rect = Bounds(note); if (rect.Width <= 0) return;
         var compatibility = ghost ? null : PerformanceCompatibility.Evaluate(_session.ActiveTrack, note);
@@ -203,7 +203,7 @@ public partial class PianoRoll
             dc.DrawRoundedRectangle(null, new Pen(Amber, 1) { DashStyle = DashStyles.Dash }, clipped, 3, 3);
             if (clipped.Width >= 16) Text(dc, "≈", new Point(left + 2, rect.Y - 1), Brush("#163251"), 10);
         }
-        if (selected && rect.Right >= LaneWidth && rect.Right <= ActualWidth)
+        if (resizeHandle && rect.Right >= LaneWidth && rect.Right <= ActualWidth)
             dc.DrawRoundedRectangle(Resource("TextFg", "#ffffff"), Stroke(Amber), new Rect(rect.Right - 3, rect.Y - 2, 6, rect.Height + 4), 2, 2);
     }
     void DrawOverlay()
@@ -217,8 +217,12 @@ public partial class PianoRoll
         foreach (var n in visible.Where(n => _session.Selected.Contains(n.Id)))
         {
             if (++count > 8000) break;
-            DrawNote(dc, _gesture is Gesture.Move or Gesture.Resize ? PreviewNote(n) : n, Amber, selected: true);
+            bool editing = _created == null && (_gesture is Gesture.Move or Gesture.Resize) && _originals.Any(o => o.Id == n.Id);
+            if (!_quietSelection || n.Id == _hoverNote || editing)
+                DrawNote(dc, editing ? PreviewNote(n) : n, Amber, selected: true, resizeHandle: n.Id == _hoverHandle || editing && _gesture == Gesture.Resize);
         }
+        if (_hoverNote is { } hovered && !_session.Selected.Contains(hovered) && _session.Find(hovered) is { } hover && hover.TrackId == _session.ActiveTrackId)
+            DrawNote(dc, hover, Amber, selected: true, resizeHandle: hovered == _hoverHandle);
         foreach (var n in _paint.Values.Take(8000)) DrawNote(dc, n, Amber, selected: true);
         if (_created is { } created) DrawNote(dc, PreviewNote(created), Amber, selected: true);
         if (_gesture == Gesture.Select)

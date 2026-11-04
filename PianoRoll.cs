@@ -101,7 +101,7 @@ public partial class PianoRoll : FrameworkElement
         }
         InvalidateLayers();
     }
-    void SelectionChanged() { CancelGesture(); InvalidateLayers(); }
+    void SelectionChanged() { _quietSelection = false; CancelGesture(); InvalidateLayers(); }
     public void InvalidateLayers() { _staticDirty = _notesDirty = true; InvalidateVisual(); }
     public void SetView(decimal beat, double vertical = 0)
     {

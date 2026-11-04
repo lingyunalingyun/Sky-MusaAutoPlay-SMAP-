@@ -70,6 +70,7 @@ static class Program
             else if(args.Contains("editor-track-choice"))EditorTrackChoice(args.Length>1?args[1]:null);
             else if(args.Contains("editor-command-menu"))EditorCommandMenu(args.Length>1?args[1]:null);
             else if(args.Contains("editor-window-mode"))EditorWindowMode();
+            else if(args.Contains("roll-note-preview"))RollNotePreview(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -259,6 +260,39 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void RollNotePreview(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        Theme.Apply(AppTheme.Dark,persist:false);var window=new EditorWindow(EditorSession.NewProject()){AudioEnabled=false};window.Show();Pump();
+        var roll=window.Viewport;var session=window.Session;
+        Point At(decimal beat,int key)=>new(PianoRoll.LaneWidth+(double)beat*roll.BeatWidth+4,PianoRoll.RulerHeight+(14-key+.5)*roll.RowHeight);
+        IEnumerable<Drawing> Drawings(Drawing drawing)
+        {
+            if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var value in Drawings(child))yield return value;
+            else yield return drawing;
+        }
+        GeometryDrawing[] OverlayNotes()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Brush is SolidColorBrush b&&b.Color==Color.FromRgb(239,178,79)&&d.Geometry is RectangleGeometry).ToArray();
+        int Handles()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is RectangleGeometry g&&Math.Abs(g.Rect.Width-6)<.01&&Math.Abs(g.Rect.Height-roll.RowHeight+2)<.01);
+        void Click(Point p){roll.PointerDown(p,MouseButton.Left,0);roll.PointerUp(p,0);Pump();}
+        Click(At(0,13));var first=session.ActiveTrack.Notes.Single();var original=first;
+        roll.PointerMove(At(5,1),0);Pump();Check(OverlayNotes().Length==0&&Handles()==0,"Created note retained yellow highlight or resize bar away from pointer");
+        int history=session.UndoCount;var start=At(2,9);var end=At(4,6);
+        roll.PointerDown(start,MouseButton.Left,0);roll.PointerMove(end,0);Pump();
+        var preview=OverlayNotes();Check(preview.Length==1,"Creating another note also moved the selected first-note ghost");
+        Check(preview[0].Geometry.Bounds.Left>PianoRoll.LaneWidth+3*roll.BeatWidth&&session.Find(first.Id)==original&&session.ActiveTrack.Notes.Count==1&&session.UndoCount==history,"Creation preview mutated existing note or history");
+        Check(Handles()==0,"Creation preview showed a resize bar away from its right edge");
+        if(output!=null)Capture(window,Path.Combine(output,"new-note-drag.png"));
+        roll.PointerUp(end,0);roll.PointerMove(At(6,1),0);Pump();Check(session.ActiveTrack.Notes.Count==2&&session.Find(first.Id)==original&&session.UndoCount==history+1&&OverlayNotes().Length==0,"Creation commit changed first note or left a ghost");
+        var rect=roll.Bounds(first);roll.PointerMove(new Point(rect.Left+3,rect.Top+rect.Height/2),0);Pump();Check(OverlayNotes().Length==1&&Handles()==0,"Body hover failed yellow highlight or exposed resize bar");
+        var edge=new Point(rect.Right+4,rect.Top+rect.Height/2);roll.PointerMove(edge,0);Pump();Check(OverlayNotes().Length==1&&Handles()==1,"Right-edge proximity did not reveal resize handle");
+        if(output!=null)Capture(window,Path.Combine(output,"hover-right-edge.png"));
+        roll.PointerDown(edge,MouseButton.Left,0);roll.PointerMove(new Point(edge.X+roll.BeatWidth,edge.Y),0);roll.PointerUp(new Point(edge.X+roll.BeatWidth,edge.Y),0);Pump();
+        Check(session.Find(first.Id)!.Action==NoteAction.Hold,"Right-edge resize no longer extends note");session.Undo();Pump();Check(session.Find(first.Id)==original,"Resize undo changed original tap");
+        var a=At(0,14);var b=At(5,5);roll.PointerDown(a,MouseButton.Left,ModifierKeys.Control);roll.PointerMove(b,ModifierKeys.Control);roll.PointerUp(b,ModifierKeys.Control);roll.PointerMove(At(7,1),0);Pump();
+        Check(session.Selected.Count==2&&OverlayNotes().Length==2&&Handles()==0,"Marquee selection lost persistent yellow or showed all resize bars");
+        roll.PointerDown(At(6,3),MouseButton.Left,0);roll.PointerMove(At(7,2),0);roll.CancelGesture();roll.PointerMove(At(8,1),0);Pump();Check(session.ActiveTrack.Notes.Count==2&&session.Find(first.Id)==original&&OverlayNotes().Length==0,"Cancelling a new creation left a ghost");
+        session.MarkSaved();window.Close();Console.WriteLine("ROLL_NOTE_PREVIEW ghost=False;hover=True;edge_handle=True;marquee=True;history=True");
     }
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     static extern bool IsWindowEnabled(IntPtr window);
