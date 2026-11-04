@@ -42,6 +42,7 @@ public partial class EditorWindow : Window
         InitializeComponent(); _persistView = persistView; _view = persistView ? EditorViewPreferences.Load() : new();
         Overview.Roll=Roll;Overview.TrackColor=id=>_view.Color(id,_session.Project.Tracks.FindIndex(t=>t.Id==id));
         BuildToolbar();
+        MoreButton.Chrome.CornerRadius = new CornerRadius(6);
         TrackSelect.DisplayMemberPath = nameof(TrackChoice.Name); TrackSelect.SelectedValuePath = nameof(TrackChoice.Id);
         TrackSelect.SelectionChanged += (_, _) => { if (!_refreshing && TrackSelect.SelectedValue is Guid id) SwitchTrack(id); };
         _trackChoice = MakeEditorChoice(TrackSelect, 185, TrackChoiceButton);
@@ -110,7 +111,8 @@ public partial class EditorWindow : Window
     {
         var label = (DataTemplate)FindResource("EditorChoiceLabel");
         var button = existing ?? new JoinedChoiceButton();
-        button.Width = width; button.Height = 32; button.Margin = new Thickness(3); button.FontSize = 12; button.ContentTemplate = label;
+        button.Width = width; button.Height = 32; button.Margin = existing == null ? new Thickness(3) : new Thickness(0); button.FontSize = 12; button.ContentTemplate = label;
+        button.Chrome.CornerRadius = new CornerRadius(6);
         button.SetBinding(ContentControl.ContentProperty, new System.Windows.Data.Binding("SelectedItem") { Source = model });
         button.SetBinding(IsEnabledProperty, new System.Windows.Data.Binding("IsEnabled") { Source = model });
         button.SetBinding(ToolTipProperty, new System.Windows.Data.Binding("SelectedItem") { Source = model });
@@ -155,9 +157,12 @@ public partial class EditorWindow : Window
     void RefreshLayoutMode()
     {
         _compact = ActualWidth > 0 && ActualWidth < 1060;
-        TrackColumn.Width = new GridLength(_advanced && !_compact ? 216 : 0);
+        bool tracks = _advanced && !_compact;
+        TrackColumn.Width = new GridLength(tracks ? 268 : 0);
+        TrackSurface.Visibility = tracks ? Visibility.Visible : Visibility.Collapsed;
         bool inspector = _advanced && !_compact && _session.Project.MidiConversion != null;
-        InspectorColumn.Width = new GridLength(inspector ? 250 : 0);
+        InspectorColumn.Width = new GridLength(inspector ? 262 : 0);
+        InspectorSurface.Visibility = inspector ? Visibility.Visible : Visibility.Collapsed;
         if (Drawer.Visibility != Visibility.Visible)
         {
             TrackHost.Content = null; InspectorHost.Content = null;
@@ -290,6 +295,11 @@ public partial class EditorWindow : Window
         menu.Items.Add(item);
     }
     void Title_MouseDown(object sender, MouseButtonEventArgs e) { if (e.ClickCount == 2) ToggleMaximize(); else if (e.ButtonState == MouseButtonState.Pressed) DragMove(); }
+    void Surface_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var surface = (Border)sender;
+        surface.Clip = new RectangleGeometry(new Rect(surface.RenderSize), surface.CornerRadius.TopLeft, surface.CornerRadius.TopLeft);
+    }
     void Min_Click(object sender, MouseButtonEventArgs e) { WindowState = WindowState.Minimized; e.Handled = true; }
     void Max_Click(object sender, MouseButtonEventArgs e) { ToggleMaximize(); e.Handled = true; }
     void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;

@@ -602,7 +602,7 @@ static class Program
         {
             var rect=button.Chrome.TransformToAncestor(window).TransformBounds(new Rect(button.Chrome.RenderSize));
             Check(rect.Left>=6&&rect.Top>=6&&rect.Right<=window.ActualWidth-6&&rect.Bottom<=window.ActualHeight-6,"Command shell escaped window");
-            Check(button.Chrome.Clip is RectangleGeometry{RadiusX:10,RadiusY:10},"Shell lost rounded clipping");
+            Check(button.Chrome.CornerRadius.TopLeft==6&&button.Chrome.Clip is RectangleGeometry{RadiusX:6,RadiusY:6},"Editor shell lost its R6 corner and matching clip");
             Check(ReferenceEquals(PresentationSource.FromVisual(button.Chrome),PresentationSource.FromVisual(window)),"Command created a detached popup");
             var row=Descendants<Button>(button.Scroll).First(b=> { double y=b.TranslatePoint(new Point(0,b.ActualHeight/2),button.Scroll).Y; return b.IsVisible&&y>8&&y<button.Scroll.ActualHeight-8; });var p=row.TranslatePoint(new Point(20,row.ActualHeight/2),window);
             Check(window.InputHitTest(p) is DependencyObject hit&&row.IsAncestorOf(hit),"Command rows are covered by editor");

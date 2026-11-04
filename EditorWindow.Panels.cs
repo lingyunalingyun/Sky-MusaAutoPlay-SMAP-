@@ -16,12 +16,12 @@ public partial class EditorWindow
         _commandMenu?.Close(true);
         var focusTag = (Keyboard.FocusedElement as ToggleButton)?.Tag;
         ToggleButton? restoreFocus = null;
-        var panel = new StackPanel { Margin = new Thickness(5) };
+        var panel = new StackPanel { Margin = new Thickness(7) };
         panel.Children.Add(Label(S("tracks"), bold: true));
         foreach (var track in _session.Project.Tracks)
         {
             var card = new StackPanel { Margin = new Thickness(8, 5, 5, 5) };
-            var top = new DockPanel(); var more = new CommandMenuButton { Content = "⋯" }; more.Click += (_, _) => TrackMenu(track, more); more.MinWidth = 28; more.Padding = new Thickness(6, 1, 6, 1); more.ToolTip = S("more");
+            var top = new DockPanel(); var more = new CommandMenuButton { Content = "⋯", Height = 32 }; more.Chrome.CornerRadius = new CornerRadius(6); more.Click += (_, _) => TrackMenu(track, more); more.MinWidth = 28; more.Padding = new Thickness(6, 1, 6, 1); more.ToolTip = S("more");
             DockPanel.SetDock(more, Dock.Right); top.Children.Add(more);
             var select = MakeButton(TrackName(track), () => SwitchTrack(track.Id)); select.HorizontalContentAlignment = HorizontalAlignment.Left;
             var title = new TextBlock { Text = TrackName(track), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 125 };
@@ -48,7 +48,7 @@ public partial class EditorWindow
             var solo = StateButton("S", "solo", track.Solo, active => _session.UpdateTrack(track with { Solo = active }));
             mute.Margin = new Thickness(0, 0, 6, 0); states.Children.Add(mute); states.Children.Add(solo); card.Children.Add(states);
             if (track.Id == _session.ActiveTrackId) card.Children.Add(Label(S("editing").Replace("{0}", ""), bold: true));
-            var border = new Border { Child = card, BorderThickness = new Thickness(4, 1, 1, 1), CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 3, 0, 5), BorderBrush = new SolidColorBrush(_view.Color(track.Id, _session.Project.Tracks.IndexOf(track))) };
+            var border = new Border { Child = card, BorderThickness = new Thickness(4, 1, 1, 1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 3, 0, 9), BorderBrush = new SolidColorBrush(_view.Color(track.Id, _session.Project.Tracks.IndexOf(track))) };
             border.SetResourceReference(Border.BackgroundProperty, "BoxBg"); panel.Children.Add(border);
         }
         panel.Children.Add(MakeButton(S("newTrack"), () => Edit(() => _session.AddTrack(S("track") + " " + (_session.Project.Tracks.Count + 1)))));

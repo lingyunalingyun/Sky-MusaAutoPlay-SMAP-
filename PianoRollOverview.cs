@@ -26,7 +26,7 @@ public sealed class PianoRollOverview:FrameworkElement
     public PianoRollOverview()
     {
         ClipToBounds=true;Cursor=Cursors.Hand;_visuals=new(this){_notes,_view};
-        SizeChanged+=(_,_)=>{EndRangeDrag();ReleaseMouseCapture();InvalidateNotes();};
+        SizeChanged+=(_,_)=>{Clip=new RectangleGeometry(new Rect(RenderSize),6,6);EndRangeDrag();ReleaseMouseCapture();InvalidateNotes();};
         Unloaded+=(_,_)=>{_hover=false;EndRangeDrag();ReleaseMouseCapture();};
     }
     Brush Resource(string key)=>(Brush)FindResource(key);
@@ -42,7 +42,7 @@ public sealed class PianoRollOverview:FrameworkElement
             decimal last=notes.Select(n=>n.Beat+n.LengthBeats).DefaultIfEmpty(0).Max();
             decimal end=new EditorMeterMap(session.Project.Meters).EndOfBar(last,notes.Any(n=>n.Action==NoteAction.Tap&&n.Beat==last));
             _extent=Math.Max(end+4,Roll.VisibleBeats);
-            using var drawing=_notes.RenderOpen();drawing.DrawRoundedRectangle(Resource("PanelBg"),new Pen(Resource("BoxBorder"),1),new Rect(RenderSize),4,4);
+            using var drawing=_notes.RenderOpen();drawing.DrawRoundedRectangle(Resource("PanelBg"),new Pen(Resource("BoxBorder"),1),new Rect(RenderSize),6,6);
             var cells=new HashSet<(int x,int key,bool active)>();int width=Math.Max(1,(int)ActualWidth);
             foreach(var track in session.Project.Tracks)
             {

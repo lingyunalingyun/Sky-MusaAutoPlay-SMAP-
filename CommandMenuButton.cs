@@ -135,7 +135,7 @@ public sealed class CommandMenuButton : Button
     }
     void PositionChrome()
     {
-        _chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),10,10);
+        _chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),_chrome.CornerRadius.TopLeft,_chrome.CornerRadius.TopLeft);
         if(!IsOpen)return;
         Canvas.SetLeft(_chrome,_left?_closedWidth-_chrome.ActualWidth:0);
         Canvas.SetTop(_chrome,_up?_closedHeight-_chrome.ActualHeight:0);

@@ -31,7 +31,7 @@ public sealed class JoinedChoiceButton : Button
         if(IsOpen)Close(true);base.OnApplyTemplate();
         _chrome=(Border)GetTemplateChild("PART_Chrome");_header=(Border)GetTemplateChild("PART_Header");
         _separator=(Border)GetTemplateChild("PART_Separator");_content=(StackPanel)GetTemplateChild("PART_Content");_options=(ListBox)GetTemplateChild("PART_Options");
-        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),10,10);
+        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),_chrome.CornerRadius.TopLeft,_chrome.CornerRadius.TopLeft);
         _options.PreviewMouseLeftButtonUp+=Commit;_header.Height=Math.Max(0,ActualHeight-2);_chrome.Height=ActualHeight;
     }
     public void Toggle(ComboBox model)

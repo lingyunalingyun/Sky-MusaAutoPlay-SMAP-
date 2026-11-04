@@ -111,7 +111,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -132,13 +132,13 @@
         </Style>
     </Window.Resources>
     <Grid>
-    <Border Background="{DynamicResource WindowBg}" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" CornerRadius="14" Margin="6" Padding="8">
+    <Border x:Name="WindowSurface" Background="{DynamicResource WindowBg}" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" CornerRadius="21" Margin="6" Padding="10">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="34"/><RowDefinition Height="Auto"/><RowDefinition Height="40"/>
-                <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="28"/>
+                <RowDefinition Height="40"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="40"/>
             </Grid.RowDefinitions>
-            <Border Background="{DynamicResource TitleGrad}" CornerRadius="8" MouseLeftButtonDown="Title_MouseDown">
+            <Border x:Name="TitleSurface" Background="{DynamicResource TitleGrad}" CornerRadius="10" MouseLeftButtonDown="Title_MouseDown">
                 <DockPanel Margin="12,0">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="14" Height="14" Fill="#c9c9c9" Margin="5,0" MouseLeftButtonDown="Min_Click"/>
@@ -148,43 +148,52 @@
                     <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
             </Border>
-            <Border Grid.Row="1" Panel.ZIndex="20" Background="{DynamicResource PanelBg}" Margin="0,7,0,0" Padding="3">
+            <Border x:Name="ToolbarSurface" Grid.Row="1" Panel.ZIndex="20" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="5">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
-                        <local:CommandMenuButton x:Name="MoreButton"/><Button x:Name="ModeButton"/><Button x:Name="SaveButton"/>
+                        <local:CommandMenuButton x:Name="MoreButton" Height="32"/><Button x:Name="ModeButton" Height="32"/><Button x:Name="SaveButton" Height="32"/>
                     </StackPanel>
                     <WrapPanel x:Name="ToolBar"/>
                 </DockPanel>
             </Border>
-            <DockPanel Grid.Row="2" Panel.ZIndex="10" Margin="3,0">
-                <Button x:Name="PropertiesButton" DockPanel.Dock="Right"/>
-                <Button x:Name="FollowButton" DockPanel.Dock="Right"/>
+            <DockPanel x:Name="TrackContext" Grid.Row="2" Panel.ZIndex="10" Margin="0,12,0,0">
+                <Button x:Name="PropertiesButton" DockPanel.Dock="Right" Margin="0" Height="32"/>
+                <Button x:Name="FollowButton" DockPanel.Dock="Right" Margin="0,0,6,0" Height="32"/>
                 <ComboBox x:Name="TrackSelect" Visibility="Collapsed" DockPanel.Dock="Left"/>
                 <local:JoinedChoiceButton x:Name="TrackChoiceButton" DockPanel.Dock="Left"/>
                 <TextBlock x:Name="TrackCaption" Foreground="{DynamicResource SubTextFg}" VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis"/>
             </DockPanel>
-            <Grid Grid.Row="3" x:Name="WorkArea">
+            <Grid Grid.Row="3" x:Name="WorkArea" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="TrackColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
-                <ContentControl x:Name="TrackHost" Margin="0,0,8,0"/>
+                <Border x:Name="TrackSurface" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="0,0,12,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
+                    <ContentControl x:Name="TrackHost"/>
+                </Border>
                 <Grid Grid.Column="1">
-                    <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/><RowDefinition Height="14"/></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/></Grid.ColumnDefinitions>
-                    <local:PianoRollOverview x:Name="Overview" Margin="0,0,0,4"/>
-                    <local:PianoRoll x:Name="Roll" Grid.Row="1"/>
-                    <ScrollBar x:Name="VerticalScroll" Grid.Row="1" Grid.Column="1" Orientation="Vertical" SmallChange="22"/>
-                    <ScrollBar x:Name="HorizontalScroll" Grid.Row="2" Orientation="Horizontal"/>
+                    <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <local:PianoRollOverview x:Name="Overview"/>
+                    <Border x:Name="ViewportSurface" Grid.Row="1" Margin="0,12,0,0" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" SizeChanged="Surface_SizeChanged">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="14"/></Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/></Grid.ColumnDefinitions>
+                            <local:PianoRoll x:Name="Roll"/>
+                            <ScrollBar x:Name="VerticalScroll" Grid.Column="1" Orientation="Vertical" SmallChange="22"/>
+                            <ScrollBar x:Name="HorizontalScroll" Grid.Row="1" Orientation="Horizontal"/>
+                        </Grid>
+                    </Border>
                 </Grid>
-                <ContentControl x:Name="InspectorHost" Grid.Column="2" Margin="8,0,0,0"/>
+                <Border x:Name="InspectorSurface" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="12,0,0,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
+                    <ContentControl x:Name="InspectorHost"/>
+                </Border>
                 <Grid x:Name="Drawer" Grid.ColumnSpan="3" Visibility="Collapsed">
                     <Button Background="#66000000" BorderThickness="0" Margin="0" Click="DismissDrawer_Click"/>
-                    <Border Width="240" HorizontalAlignment="Left" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" Padding="6">
+                    <Border Width="256" HorizontalAlignment="Left" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Padding="6" SizeChanged="Surface_SizeChanged">
                         <ContentControl x:Name="DrawerHost"/>
                     </Border>
                 </Grid>
             </Grid>
-            <Border Grid.Row="4" x:Name="KeyboardHost" Background="{DynamicResource PanelBg}" Padding="8" Margin="0,8,0,0">
+            <Border Grid.Row="4" x:Name="KeyboardHost" Background="{DynamicResource PanelBg}" CornerRadius="10" Padding="8" Margin="0,12,0,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Left">
                         <Button x:Name="KeyboardButton" HorizontalAlignment="Left"/>
@@ -193,10 +202,12 @@
                     <TextBlock x:Name="HintText" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="22,4" FontSize="11"/>
                 </DockPanel>
             </Border>
-            <DockPanel Grid.Row="5" Background="{DynamicResource PanelBg}" Margin="0,5,0,0">
-                <TextBlock x:Name="ZoomText" DockPanel.Dock="Right" Foreground="{DynamicResource SubTextFg}" FontSize="10" Margin="6,2" VerticalAlignment="Center"/>
-                <TextBlock x:Name="StatusText" Foreground="{DynamicResource SubTextFg}" FontSize="10" Margin="8,2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            </DockPanel>
+            <Border x:Name="StatusSurface" Grid.Row="5" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="8,0">
+                <DockPanel>
+                    <TextBlock x:Name="ZoomText" DockPanel.Dock="Right" Foreground="{DynamicResource SubTextFg}" FontSize="10" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusText" Foreground="{DynamicResource SubTextFg}" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+            </Border>
         </Grid>
     </Border>
     <Canvas x:Name="EditorMenuLayer" Panel.ZIndex="100"/>
