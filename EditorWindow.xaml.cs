@@ -294,6 +294,7 @@ public partial class EditorWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true; _playTimer.Stop(); Roll.CancelGesture(); Theme.Changed -= ThemeChanged;
+        Overview.EndRangeDrag();
         CloseEditorChoices();
         _commandMenu?.Close(true);
         if(_editorMenu!=null)_editorMenu.IsOpen=false;

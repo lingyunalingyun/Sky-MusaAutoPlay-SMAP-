@@ -71,6 +71,7 @@ static class Program
             else if(args.Contains("editor-command-menu"))EditorCommandMenu(args.Length>1?args[1]:null);
             else if(args.Contains("editor-window-mode"))EditorWindowMode();
             else if(args.Contains("roll-note-preview"))RollNotePreview(args.Length>1?args[1]:null);
+            else if(args.Contains("overview-range"))OverviewRange(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -260,6 +261,44 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void OverviewRange(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        var track=new ProjectTrack();track=track with { Notes=new(){new(){TrackId=track.Id,Key=5,Beat=4},new(){TrackId=track.Id,Key=9,Beat=64,Action=NoteAction.Hold,LengthBeats=2}} };
+        var window=new EditorWindow(new(){Tracks=new(){track}}){AudioEnabled=false};window.Show();Pump();
+        var roll=window.Viewport;var overview=(PianoRollOverview)window.FindName("Overview");roll.SetView(8,15);Pump();overview.RefreshView();
+        decimal extent=overview.ExtentBeats,playhead=roll.PlayheadBeat;int cache=overview.NoteLayerBuilds,history=window.Session.UndoCount;
+        string identity=PerformanceIdentity.ForProject(window.Session.Project);double vertical=roll.VerticalOffset;
+        IEnumerable<Drawing> Drawings(Drawing drawing)
+        { if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var value in Drawings(child))yield return value;else yield return drawing; }
+        int Handles()=>Drawings(((DrawingVisual)Field(overview,"_view")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Brush!=null&&d.Geometry is RectangleGeometry g&&Math.Abs(g.Rect.Width-8)<.001&&Math.Abs(g.Rect.Height-overview.ActualHeight+4)<.001);
+        void Hover(bool enter)=>overview.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice,Environment.TickCount){RoutedEvent=enter?UIElement.MouseEnterEvent:UIElement.MouseLeaveEvent});
+        Hover(false);Check(Handles()==0,"Overview grips remained visible away from pointer");Hover(true);Check(Handles()==2,"Hover did not show both grips");Hover(false);Check(Handles()==0,"Leaving overview did not hide grips");
+        double X(decimal beat)=>(double)(beat/extent)*overview.ActualWidth;
+        void CloseEnough(decimal actual,decimal expected,string label)=>Check(Math.Abs(actual-expected)<.000001m,label);
+        decimal right=roll.ViewBeat+roll.VisibleBeats,span=roll.VisibleBeats;
+        overview.BeginRangeDrag(X(roll.ViewBeat)+3);Hover(false);Check(Handles()==2,"Leaving during drag hid grips");overview.DragRange(X(roll.ViewBeat)+3);CloseEnough(roll.VisibleBeats,span,"Off-center handle grab jumped range");
+        overview.DragRange(X(right-span*.6m)+3);Pump();CloseEnough(roll.ViewBeat+roll.VisibleBeats,right,"Left handle moved right boundary");Check(roll.VisibleBeats<span&&roll.Zoom>1,"Left handle did not zoom main roll");overview.EndRangeDrag();
+        if(output!=null)Capture(window,Path.Combine(output,"left-handle.png"));
+        decimal left=roll.ViewBeat;span=roll.VisibleBeats;
+        overview.BeginRangeDrag(X(left+span));overview.DragRange(X(left+span*1.5m));Pump();CloseEnough(roll.ViewBeat,left,"Right handle moved left boundary");Check(roll.VisibleBeats>span,"Right handle did not widen visible range");overview.EndRangeDrag();
+        if(output!=null)Capture(window,Path.Combine(output,"right-handle.png"));
+        double zoom=roll.Zoom;left=roll.ViewBeat;span=roll.VisibleBeats;double center=X(left+span/2);
+        overview.BeginRangeDrag(center);overview.DragRange(center+X(3));overview.EndRangeDrag();Pump();CloseEnough(roll.ViewBeat,left+3,"Interior drag did not pan");Check(Math.Abs(roll.Zoom-zoom)<.000001,"Panning changed zoom");
+        overview.BeginRangeDrag(X(roll.ViewBeat+roll.VisibleBeats));overview.DragRange(-10000);overview.EndRangeDrag();Pump();Check(Math.Abs(roll.Zoom-8)<.000001&&roll.VisibleBeats>0,"Crossing edge did not clamp at maximum zoom");
+        left=roll.ViewBeat;overview.BeginRangeDrag(X(left+roll.VisibleBeats)+3);overview.DragRange(overview.ActualWidth-1);overview.EndRangeDrag();Pump();CloseEnough(roll.ViewBeat,left,"Expanding to end moved fixed boundary");CloseEnough(roll.ViewBeat+roll.VisibleBeats,extent,"Off-center right grip could not reach overview end from inside control");Check(Handles()==0,"Ending drag away from pointer kept grips visible");
+        right=roll.ViewBeat+roll.VisibleBeats;overview.BeginRangeDrag(X(roll.ViewBeat));overview.DragRange(-10000);overview.EndRangeDrag();Pump();CloseEnough(roll.ViewBeat,0,"Left handle escaped beat zero");CloseEnough(roll.ViewBeat+roll.VisibleBeats,right,"Left edge clamping moved right boundary");
+        roll.SetZoom(1,roll.VerticalZoom);roll.SetView(8,vertical);Pump();
+        overview.BeginRangeDrag(X(roll.ViewBeat));overview.CaptureMouse();overview.ReleaseMouseCapture();left=roll.ViewBeat;zoom=roll.Zoom;overview.DragRange(X(16));Check(roll.ViewBeat==left&&roll.Zoom==zoom,"Lost capture kept resizing");
+        overview.BeginRangeDrag(X(roll.ViewBeat+roll.VisibleBeats));overview.EndRangeDrag();overview.DragRange(0);Check(roll.ViewBeat==left&&roll.Zoom==zoom,"Released handle kept resizing");
+        overview.BeginRangeDrag(X(55));overview.EndRangeDrag();Pump();Check(roll.ViewBeat>left&&roll.Zoom==zoom,"Click outside range lost jump navigation");
+        Check(overview.NoteLayerBuilds==cache&&overview.ExtentBeats==extent,"Range gestures rebuilt note cache or changed overview scale");
+        Check(Math.Abs(roll.VerticalOffset-vertical)<.000001&&roll.PlayheadBeat==playhead&&window.Session.UndoCount==history&&PerformanceIdentity.ForProject(window.Session.Project)==identity,$"Range edit changed vertical view, cursor, notes or history: vertical={roll.VerticalOffset}/{vertical}, cursor={roll.PlayheadBeat}/{playhead}, history={window.Session.UndoCount}/{history}");
+        roll.SetZoom(.0625,roll.VerticalZoom);overview.InvalidateNotes();Pump();overview.RefreshView();extent=overview.ExtentBeats;
+        overview.BeginRangeDrag(overview.ActualWidth);overview.DragRange(overview.ActualWidth+1000);overview.EndRangeDrag();Check(Math.Abs(roll.Zoom-.0625)<.000001,"Minimum zoom clamp failed");
+        overview.BeginRangeDrag(overview.ActualWidth/2);window.Close();overview.DragRange(0);Check(Field(overview,"_drag")!.ToString()=="None","Closing editor retained range gesture");
+        Console.WriteLine("OVERVIEW_RANGE left=True;right=True;pan=True;bounds=True;cache=True;cleanup=True");
     }
     static void RollNotePreview(string? output)
     {
