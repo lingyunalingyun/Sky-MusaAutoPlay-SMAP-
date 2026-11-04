@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using SMAP_WPF.Core;
@@ -12,6 +14,8 @@ public partial class EditorWindow
     void RefreshTracks()
     {
         _commandMenu?.Close(true);
+        var focusTag = (Keyboard.FocusedElement as ToggleButton)?.Tag;
+        ToggleButton? restoreFocus = null;
         var panel = new StackPanel { Margin = new Thickness(5) };
         panel.Children.Add(Label(S("tracks"), bold: true));
         foreach (var track in _session.Project.Tracks)
@@ -23,10 +27,26 @@ public partial class EditorWindow
             var title = new TextBlock { Text = TrackName(track), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 125 };
             select.Content = title; select.ToolTip = TrackName(track); select.Background = Brushes.Transparent; select.BorderThickness = new Thickness(0); top.Children.Add(select); card.Children.Add(top);
             card.Children.Add(Label(Lang.Instrument(track.PreviewInstrument), muted: true));
-            var states = new WrapPanel();
-            var mute = MakeButton(S("mute") + (track.Muted ? " ✓" : ""), () => Edit(() => _session.UpdateTrack(track with { Muted = !track.Muted })));
-            var solo = MakeButton(S("solo") + (track.Solo ? " ✓" : ""), () => Edit(() => _session.UpdateTrack(track with { Solo = !track.Solo })));
-            mute.FontSize = solo.FontSize = 11; mute.Padding = solo.Padding = new Thickness(7, 2, 7, 2); states.Children.Add(mute); states.Children.Add(solo); card.Children.Add(states);
+            var states = new WrapPanel { Margin = new Thickness(4, 3, 4, 3) };
+            ToggleButton StateButton(string label, string key, bool active, Action<bool> update)
+            {
+                var button = new ToggleButton { Content = label, IsChecked = active, Style = (Style)FindResource(key == "mute" ? "TrackMuteToggle" : "TrackSoloToggle"),
+                    Tag = $"{track.Id:N}:{key}", ToolTip = F("toggleStatus", S(key), S(active ? "stateOn" : "stateOff")) };
+                System.Windows.Automation.AutomationProperties.SetName(button, TrackName(track) + " · " + S(key));
+                void ApplyState()
+                {
+                    if (button.IsChecked == active) return;
+                    if (_busy) { button.IsChecked = active; return; }
+                    Edit(() => update(button.IsChecked == true));
+                }
+                button.Checked += (_, _) => ApplyState(); button.Unchecked += (_, _) => ApplyState();
+                button.Click += (_, e) => e.Handled = true;
+                if (Equals(focusTag, button.Tag)) restoreFocus = button;
+                return button;
+            }
+            var mute = StateButton("M", "mute", track.Muted, active => _session.UpdateTrack(track with { Muted = active }));
+            var solo = StateButton("S", "solo", track.Solo, active => _session.UpdateTrack(track with { Solo = active }));
+            mute.Margin = new Thickness(0, 0, 6, 0); states.Children.Add(mute); states.Children.Add(solo); card.Children.Add(states);
             if (track.Id == _session.ActiveTrackId) card.Children.Add(Label(S("editing").Replace("{0}", ""), bold: true));
             var border = new Border { Child = card, BorderThickness = new Thickness(4, 1, 1, 1), CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 3, 0, 5), BorderBrush = new SolidColorBrush(_view.Color(track.Id, _session.Project.Tracks.IndexOf(track))) };
             border.SetResourceReference(Border.BackgroundProperty, "BoxBg"); panel.Children.Add(border);
@@ -37,6 +57,7 @@ public partial class EditorWindow
         reference.Checked += (_, _) => Roll.References = true; reference.Unchecked += (_, _) => Roll.References = false; panel.Children.Add(reference);
         panel.Children.Add(Label(S("referenceNotice"), muted: true));
         _trackScroll.Content = panel;
+        if (restoreFocus != null) Dispatcher.BeginInvoke(() => { if (_trackScroll.IsAncestorOf(restoreFocus)) restoreFocus.Focus(); }, System.Windows.Threading.DispatcherPriority.Loaded);
         Overview.InvalidateNotes();
     }
     void TrackMenu(ProjectTrack track, CommandMenuButton anchor)

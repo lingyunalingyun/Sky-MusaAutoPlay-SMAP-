@@ -74,6 +74,7 @@ static class Program
             else if(args.Contains("overview-range"))OverviewRange(args.Length>1?args[1]:null);
             else if(args.Contains("editor-reference-keys"))EditorReferenceKeys(args.Length>1?args[1]:null);
             else if(args.Contains("editor-open"))EditorOpen();
+            else if(args.Contains("track-toggles"))TrackToggles(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -263,6 +264,49 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void TrackToggles(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        var tracks=Enumerable.Range(0,3).Select(i=>new ProjectTrack { Name="Track "+(i+1) }).Select(t=>t with { Notes=new(){new(){TrackId=t.Id,Key=4,Beat=0}} }).ToList();
+        var window=new EditorWindow(new(){Tracks=tracks}) {AudioEnabled=false};window.Show();window.ToggleAdvanced();Pump();
+        var scroll=(ScrollViewer)Field(window,"_trackScroll")!;var session=window.Session;
+        var notes=JsonSerializer.Serialize(session.Project.Tracks.SelectMany(t=>t.Notes));
+        System.Windows.Controls.Primitives.ToggleButton Button(Guid id,string key)=>Descendants<System.Windows.Controls.Primitives.ToggleButton>(scroll).Single(b=>Equals(b.Tag,$"{id:N}:{key}"));
+        void Toggle(Guid id,string key)
+        {
+            var b=Button(id,key);var peer=new System.Windows.Automation.Peers.ToggleButtonAutomationPeer(b);
+            ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle)).Toggle();Pump();
+        }
+        foreach(var theme in Enum.GetValues<AppTheme>())
+        {
+            Theme.Apply(theme,persist:false);Pump();
+            var mute=Button(tracks[1].Id,"mute");var solo=Button(tracks[1].Id,"solo");
+            Check(Equals(mute.Content,"M")&&Equals(solo.Content,"S")&&mute.Width==36&&mute.Height==28&&mute.Margin.Right==6,"Track buttons lost approved compact layout");
+            Toggle(tracks[1].Id,"mute");mute=Button(tracks[1].Id,"mute");
+            Check(mute.IsChecked==true&&session.Project.Tracks[1].Muted&&!session.Project.Tracks[0].Muted,"Mute toggled wrong track");
+            Check(((SolidColorBrush)mute.Background).Color==Color.FromRgb(239,178,79)&&mute.ToolTip.ToString()!.Contains(Lang.S("ed.stateOn")),"Mute active appearance or tooltip is incorrect");
+            Toggle(tracks[1].Id,"solo");Check(Button(tracks[1].Id,"solo").IsChecked==true&&session.Project.Tracks[1].Solo&&!session.Project.Tracks[0].Solo,"Solo toggled wrong track");
+            Check(((SolidColorBrush)Button(tracks[1].Id,"solo").Background).Color==Color.FromRgb(114,177,255),"Solo active color is incorrect");
+            Toggle(tracks[1].Id,"mute");Check(session.Project.AudibleTracks().Select(t=>t.Id).SequenceEqual(new[]{tracks[1].Id}),"Unmuted solo did not isolate target track");
+            if(output!=null)Capture(window,Path.Combine(output,$"track-solo-{theme}.png"));
+            Toggle(tracks[1].Id,"solo");Check(session.Project.AudibleTracks().Count()==3,"Disabling solo did not restore all tracks");
+        }
+        var focused=Button(tracks[0].Id,"mute");focused.Focus();Pump();
+        Check(((Border)focused.Template.FindName("FocusRing",focused)).Visibility==Visibility.Visible,"Keyboard focus lacks visible outline");
+        var key=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(window)!,Environment.TickCount,Key.Space){RoutedEvent=Keyboard.PreviewKeyDownEvent};window.RaiseEvent(key);
+        Check(!key.Handled&&!(bool)Field(window,"_playing")!,"Toggle Space was intercepted by editor playback");
+        Toggle(tracks[0].Id,"mute");Check(Button(tracks[0].Id,"mute").IsKeyboardFocused,"Refreshing state lost toggle keyboard focus");
+        Toggle(tracks[0].Id,"mute");
+        int history=session.UndoCount;Call(window,"SetBusy",true);Toggle(tracks[0].Id,"mute");Check(!session.Project.Tracks[0].Muted&&Button(tracks[0].Id,"mute").IsChecked==false&&session.UndoCount==history,"Busy toggle displayed a state not applied to project");Call(window,"SetBusy",false);
+        foreach(var language in Enum.GetValues<AppLang>())
+        {
+            typeof(Lang).GetProperty(nameof(Lang.Current))!.SetValue(null,language);Call(window,"RefreshTracks");Pump();var b=Button(tracks[0].Id,"mute");
+            Check(b.ToolTip.ToString()!.Contains(Lang.S("ed.mute"))&&b.ToolTip.ToString()!.Contains(Lang.S("ed.stateOff")),"Toggle tooltip is not localized");
+            Check(System.Windows.Automation.AutomationProperties.GetName(b).Contains(Lang.S("ed.mute")),"Toggle accessible name lost full action");
+        }
+        Check(JsonSerializer.Serialize(session.Project.Tracks.SelectMany(t=>t.Notes))==notes&&session.ActiveTrackId==tracks[0].Id,"Track toggles modified notes or active track");
+        session.MarkSaved();window.Close();Console.WriteLine("TRACK_TOGGLES state=True;scope=True;theme=True;focus=True;localized=True");
     }
     static void EditorOpen()
     {

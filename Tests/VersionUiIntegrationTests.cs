@@ -40,6 +40,7 @@ public class VersionUiIntegrationTests(ITestOutputHelper output)
     [InlineData("overview-range","OVERVIEW_RANGE left=True;right=True;pan=True;bounds=True;cache=True;cleanup=True")]
     [InlineData("editor-reference-keys","EDITOR_REFERENCE_KEYS grey=True;readonly=True;cursor=True;focus=True;restore=True")]
     [InlineData("editor-open","EDITOR_OPEN native=True;legacy=True;cancel=True;save=True;discard=True;invalid=True;localized=True")]
+    [InlineData("track-toggles","TRACK_TOGGLES state=True;scope=True;theme=True;focus=True;localized=True")]
     public async Task ProductionEntryAndLifecycleBoundariesPassInActualWpf(string mode,string expected)
     {
         var start=new ProcessStartInfo("dotnet"){WorkingDirectory=TestProject.FindRepository(),UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};

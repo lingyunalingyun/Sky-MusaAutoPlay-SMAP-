@@ -60,6 +60,9 @@ public static partial class Lang
         Add("deleteConfirm", "删除“{0}”及其 {1} 个音符？此操作可以撤销。", "刪除「{0}」及其 {1} 個音符？此操作可以復原。", "Delete “{0}” and its {1} notes? This can be undone.", "「{0}」と音符 {1} 個を削除しますか？元に戻せます。");
         Add("mute", "静音", "靜音", "Mute", "ミュート");
         Add("solo", "独奏", "獨奏", "Solo", "ソロ");
+        Add("stateOn", "已开启", "已開啟", "On", "オン");
+        Add("stateOff", "已关闭", "已關閉", "Off", "オフ");
+        Add("toggleStatus", "{0}：{1}", "{0}：{1}", "{0}: {1}", "{0}：{1}");
         Add("color", "轨道颜色", "音軌顏色", "Track color", "トラックの色");
         Add("trackSettings", "乐器与音高…", "樂器與音高…", "Instrument and pitch…", "楽器と音高…");
         Add("target", "游戏目标乐器", "遊戲目標樂器", "Game instrument", "ゲーム楽器");

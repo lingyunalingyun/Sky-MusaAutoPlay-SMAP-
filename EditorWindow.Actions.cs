@@ -254,6 +254,7 @@ public partial class EditorWindow
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Primitives.ToggleButton) { base.OnPreviewKeyDown(e); return; }
         if (_commandMenu is { IsOpen: true } command) { e.Handled = command.HandleKey(key); return; }
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         if (ctrl && key == Key.S) { Save(); e.Handled = true; return; }
