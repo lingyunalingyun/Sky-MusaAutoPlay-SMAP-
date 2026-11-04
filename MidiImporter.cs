@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NAudio.Midi;
+using SMAP_WPF.Core;
 
 namespace SMAP_WPF;
 
 /// <summary>MIDI → 光遇 15 键曲谱。自动移调对齐 C 大调 + 黑键方向吸附, 移植自 JavaFX 版。</summary>
 public class MidiImporter
 {
+    public static MidiSource ReadComplete(string path) => MidiSourceReader.Read(path);
     // 光遇 15 白键对应 MIDI 音高: C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 F5 G5 A5 B5 C6
     static readonly int[] SkyMidi = { 60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84 };
     static readonly HashSet<int> WhitePc = new() { 0, 2, 4, 5, 7, 9, 11 };   // C 大调白键音级

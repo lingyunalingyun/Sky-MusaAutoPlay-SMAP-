@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
     <RootNamespace>SMAP_WPF</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,7 +13,14 @@
     <AssemblyName>SMAP</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- 合并后仓库里有 JAVA version/ 旧 Java 源码, 不让 .NET SDK 扫描/编译它 -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**;Installer\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**;Installer\**;Tests\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'MappingDevelopment'">
+    <DefineConstants>$(DefineConstants);SMAP_MAPPING_DEVELOPMENT</DefineConstants>
+    <ApplicationManifest>app.debug.manifest</ApplicationManifest>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
   </PropertyGroup>
 
   <ItemGroup>

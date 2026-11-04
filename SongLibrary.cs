@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using SMAP_WPF.Core;
 
 namespace SMAP_WPF;
 
@@ -79,9 +80,19 @@ public static class SongLibrary
         foreach (var f in Directory.EnumerateFiles(SongsDir))
         {
             var ext = Path.GetExtension(f).ToLowerInvariant();
-            if (ext != ".txt" && ext != ".json") continue;
+            if (ext != ".txt" && ext != ".json" && ext != ".smap") continue;
             try
             {
+                if (ext == ".smap")
+                {
+                    var project = SmapFile.Load(f);
+                    var sequence = PlaybackSequence.FromProject(project);
+                    list.Add(new SongInfo { File = f, Name = project.Metadata.Name,
+                        Author = project.Metadata.Author, TranscribedBy = project.Metadata.TranscribedBy,
+                        Bpm = (double)(60_000_000m / project.Tempos.OrderBy(t => t.Beat).First().MicrosecondsPerBeat),
+                        NoteCount = sequence.Notes.Count, DurationMs = sequence.DurationMs });
+                    continue;
+                }
                 var root = ParseRoot(ReadText(f));
                 string name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
                     ? n.GetString() ?? Path.GetFileNameWithoutExtension(f)
@@ -109,11 +120,16 @@ public static class SongLibrary
     /// <summary>加载完整曲谱文档(保留全部字段), 音符 ms 按 GCD 精确拍长换算成拍位置。</summary>
     public static SongDocument LoadDocument(SongInfo info)
     {
-        var doc = new SongDocument { FilePath = info.File };
         var node = JsonNode.Parse(ReadText(info.File));
         JsonObject obj = (node is JsonArray a && a.Count > 0 ? a[0]!.AsObject() : node!.AsObject());
+        return LoadDocument(obj, info.File);
+    }
+
+    internal static SongDocument LoadDocument(JsonObject obj, string filePath)
+    {
+        var doc = new SongDocument { FilePath = filePath };
         doc.Root = obj;
-        doc.Name = (string?)obj["name"] ?? Path.GetFileNameWithoutExtension(info.File);
+        doc.Name = (string?)obj["name"] ?? Path.GetFileNameWithoutExtension(filePath);
         doc.Author = (string?)obj["author"] ?? "";
         doc.TranscribedBy = (string?)obj["transcribedBy"] ?? "";
 
@@ -193,6 +209,27 @@ public static class SongLibrary
         return path;
     }
 
+    public static string WriteNative(SmapProject project)
+    {
+        ProjectValidation.Validate(project);
+        Directory.CreateDirectory(SongsDir);
+        string safe = NativeFileStem(project.Metadata.Name);
+        string path = Path.Combine(SongsDir, safe + ".smap");
+        for (int i = 2; File.Exists(path); i++) path = Path.Combine(SongsDir, $"{safe} ({i}).smap");
+        SmapFile.Save(project, path); return path;
+    }
+
+    internal static string NativeFileStem(string name)
+    {
+        string safe = string.Concat(name.Where(c => !Path.GetInvalidFileNameChars().Contains(c))).Trim().TrimEnd('.');
+        if (safe.Length == 0) safe = "Untitled";
+        if (safe.Length > 120) safe = safe[..120];
+        if (char.IsHighSurrogate(safe[^1])) safe = safe[..^1];
+        string stem = safe.Split('.')[0].ToUpperInvariant();
+        if (new[] { "CON", "PRN", "AUX", "NUL" }.Contains(stem) || (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) && stem[3] is >= '1' and <= '9')) safe = "_" + safe;
+        return safe;
+    }
+
     // songs 目录下按曲名生成不冲突的 .txt 路径
     static string UniquePath(string name)
     {
@@ -259,7 +296,7 @@ public static class SongLibrary
     }
 
     // 兼容 UTF-8 / UTF-8 BOM / UTF-16 LE/BE BOM (Sky 曲谱来源编码不一)
-    static string ReadText(string path)
+    internal static string ReadText(string path)
     {
         var b = File.ReadAllBytes(path);
         if (b.Length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) return Encoding.UTF8.GetString(b, 3, b.Length - 3);
