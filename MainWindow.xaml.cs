@@ -16,6 +16,7 @@ public partial class MainWindow : Window
 {
     readonly Button[] _pianoButtons = new Button[15];
     readonly SkyPlayer _player = new();
+    readonly HashSet<EditorWindow> _editors = new();
     DispatcherTimer? _countdown;
     List<(int key, double ms)> _notes = new();   // 仅供旧读谱墙布局使用；演奏与判定保留完整的 _sequence。
     double _speed = 1.0;
@@ -576,6 +577,15 @@ public partial class MainWindow : Window
     // 退出时保存"上次播放的曲 + 进度"; 下次启动恢复到底部条(不自动播放), 按播放从该进度续
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        foreach (var editor in _editors.ToArray())
+        {
+            if (!editor.IsEnabled || ComponentDispatcher.IsThreadModal)
+            {
+                editor.Activate(); e.Cancel = true; return;
+            }
+            editor.Close();
+            if (_editors.Contains(editor)) { e.Cancel = true; return; }
+        }
         SaveNowPlaying();
         SavePrefs();
         base.OnClosing(e);
@@ -820,15 +830,28 @@ public partial class MainWindow : Window
         if (_playing || _previewing) StopPlaying();
         if (_gamePracticeOn) GamePracticeSwitch.IsChecked = false;
         _practiceSession?.Pause(true);
+        EditorWindow? win = null;
         try
         {
-            var win = new EditorWindow { Owner = this };
+            win = new EditorWindow(EditorSession.NewProject(), persistView: !_verificationMode)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                AudioEnabled = !_verificationMode,
+            };
+            win.Left = Left + (ActualWidth - win.Width) / 2;
+            win.Top = Top + (ActualHeight - win.Height) / 2;
             if (song != null) { win.LoadSong(song); FilePathBox.Text = song.Name; }
             win.Saved += _ => RefreshLibrary();
-            win.ShowDialog();
+            _editors.Add(win);
+            win.Closed += (_, _) =>
+            {
+                _editors.Remove(win);
+                if (_editors.Count == 0) _practiceSession?.Pause(_practicePaused || _playing || _previewing);
+            };
+            win.Show();
         }
-        catch (Exception error) { Logger.Exception("工程编辑失败", error); ShowToast(Lang.S("ed.error")); }
-        finally { _practiceSession?.Pause(_practicePaused || _playing || _previewing); }
+        catch (Exception error) { win?.Close(); Logger.Exception("工程编辑失败", error); ShowToast(Lang.S("ed.error")); }
+        finally { if (_editors.Count == 0) _practiceSession?.Pause(_practicePaused || _playing || _previewing); }
     }
 
     // 3×5 虚拟琴键: 圆角方块 + 菱形轮廓(光遇琴键造型) + 字母; row0=K0-4, row1=K5-9, row2=K10-14

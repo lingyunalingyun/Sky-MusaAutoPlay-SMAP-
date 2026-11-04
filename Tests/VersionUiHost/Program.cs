@@ -69,6 +69,7 @@ static class Program
             else if(args.Contains("editor-choices"))EditorChoices(args.Length>1?args[1]:null);
             else if(args.Contains("editor-track-choice"))EditorTrackChoice(args.Length>1?args[1]:null);
             else if(args.Contains("editor-command-menu"))EditorCommandMenu(args.Length>1?args[1]:null);
+            else if(args.Contains("editor-window-mode"))EditorWindowMode();
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -258,6 +259,58 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool IsWindowEnabled(IntPtr window);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr GetWindow(IntPtr window,uint command);
+    static void EditorWindowMode()
+    {
+        var main=new MainWindow(true);main.Show();Pump();
+        var editors=(HashSet<EditorWindow>)Field(main,"_editors")!;
+        bool blocked=false;var guard=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(250) };
+        guard.Tick+=(_,_)=> { blocked=true;guard.Stop();foreach(var editor in Application.Current.Windows.OfType<EditorWindow>().ToArray()){editor.Session.MarkSaved();editor.Close();} };
+        guard.Start();Call(main,"OpenEditor",new object[]{null!});guard.Stop();Pump();
+        Check(!blocked&&editors.Count==1,"Production editor entry blocked in a modal loop");
+        var editor=editors.Single();var mainHandle=new WindowInteropHelper(main).Handle;var editorHandle=new WindowInteropHelper(editor).Handle;
+        Check(editor.Owner==null&&GetWindow(editorHandle,4)==IntPtr.Zero&&!editor.Topmost,"Editor is still owned or topmost");
+        Check(IsWindowEnabled(mainHandle),"Editor disabled the main window");
+        main.Activate();Until(()=>main.IsActive);Check(!editor.IsActive,"Main cannot be activated above editor");
+        editor.Activate();Until(()=>editor.IsActive);Check(!main.IsActive,"Editor cannot be activated independently");
+        editor.WindowState=WindowState.Minimized;Pump();Check(main.WindowState!=WindowState.Minimized&&main.IsVisible,"Minimizing editor affected main");
+        editor.WindowState=WindowState.Normal;main.WindowState=WindowState.Minimized;Pump();Check(editor.IsVisible&&editor.WindowState==WindowState.Normal,"Minimizing main minimized editor");main.WindowState=WindowState.Normal;
+        main.Hide();Pump();Check(editor.IsVisible,"Hiding main hid editor");main.Show();Pump();
+        var dialog=new Window { Owner=editor,Content="Modal editor dialog",Width=260,Height=140,ShowInTaskbar=false };
+        bool mainStayedOpen=false,dialogModal=false;var timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(100) };
+        timer.Tick+=(_,_)=>
+        {
+            timer.Stop();dialogModal=!IsWindowEnabled(mainHandle)&&!IsWindowEnabled(editorHandle);
+            main.Close();mainStayedOpen=main.IsVisible&&editor.IsVisible&&editors.Count==1;dialog.Close();
+        };
+        timer.Start();dialog.ShowDialog();Pump();
+        Check(dialogModal&&mainStayedOpen,"Editor dialog lost modality or main close bypassed dialog");
+        bool cancel=true;System.ComponentModel.CancelEventHandler veto=(_,e)=>e.Cancel=cancel;
+        editor.Closing+=veto;main.Close();Pump();Check(main.IsVisible&&editor.IsVisible&&editors.Count==1,"Cancelled editor close still closed main");
+        cancel=false;editor.Closing-=veto;
+        editor.Session.Create(0,0);bool savePrompt=false;var confirm=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(100) };
+        confirm.Tick+=(_,_)=>
+        {
+            confirm.Stop();var prompt=Application.Current.Windows.OfType<ChromeWindow>().Single(w=>ReferenceEquals(w.Owner,editor));
+            savePrompt=true;Descendants<Button>(prompt).Single(b=>Equals(b.Content,Lang.S("d.cancel"))).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        };
+        confirm.Start();main.Close();Pump();Check(savePrompt&&main.IsVisible&&editor.IsVisible&&editor.Session.IsDirty,"Unsaved cancel did not preserve editor and main");editor.Session.MarkSaved();
+        string path=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap");
+        try
+        {
+            SmapFile.Save(EditorSession.NewProject(),path);Call(main,"OpenEditor",new SongInfo { File=path,Name="Window lifecycle" });Pump();
+            Check(editors.Count==2&&editors.All(w=>w.Owner==null),"Opening another editor lost existing window");
+            var second=editors.Single(w=>!ReferenceEquals(w,editor));second.Session.Create(2,1);
+            Check((bool)Call(second,"Save",false)!&&!second.Session.IsDirty&&SmapFile.Load(path).Tracks[0].Notes.Count==1,"Nonmodal editor lost save operation or event callback");
+            second.Close();Pump();Check(editors.Count==1&&editor.IsVisible,"Closing one editor removed another");
+        }
+        finally { File.Delete(path); }
+        main.Close();Pump();Check(!main.IsVisible&&!editor.IsVisible&&editors.Count==0,"Main close left editor or tracking subscription behind");
+        Console.WriteLine("EDITOR_WINDOW_MODE nonmodal=True;unowned=True;activation=True;minimize=True;close=True;dialog=True");
     }
     static void EditorCommandMenu(string? output)
     {

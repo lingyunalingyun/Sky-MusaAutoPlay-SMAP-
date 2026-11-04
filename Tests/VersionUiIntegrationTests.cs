@@ -35,6 +35,7 @@ public class VersionUiIntegrationTests(ITestOutputHelper output)
     [InlineData("editor-choices","EDITOR_CHOICES snap=True;tools=True;keyboard=True;history=True;joined=True")]
     [InlineData("editor-track-choice","EDITOR_TRACK_CHOICE identity=True;switch=True;keyboard=True;busy=True;history=True")]
     [InlineData("editor-command-menu","EDITOR_COMMAND_MENU joined=True;track=True;commands=True;palette=True;lifecycle=True;motion=True")]
+    [InlineData("editor-window-mode","EDITOR_WINDOW_MODE nonmodal=True;unowned=True;activation=True;minimize=True;close=True;dialog=True")]
     public async Task ProductionEntryAndLifecycleBoundariesPassInActualWpf(string mode,string expected)
     {
         var start=new ProcessStartInfo("dotnet"){WorkingDirectory=TestProject.FindRepository(),UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
