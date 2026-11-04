@@ -92,6 +92,7 @@ public partial class EditorWindow : Window
     {
         _play = MakeButton(S("play"), async () => await TogglePlayback()); ToolBar.Children.Add(_play);
         _play.SetResourceReference(Control.BackgroundProperty, "Accent"); _play.Foreground = Brushes.Black;
+        _play.Height = 32;
         ToolBar.Children.Add(MakeButton("■", StopPlayback, S("stop")));
         _undo = MakeButton("↶", () => Edit(_session.Undo), S("undo")); _redo = MakeButton("↷", () => Edit(_session.Redo), S("redo"));
         ToolBar.Children.Add(_undo); ToolBar.Children.Add(_redo);
@@ -176,6 +177,11 @@ public partial class EditorWindow : Window
         PropertiesButton.Content = S(_compact ? "panels" : "properties"); FollowButton.Content = S("follow") + (_follow ? " ☑" : " ☐");
         KeyboardButton.Content = S("keyboard") + (MapGrid.Visibility == Visibility.Visible ? " ▴" : " ▸"); HintText.Text = S("hint");
         Overview.ToolTip=S("overview");System.Windows.Automation.AutomationProperties.SetName(Overview,S("overview"));
+        double PlayTextWidth(string text) => new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            new Typeface(_play.FontFamily, _play.FontStyle, _play.FontWeight, _play.FontStretch), _play.FontSize, Brushes.Black,
+            VisualTreeHelper.GetDpi(_play).PixelsPerDip).WidthIncludingTrailingWhitespace;
+        _play.Width = Math.Max(_play.MinWidth, Math.Ceiling(Math.Max(PlayTextWidth(S("play")), PlayTextWidth(S("pause")))
+            + _play.Padding.Left + _play.Padding.Right + _play.BorderThickness.Left + _play.BorderThickness.Right));
         _play.Content = S(_playing ? "pause" : "play"); _undo.IsEnabled = _session.CanUndo; _redo.IsEnabled = _session.CanRedo;
         _snap.ItemsSource = new[] { 0, 4, 8, 3, 6, 12, _session.Project.GridSubdiv }.Distinct().Select(g => new SnapChoice(g, g == 0 ? S("noSnap") : S("snap") + " 1/" + g)).ToArray();
         _snap.SelectedValue = Roll.SnapEnabled ? _session.Project.GridSubdiv : 0;

@@ -77,6 +77,7 @@ static class Program
             else if(args.Contains("track-toggles"))TrackToggles(args.Length>1?args[1]:null);
             else if(args.Contains("cursor-center"))CursorCenter(args.Length>1?args[1]:null);
             else if(args.Contains("editor-space"))EditorSpace();
+            else if(args.Contains("toolbar-stable"))ToolbarStable(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -266,6 +267,27 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void ToolbarStable(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        var window=new EditorWindow(EditorSession.NewProject()){AudioEnabled=false};window.Show();Pump();var play=(Button)Field(window,"_play")!;
+        var toolbar=(Panel)window.FindName("ToolBar");var elements=toolbar.Children.OfType<FrameworkElement>().Where(e=>e.Visibility==Visibility.Visible).Concat(new[]{(FrameworkElement)window.FindName("WorkArea"),(FrameworkElement)window.FindName("TrackSelect"),(FrameworkElement)window.FindName("KeyboardHost"),window.Viewport}).ToArray();
+        Rect Bounds(FrameworkElement e)=>e.TransformToAncestor(window).TransformBounds(new Rect(e.RenderSize));
+        foreach(var language in Enum.GetValues<AppLang>())foreach(double width in new[]{940d,1050d,1232d})
+        {
+            typeof(Lang).GetProperty(nameof(Lang.Current))!.SetValue(null,language);window.Width=width;Call(window,"RefreshLabels");Pump();
+            var baseline=elements.Select(Bounds).ToArray();double buttonWidth=play.ActualWidth;
+            for(int i=0;i<4;i++)
+            {
+                typeof(EditorWindow).GetField("_playing",Private)!.SetValue(window,true);Call(window,"RefreshLabels");Pump();
+                Check(play.ActualWidth==buttonWidth&&play.ActualHeight==32&&elements.Select(Bounds).SequenceEqual(baseline),"Switching to pause shifted toolbar or roll layout");
+                var text=new TextBlock{Text=play.Content.ToString(),FontFamily=play.FontFamily,FontSize=play.FontSize,FontWeight=play.FontWeight};text.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity));Check(text.DesiredSize.Width+play.Padding.Left+play.Padding.Right+2<=play.ActualWidth+.1,"Localized pause label clips in fixed-width button");
+                Call(window,"PauseForEdit");Pump();Check(play.ActualWidth==buttonWidth&&elements.Select(Bounds).SequenceEqual(baseline),"Actual pause path shifted toolbar or roll layout");
+            }
+            if(output!=null&&width==1232)Capture(window,Path.Combine(output,$"toolbar-{language}.png"));
+        }
+        window.Close();Console.WriteLine("TOOLBAR_STABLE states=True;wrap=True;languages=4;widths=3");
     }
     static void EditorSpace()
     {
