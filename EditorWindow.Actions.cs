@@ -137,12 +137,12 @@ public partial class EditorWindow
         AddMenu(menu, S("split"), () => Edit(() => _session.SplitSelected(Roll.PlayheadBeat)));
         AddMenu(menu, S("properties"), EditNoteProperties); AddMenu(menu, S("trackSettings"), () => EditTrack(_session.ActiveTrack));
         menu.Items.Add(new Separator());
-        var current = new MenuItem { Header = S("currentOnly"), IsCheckable = true, IsChecked = _currentOnly }; current.Click += (_, _) => { PauseForEdit(); _currentOnly = current.IsChecked; }; menu.Items.Add(current);
+        var current = new MenuItem { Header = S("currentOnly"), IsCheckable = true, IsChecked = _currentOnly }; current.Click += (_, _) => { PauseForEdit(); _currentOnly = current.IsChecked; Roll.Focus(); }; menu.Items.Add(current);
         AddMenu(menu, S("region"), PreviewRegion);
         if (_session.Project.MidiConversion != null) { AddMenu(menu, S("original"), async () => await PreviewOriginal()); AddMenu(menu, S("remap"), Remap); }
         AddMenu(menu, S("home"), () => { StopPlayback(); Roll.CenterCursor = true; Roll.PlayheadBeat = 0; Roll.SetView(0); });
         AddMenu(menu, S("zoomIn"), () => Roll.SetZoom(Roll.Zoom * 1.25, Roll.VerticalZoom)); AddMenu(menu, S("zoomOut"), () => Roll.SetZoom(Roll.Zoom / 1.25, Roll.VerticalZoom));
-        var motion = new MenuItem { Header = S("reduceMotion"), IsCheckable = true, IsChecked = _view.ReduceMotion }; motion.Click += (_, _) => _view.ReduceMotion = motion.IsChecked; menu.Items.Add(motion);
+        var motion = new MenuItem { Header = S("reduceMotion"), IsCheckable = true, IsChecked = _view.ReduceMotion }; motion.Click += (_, _) => { _view.ReduceMotion = motion.IsChecked; Roll.Focus(); }; menu.Items.Add(motion);
         AddMenu(menu, S("help"), () => MsgBox.Info(this, S("helpText"), S("help")));
         ToggleCommandMenu(MoreButton, menu);
     }
@@ -262,9 +262,12 @@ public partial class EditorWindow
         if (_commandMenu is { IsOpen: true } command) { e.Handled = command.HandleKey(key); return; }
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         if (ctrl && key == Key.S) { Save(); e.Handled = true; return; }
-        if (_snapChoice.IsOpen || _toolChoice.IsOpen || _trackChoice.IsOpen)
+        bool snapOpen = _snapChoice.IsOpen && _snapChoice.Chrome.IsHitTestVisible;
+        bool toolOpen = _toolChoice.IsOpen && _toolChoice.Chrome.IsHitTestVisible;
+        bool trackOpen = _trackChoice.IsOpen && _trackChoice.Chrome.IsHitTestVisible;
+        if (snapOpen || toolOpen || trackOpen)
         {
-            var choice = _snapChoice.IsOpen ? _snapChoice : _toolChoice.IsOpen ? _toolChoice : _trackChoice;
+            var choice = snapOpen ? _snapChoice : toolOpen ? _toolChoice : _trackChoice;
             var model = ReferenceEquals(choice, _snapChoice) ? _snap : ReferenceEquals(choice, _toolChoice) ? _tools : TrackSelect;
             if (key == Key.Escape) { CloseEditorChoices(); Roll.Focus(); e.Handled = true; }
             else if (key is Key.Up or Key.Down or Key.Home or Key.End)
@@ -282,6 +285,8 @@ public partial class EditorWindow
             else base.OnPreviewKeyDown(e);
             return;
         }
+        if (key == Key.Space && Keyboard.FocusedElement is not (TextBox or PasswordBox or ComboBox))
+        { HandleKey(key, Keyboard.Modifiers, e.IsRepeat); e.Handled = true; return; }
         if (Keyboard.FocusedElement is TextBox or PasswordBox or JoinedChoiceButton or CommandMenuButton || Keyboard.FocusedElement is ComboBox) { base.OnPreviewKeyDown(e); return; }
         if (HandleKey(key, Keyboard.Modifiers, e.IsRepeat)) e.Handled = true; else base.OnPreviewKeyDown(e);
     }

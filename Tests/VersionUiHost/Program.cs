@@ -76,6 +76,7 @@ static class Program
             else if(args.Contains("editor-open"))EditorOpen();
             else if(args.Contains("track-toggles"))TrackToggles(args.Length>1?args[1]:null);
             else if(args.Contains("cursor-center"))CursorCenter(args.Length>1?args[1]:null);
+            else if(args.Contains("editor-space"))EditorSpace();
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -265,6 +266,30 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void EditorSpace()
+    {
+        var track=new ProjectTrack();track=track with{Notes=new(){new(){TrackId=track.Id,Key=4,Beat=0}}};
+        var window=new EditorWindow(new(){Tracks=new(){track}}){AudioEnabled=false};window.Show();Pump();
+        var view=(EditorViewPreferences)Field(window,"_view")!;view.ReduceMotion=true;var more=(CommandMenuButton)window.FindName("MoreButton");var roll=window.Viewport;
+        void Click(Button b){b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+        Button Row(string key)=>Descendants<Button>(more.Scroll).Single(b=>Equals(b.ToolTip,Lang.S("ed."+key)));
+        KeyEventArgs Space(){var e=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(window)!,Environment.TickCount,Key.Space){RoutedEvent=Keyboard.PreviewKeyDownEvent};window.RaiseEvent(e);Pump();return e;}
+        void Playing()=>typeof(EditorWindow).GetField("_playing",Private)!.SetValue(window,true);
+        Click(more);Click(Row("zoomIn"));double zoom=roll.Zoom;
+        Check(roll.IsKeyboardFocused&&!more.IsOpen,"Command selection did not return focus to roll");
+        Playing();Check(Space().Handled&&!(bool)Field(window,"_playing")!&&roll.Zoom==zoom&&!more.IsOpen,"Space repeated previous zoom command instead of pausing");
+        more.Focus();Playing();Check(Space().Handled&&!(bool)Field(window,"_playing")!&&!more.IsOpen,"Focused More trigger captured Space instead of editor playback");
+        Click(more);Click(Row("currentOnly"));bool current=(bool)Field(window,"_currentOnly")!;Playing();Check(Space().Handled&&Equals(Field(window,"_currentOnly"),current)&&roll.IsKeyboardFocused,"Space repeated check-menu action");
+        Click(more);Playing();var preview=Space();Check(preview.Handled&&!more.IsOpen&&(bool)Field(window,"_playing")!,"Space on an open menu no longer follows menu navigation");typeof(EditorWindow).GetField("_playing",Private)!.SetValue(window,false);
+        var snap=(JoinedChoiceButton)Field(window,"_snapChoice")!;snap.ReduceMotion=false;Click(snap);var option=(ListBoxItem)snap.Options.Items[2];
+        snap.Options.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,Environment.TickCount,MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonUpEvent,Source=option});
+        Playing();Check(Space().Handled&&!(bool)Field(window,"_playing")!&&window.Session.Project.GridSubdiv==8,"Space during selector close animation repeated selection instead of pausing");snap.Close(true);
+        window.ToggleAdvanced();Pump();var scroll=(ScrollViewer)Field(window,"_trackScroll")!;
+        var toggle=Descendants<System.Windows.Controls.Primitives.ToggleButton>(scroll).First(b=>b.Tag is string);toggle.Focus();Check(!Space().Handled,"Space on intentional track toggle was intercepted");
+        var host=(Panel)((FrameworkElement)window.FindName("HintText")).Parent;var text=new TextBox{Width=100,Height=24};host.Children.Add(text);Pump();text.Focus();Check(!Space().Handled,"Space in text input was intercepted");host.Children.Remove(text);
+        roll.Focus();Check(Space().Handled&&!(bool)Field(window,"_playing")!,"Stopped-editor Space was left to a stale button");
+        window.Session.MarkSaved();window.Close();Console.WriteLine("EDITOR_SPACE command=True;check=True;selector=True;pause=True;input=True;toggle=True");
     }
     static void CursorCenter(string? output)
     {

@@ -277,9 +277,11 @@ public partial class EditorWindow : Window
         foreach(var item in items.OfType<MenuItem>())
         {item.Style=(Style)FindResource(typeof(MenuItem));item.ToolTip=item.Header;StyleMenuItems(item.Items);}
     }
-    static void AddMenu(ContextMenu menu, string text, Action action)
+    void AddMenu(ContextMenu menu, string text, Action action)
     {
-        var item = new MenuItem { Header = text }; item.Click += (_, _) => action(); menu.Items.Add(item);
+        var item = new MenuItem { Header = text };
+        item.Click += (_, _) => { try { action(); } finally { if (!_closed && IsEnabled) Roll.Focus(); } };
+        menu.Items.Add(item);
     }
     void Title_MouseDown(object sender, MouseButtonEventArgs e) { if (e.ClickCount == 2) ToggleMaximize(); else if (e.ButtonState == MouseButtonState.Pressed) DragMove(); }
     void Min_Click(object sender, MouseButtonEventArgs e) { WindowState = WindowState.Minimized; e.Handled = true; }

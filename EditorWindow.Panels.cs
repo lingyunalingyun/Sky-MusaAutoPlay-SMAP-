@@ -73,7 +73,7 @@ public partial class EditorWindow
         foreach (string hex in EditorViewPreferences.Palette)
         {
             var color = new MenuItem { Header = hex, Icon = new Border { Width = 15, Height = 15, Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)) } };
-            color.Click += (_, _) => { _view.Colors[track.Id] = hex; RefreshTracks(); Roll.InvalidateLayers(); }; colors.Items.Add(color);
+            color.Click += (_, _) => { _view.Colors[track.Id] = hex; RefreshTracks(); Roll.InvalidateLayers(); Roll.Focus(); }; colors.Items.Add(color);
         }
         menu.Items.Add(colors);
         AddMenu(menu, S("exportTrack"), () => ExportTrack(track.Id));
