@@ -1,365 +1,303 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using SMAP_WPF.Core;
 
 namespace SMAP_WPF;
 
 public partial class EditorWindow : Window
 {
-    static readonly string[] KeyLabels = { "Y", "U", "I", "O", "P", "H", "J", "K", "L", ";", "N", "M", ",", ".", "/" };
-    static readonly Brush MapDefault = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
-    static readonly Brush MapFlash = new SolidColorBrush(Color.FromRgb(0x4c, 0xaf, 0x50));
+    readonly SkyPlayer _audition = new();
+    readonly DispatcherTimer _playTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    readonly ScrollViewer _trackScroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    readonly ScrollViewer _inspectorScroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    readonly Button[] _keys = new Button[15];
+    readonly EditorViewPreferences _view;
+    readonly bool _persistView;
+    EditorSession _session = null!;
+    bool _advanced, _compact, _drawerInspector, _follow = true, _keyboard = true, _keyboardExplicit, _refreshing, _scrolling, _playing, _busy, _closed;
+    decimal _extentBeat = 16;
+    string? _path;
+    Button _play = null!, _undo = null!, _redo = null!, _tempo = null!, _meter = null!;
+    ComboBox _snap = null!, _tools = null!;
+    JoinedChoiceButton _snapChoice = null!, _toolChoice = null!, _trackChoice = null!;
+    ContextMenu? _editorMenu;
+    CommandMenuButton? _commandMenu;
+    static string S(string key) => Lang.S("ed." + key);
+    static string F(string key, params object?[] args) => string.Format(CultureInfo.CurrentCulture, S(key), args);
+    internal EditorSession Session => _session;
+    internal PianoRoll Viewport => Roll;
+    internal bool Advanced => _advanced;
+    public event Action<string>? Saved;
 
-    // 物理键盘 → 光遇 15 键 (与底部面板键位一致), 用于键盘写谱
-    static readonly Dictionary<Key, int> KeyToLight = new()
+    public EditorWindow() : this(EditorSession.NewProject(), true) { }
+    internal EditorWindow(SmapProject project, bool persistView = false)
     {
-        { Key.Y, 0 }, { Key.U, 1 }, { Key.I, 2 }, { Key.O, 3 }, { Key.P, 4 },
-        { Key.H, 5 }, { Key.J, 6 }, { Key.K, 7 }, { Key.L, 8 }, { Key.OemSemicolon, 9 },
-        { Key.N, 10 }, { Key.M, 11 }, { Key.OemComma, 12 }, { Key.OemPeriod, 13 }, { Key.OemQuestion, 14 },
-    };
-
-    readonly Button[] _mapButtons = new Button[15];
-    bool _playing;
-    readonly Stopwatch _clock = new();
-    double _lastMs;
-    double _lastPlayBeat;   // 上一帧游标位置, 用于触发新经过的音符发声
-    SongDocument _doc = new();   // 当前曲谱文档(含元数据); 新建时为默认空文档
-
-    public EditorWindow()
-    {
-        InitializeComponent();
-        BuildKeyLane();
-        BuildMapPanel();
-        Roll.NotePlayed = FlashKey;
-        Roll.PlayheadChanged = () => { if (!_playing) HighlightActiveKeys(); };   // 手动移游标 → 对应键亮起
-        Roll.RequestScrollByX = dx => Scroll.ScrollToHorizontalOffset(Math.Max(0, Scroll.HorizontalOffset - dx));   // 中键平移
-        UpdateInfo();
-
-        Scroll.ScrollChanged += (_, __) => UpdateViewport();
-        InstrumentCombo.ItemsSource = AudioEngine.Instruments;
-        InstrumentCombo.SelectedItem = "Piano";
-
-        GridCombo.ItemsSource = new[] { "1/4 十六分", "1/8 三十二分", "1/3 三连音", "1/6 六连音", "1/12" };
-        GridCombo.SelectedIndex = 0;                 // 默认 Subdiv=4, 先设再挂事件避免初始误触
-        GridCombo.SelectionChanged += Grid_Changed;
-        System.Threading.Tasks.Task.Run(AudioEngine.Init);   // 后台预热音频, 避免首次点击卡顿
+        InitializeComponent(); _persistView = persistView; _view = persistView ? EditorViewPreferences.Load() : new();
+        Overview.Roll=Roll;Overview.TrackColor=id=>_view.Color(id,_session.Project.Tracks.FindIndex(t=>t.Id==id));
+        BuildToolbar();
+        TrackSelect.DisplayMemberPath = nameof(TrackChoice.Name); TrackSelect.SelectedValuePath = nameof(TrackChoice.Id);
+        TrackSelect.SelectionChanged += (_, _) => { if (!_refreshing && TrackSelect.SelectedValue is Guid id) SwitchTrack(id); };
+        _trackChoice = MakeEditorChoice(TrackSelect, 185, TrackChoiceButton);
+        Roll.EditStarting = PauseForEdit; Roll.Status = text => StatusText.Text = text;
+        Roll.TrackColor = id => _view.Color(id, _session.Project.Tracks.FindIndex(t => t.Id == id));
+        Roll.PlayheadChanged = () => { if (_playing) _audition.Seek(Math.Max(0, (double)((_displayTimeline ?? new ProjectTimeline(_session.Project.Tempos)).BeatToMicroseconds(Roll.PlayheadBeat) / 1000) - _playOffsetMs)); RefreshStatus(); };
+        Roll.ViewChanged = SyncScrollbars;
+        HorizontalScroll.ValueChanged += (_, _) => { if (!_scrolling) Roll.SetView((decimal)HorizontalScroll.Value, Roll.VerticalOffset); };
+        VerticalScroll.ValueChanged += (_, _) => { if (!_scrolling) Roll.SetView(Roll.ViewBeat, VerticalScroll.Value); };
+        ModeButton.Click += (_, _) => ToggleAdvanced(); MoreButton.Click += (_, _) => ShowMore();
+        SaveButton.Click += (_, _) => Save(); PropertiesButton.Click += (_, _) => ShowProperties();
+        FollowButton.Click += (_, _) => { _follow = !_follow; RefreshLabels(); };
+        KeyboardButton.Click += (_, _) => { _keyboard = MapGrid.Visibility != Visibility.Visible; _keyboardExplicit = true; RefreshLayoutMode(); RefreshLabels(); };
+        BuildKeyboard();
+        Deactivated+=(_,_)=>{StopKeyPreview();if(!_closed)RefreshEditorKeys();};
+        _playTimer.Tick += (_, _) => TickPlayback();
+        _audition.Failed = error => Dispatcher.BeginInvoke(() => { if (!_closed) { StopPlayback(); ShowError(error); } });
+        SizeChanged += (_, _) => { _commandMenu?.Close(true); if(_editorMenu!=null)_editorMenu.IsOpen=false;RefreshLayoutMode(); };
+        Theme.Changed += ThemeChanged;
+        Attach(project); Loaded += (_, _) => { RefreshLayoutMode(); Roll.Focus(); _=PrepareKeyOutput(); };
     }
-
-    // 自定义标题栏
-    void Title_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); }
-    void Min_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => WindowState = WindowState.Minimized;
-    void Close_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => Close();
-
-    void Instrument_Changed(object sender, SelectionChangedEventArgs e)
+    void Attach(SmapProject project)
     {
-        if (InstrumentCombo.SelectedItem is string name)
-            System.Threading.Tasks.Task.Run(() => AudioEngine.SetInstrument(name));   // 后台加载音色 wav
+        if (_session != null) { _session.Changed -= Changed; _session.SelectionChanged -= SelectionChanged; }
+        _session = new(project) { AllowUnsupportedEditing = true }; Roll.Session = _session; _session.Changed += Changed; _session.SelectionChanged += SelectionChanged;
+        Changed();
     }
-
-    // 网格细分: 下拉索引 → Subdiv。三连音=3(一拍3格), 三十二分=8, 六连音=6
-    static readonly int[] GridSubdivs = { 4, 8, 3, 6, 12 };
-    void Grid_Changed(object sender, SelectionChangedEventArgs e)
+    public void LoadSong(SongInfo song)
     {
-        int idx = GridCombo.SelectedIndex;
-        if (idx < 0) return;
-        Roll.Subdiv = GridSubdivs[idx];   // 音符按精确 beat 存, 换网格不移动音符, 只改吸附/格线
-        Roll.UpdateSize();
+        StopPlayback();
+        if (Path.GetExtension(song.File).Equals(".smap", StringComparison.OrdinalIgnoreCase))
+        { Attach(SmapFile.Load(song.File)); _path = song.File; }
+        else { Attach(LegacyProjectAdapter.FromDocument(SongLibrary.LoadDocument(song))); _path = null; }
+        Roll.PlayheadBeat = 0; Roll.SetView(0); RefreshTitle();
     }
-
-    // 把当前可视 x 范围告诉卷帘, 它只画这一段 (超长曲谱才不卡)
-    void UpdateViewport()
+    void Changed()
     {
-        Roll.ViewLeft = Scroll.HorizontalOffset;
-        Roll.ViewRight = Scroll.HorizontalOffset + Scroll.ViewportWidth;
-        Roll.InvalidateVisual();
+        if (_closed) return;
+        _extentBeat = _session.Project.Tracks.SelectMany(t => t.Notes).Select(n => n.Beat + n.LengthBeats).DefaultIfEmpty(16).Max();
+        RefreshTitle(); RefreshTracks(); RefreshInspector(); RefreshLabels(); SyncScrollbars();
     }
-
-    /// <summary>从曲库加载一首曲谱 (音符 ms 已在 SongLibrary 换算成拍位置)。</summary>
-    public void LoadSong(SongInfo info)
+    void SelectionChanged() { if (!_closed) { RefreshInspector(); RefreshLabels(); } }
+    void ThemeChanged() { if (!_closed) { Roll.InvalidateLayers(); RefreshTracks(); RefreshInspector(); } }
+    void RefreshTitle() => Title = S("title") + " · " + (string.IsNullOrWhiteSpace(_session.Project.Metadata.Name) ? S("untitled") : _session.Project.Metadata.Name) + (_session.IsDirty ? " *" : "");
+    sealed record TrackChoice(Guid Id, string Name) { public override string ToString() => Name; }
+    sealed record SnapChoice(int Subdiv, string Name) { public override string ToString() => Name; }
+    void BuildToolbar()
     {
-        _doc = SongLibrary.LoadDocument(info);
-        Roll.Notes.Clear();
-        Roll.Notes.AddRange(_doc.Notes);
-        Roll.TotalBeats = (int)_doc.TotalBeats;
-        Roll.PlayheadBeat = 0;
-        Roll.UpdateSize();
-        Roll.ClearHistory();   // 新曲谱清空撤销栈
-        BpmBox.Text = _doc.Bpm.ToString("0");   // BPM 只管游标速度, 取整数; 音符对齐用精确 GCD 拍长
-        Title = $"钢琴卷帘编辑器 - {_doc.Name}";
-        UpdateInfo();
-        Dispatcher.BeginInvoke(new Action(UpdateViewport), DispatcherPriority.Loaded);
+        _play = MakeButton(S("play"), async () => await TogglePlayback()); ToolBar.Children.Add(_play);
+        _play.SetResourceReference(Control.BackgroundProperty, "Accent"); _play.Foreground = Brushes.Black;
+        ToolBar.Children.Add(MakeButton("■", StopPlayback, S("stop")));
+        _undo = MakeButton("↶", () => Edit(_session.Undo), S("undo")); _redo = MakeButton("↷", () => Edit(_session.Redo), S("redo"));
+        ToolBar.Children.Add(_undo); ToolBar.Children.Add(_redo);
+        _snap = new ComboBox { Visibility = Visibility.Collapsed, SelectedValuePath = nameof(SnapChoice.Subdiv), ToolTip = S("snapTip") };
+        _snap.SelectionChanged += (_, _) => { if (_refreshing || _snap.SelectedValue is not int grid) return; Roll.SnapEnabled = grid != 0; if (grid > 0) _session.SetGrid(grid); };
+        ToolBar.Children.Add(_snap);
+        _snapChoice = MakeEditorChoice(_snap, 115); ToolBar.Children.Add(_snapChoice);
+        _tools = new ComboBox { Visibility = Visibility.Collapsed, ItemsSource = new[] { S("draw"), S("paint"), S("erase") }, SelectedIndex = 0 };
+        _tools.SelectionChanged += (_, _) => Roll.Tool = (RollTool)_tools.SelectedIndex; ToolBar.Children.Add(_tools);
+        _toolChoice = MakeEditorChoice(_tools, 105); ToolBar.Children.Add(_toolChoice);
+        _tempo = MakeButton("120 BPM ▾", ShowTempoMenu); _meter = MakeButton("4/4 ▾", ShowMeterMenu);
+        ToolBar.Children.Add(_tempo); ToolBar.Children.Add(_meter);
     }
-
-    void Save_Click(object sender, RoutedEventArgs e)
+    JoinedChoiceButton MakeEditorChoice(ComboBox model, double width, JoinedChoiceButton? existing = null)
     {
-        if (string.IsNullOrEmpty(_doc.FilePath)) { SaveAs_Click(sender, e); return; }
-        DoSave(_doc.FilePath);
-    }
-
-    void SaveAs_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.SaveFileDialog
+        var label = (DataTemplate)FindResource("EditorChoiceLabel");
+        var button = existing ?? new JoinedChoiceButton();
+        button.Width = width; button.Height = 32; button.Margin = new Thickness(3); button.FontSize = 12; button.ContentTemplate = label;
+        button.SetBinding(ContentControl.ContentProperty, new System.Windows.Data.Binding("SelectedItem") { Source = model });
+        button.SetBinding(IsEnabledProperty, new System.Windows.Data.Binding("IsEnabled") { Source = model });
+        button.SetBinding(ToolTipProperty, new System.Windows.Data.Binding("SelectedItem") { Source = model });
+        var items = new Style(typeof(ListBoxItem), button.Options.ItemContainerStyle);
+        items.Setters.Add(new Setter(ContentControl.ContentTemplateProperty, label));
+        items.Setters.Add(new Setter(ToolTipProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.Self) }));
+        button.Options.ItemContainerStyle = items;
+        button.IsEnabledChanged += (_, _) => { if (!button.IsEnabled) button.Close(true); };
+        VirtualizingPanel.SetScrollUnit(button.Options, ScrollUnit.Pixel); SmoothScroll.SetEnabled(button.Options, true);
+        button.Click += (_, _) =>
         {
-            Filter = "Sky 曲谱 (*.txt)|*.txt|JSON (*.json)|*.json",
-            FileName = EnsureName(),
-            InitialDirectory = System.IO.Directory.Exists(SongLibrary.SongsDir) ? SongLibrary.SongsDir : null
+            if (!ReferenceEquals(button, _snapChoice)) _snapChoice.Close(true);
+            if (!ReferenceEquals(button, _toolChoice)) _toolChoice.Close(true);
+            if (!ReferenceEquals(button, _trackChoice)) _trackChoice?.Close(true);
+            if (_editorMenu != null) _editorMenu.IsOpen = false;
+            _commandMenu?.Close(true);
+            button.Toggle(model);
+            if (button.IsOpen && button.Options.SelectedItem is { } selected)
+                Dispatcher.BeginInvoke(() => button.Options.ScrollIntoView(selected), DispatcherPriority.Loaded);
         };
-        if (dlg.ShowDialog() == true) DoSave(dlg.FileName);
+        return button;
     }
-
-    // 曲名为空/默认时, 生成不冲突的 -未命名N-
-    string EnsureName()
+    void CloseEditorChoices() { _snapChoice.Close(true); _toolChoice.Close(true); _trackChoice.Close(true); }
+    void ToggleCommandMenu(CommandMenuButton button, ContextMenu model)
     {
-        if (!string.IsNullOrWhiteSpace(_doc.Name) && _doc.Name != "未命名") return _doc.Name;
-        for (int i = 1; ; i++)
+        CloseEditorChoices();
+        if (_editorMenu != null) _editorMenu.IsOpen = false;
+        if (!ReferenceEquals(_commandMenu, button)) _commandMenu?.Close(true);
+        _commandMenu = button; button.ReduceMotion = _view.ReduceMotion;
+        button.Closed -= CommandMenuClosed; button.Closed += CommandMenuClosed;
+        button.Toggle(model, EditorMenuLayer);
+    }
+    void CommandMenuClosed(object? sender, EventArgs e)
+    {
+        if (sender is CommandMenuButton button) button.Closed -= CommandMenuClosed;
+        if (ReferenceEquals(_commandMenu, sender)) _commandMenu = null;
+    }
+    internal void ToggleAdvanced()
+    {
+        _advanced = !_advanced; Roll.References = _advanced; RefreshLayoutMode(); RefreshLabels();
+    }
+    void RefreshLayoutMode()
+    {
+        _compact = ActualWidth > 0 && ActualWidth < 1060;
+        TrackColumn.Width = new GridLength(_advanced && !_compact ? 216 : 0);
+        bool inspector = _advanced && !_compact && _session.Project.MidiConversion != null;
+        InspectorColumn.Width = new GridLength(inspector ? 250 : 0);
+        if (Drawer.Visibility != Visibility.Visible)
         {
-            string cand = $"-未命名{i}-";
-            string f1 = System.IO.Path.Combine(SongLibrary.SongsDir, cand + ".txt");
-            string f2 = System.IO.Path.Combine(SongLibrary.SongsDir, cand + ".json");
-            if (!System.IO.File.Exists(f1) && !System.IO.File.Exists(f2)) return cand;
+            TrackHost.Content = null; InspectorHost.Content = null;
+            if (_advanced && !_compact) TrackHost.Content = _trackScroll;
+            if (inspector) InspectorHost.Content = _inspectorScroll;
         }
+        MapGrid.Visibility = _keyboard && (!_compact || _keyboardExplicit) && Height > 600 ? Visibility.Visible : Visibility.Collapsed;
+        HintText.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
+        ModeButton.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
+        _tempo.Visibility = _meter.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
+        RefreshLabels();
     }
-
-    void DoSave(string path)
+    void RefreshLabels()
     {
-        _doc.Name = EnsureName();
-        _doc.Bpm = (int)ParseBpm();
-        try
+        _refreshing = true;
+        MoreButton.Content = S("more"); ModeButton.Content = S(_advanced ? "simple" : "advanced"); SaveButton.Content = S("save");
+        PropertiesButton.Content = S(_compact ? "panels" : "properties"); FollowButton.Content = S("follow") + (_follow ? " ☑" : " ☐");
+        KeyboardButton.Content = S("keyboard") + (MapGrid.Visibility == Visibility.Visible ? " ▴" : " ▸"); HintText.Text = S("hint");
+        Overview.ToolTip=S("overview");System.Windows.Automation.AutomationProperties.SetName(Overview,S("overview"));
+        _play.Content = S(_playing ? "pause" : "play"); _undo.IsEnabled = _session.CanUndo; _redo.IsEnabled = _session.CanRedo;
+        _snap.ItemsSource = new[] { 0, 4, 8, 3, 6, 12, _session.Project.GridSubdiv }.Distinct().Select(g => new SnapChoice(g, g == 0 ? S("noSnap") : S("snap") + " 1/" + g)).ToArray();
+        _snap.SelectedValue = Roll.SnapEnabled ? _session.Project.GridSubdiv : 0;
+        var tempo = _session.Project.Tempos.Where(t => t.Beat <= Roll.PlayheadBeat).OrderBy(t => t.Beat).Last();
+        var meter = _session.Project.Meters.Where(t => t.Beat <= Roll.PlayheadBeat).OrderBy(t => t.Beat).Last();
+        _tempo.Content = $"{60_000_000m / tempo.MicrosecondsPerBeat:0.##} BPM ▾"; _meter.Content = $"{meter.Numerator}/{meter.Denominator} ▾";
+        TrackSelect.ItemsSource = _session.Project.Tracks.Select((t, i) => new TrackChoice(t.Id, $"{i + 1:00} {TrackName(t)}")).ToArray(); TrackSelect.SelectedValue = _session.ActiveTrackId;
+        TrackCaption.Text = F("editing", TrackName(_session.ActiveTrack)) + " · " + Lang.Instrument(_session.ActiveTrack.PreviewInstrument);
+        TrackCaption.ToolTip = TrackCaption.Text;
+        RefreshEditorKeys();
+        RefreshStatus(); _refreshing = false;
+    }
+    void RefreshStatus()
+    {
+        RefreshCursorKeyColors();
+        Overview.RefreshView();
+        StatusText.Text = F("status", TrackName(_session.ActiveTrack), _session.Selected.Count, _session.ActiveTrack.Notes.Count);
+        ZoomText.Text = $"X {Roll.Zoom:P0}  Y {Roll.VerticalZoom:P0}  · {PianoRoll.TimeLabel(new ProjectTimeline(_session.Project.Tempos).BeatToMicroseconds(Roll.PlayheadBeat) / 1_000_000)}";
+    }
+    string TrackName(ProjectTrack track) => string.IsNullOrWhiteSpace(track.Name) ? S("track") : track.Name;
+    void SyncScrollbars()
+    {
+        if (_session == null || _scrolling) return; _scrolling = true;
+        HorizontalScroll.Maximum = (double)Math.Max(0, Math.Max(_extentBeat + 8, Roll.ViewBeat + Roll.VisibleBeats) - Roll.VisibleBeats);
+        HorizontalScroll.ViewportSize = (double)Roll.VisibleBeats; HorizontalScroll.SmallChange = 1.0 / _session.Project.GridSubdiv; HorizontalScroll.Value = (double)Roll.ViewBeat;
+        VerticalScroll.Maximum = Math.Max(0, 15 * Roll.RowHeight - Math.Max(1, Roll.ActualHeight - PianoRoll.RulerHeight));
+        VerticalScroll.ViewportSize = Math.Max(1, Roll.ActualHeight - PianoRoll.RulerHeight); VerticalScroll.Value = Roll.VerticalOffset;
+        _scrolling = false; RefreshStatus();
+    }
+    void SwitchTrack(Guid id)
+    {
+        if (_busy || id == _session.ActiveTrackId) return;
+        PauseForEdit(); Roll.CancelGesture(); _session.SelectTrack(id); RefreshTracks(); RefreshLabels();
+        if (Drawer.Visibility == Visibility.Visible) DismissDrawer();
+    }
+    void ShowDrawer(bool inspector)
+    {
+        _drawerInspector = inspector; TrackHost.Content = null; InspectorHost.Content = null; DrawerHost.Content = null;
+        DrawerHost.Content = inspector ? _inspectorScroll : _trackScroll; Drawer.Visibility = Visibility.Visible;
+        AnimatePanel(DrawerHost);
+    }
+    void DismissDrawer()
+    {
+        DrawerHost.Content = null; Drawer.Visibility = Visibility.Collapsed; RefreshLayoutMode(); Roll.Focus();
+    }
+    void DismissDrawer_Click(object sender, RoutedEventArgs e) => DismissDrawer();
+    void ShowProperties()
+    {
+        _commandMenu?.Close(true);
+        if (_compact)
         {
-            SongLibrary.Save(_doc, Roll.Notes, path);
-            Title = $"钢琴卷帘编辑器 - {_doc.Name}";
-            StatusToast($"已保存: {System.IO.Path.GetFileName(path)}");
+            var menu = NewMenu(); AddMenu(menu, S("tracks"), () => ShowDrawer(false)); AddMenu(menu, S("properties"), () => ShowDrawer(true));
+            PropertiesButton.ContextMenu = menu; menu.IsOpen = true;
         }
-        catch (Exception ex) { MsgBox.Info(this, ex.Message, "保存失败"); }
+        else if (_session.Selected.Count > 0) EditNoteProperties(); else EditTrack(_session.ActiveTrack);
     }
-
-    void EditInfo_Click(object sender, RoutedEventArgs e)
+    void Edit(Action action)
     {
-        var dlg = new InfoDialog(_doc) { Owner = this };
-        if (dlg.ShowDialog() == true)
+        if (_busy) return; PauseForEdit(); try { action(); } catch (Exception error) { ShowError(error); }
+    }
+    void PauseForEdit()
+    {
+        if (_playing) { var ms = _audition.PositionMs + _playOffsetMs; _audition.Pause(true); Roll.PlayheadBeat = (_displayTimeline ?? new ProjectTimeline(_session.Project.Tempos)).MicrosecondsToBeat((decimal)ms * 1000); _playing = false; _playTimer.Stop(); _play.Content = S("play"); RefreshStatus(); }
+    }
+    void ShowError(Exception error)
+    {
+        Logger.Exception("编辑操作失败", error); string key = "ed.error." + error.Message; string message = Lang.S(key);
+        if (message == key) message = S("error"); StatusText.Text = message;
+        MsgBox.Info(this, message, S("title"));
+    }
+    static Button MakeButton(string text, Action action, string? tooltip = null)
+    {
+        var button = new Button { Content = text, ToolTip = tooltip ?? text }; button.Click += (_, _) => action(); return button;
+    }
+    static TextBlock Label(string text, bool muted = false, bool bold = false)
+    {
+        var t = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(4, 6, 4, 4), FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal };
+        t.SetResourceReference(TextBlock.ForegroundProperty, muted ? "SubTextFg" : "TextFg"); return t;
+    }
+    ContextMenu NewMenu(FrameworkElement? anchor = null)
+    {
+        if(_editorMenu!=null)_editorMenu.IsOpen=false;
+        var menu = new ContextMenu { Width=320,Style=(Style)FindResource(typeof(ContextMenu)),PlacementTarget=anchor??this,Placement=PlacementMode.Custom };
+        menu.Resources[typeof(ScrollBar)]=FindResource(typeof(ScrollBar));menu.Resources[typeof(MenuItem)]=FindResource(typeof(MenuItem));menu.Resources[typeof(Separator)]=FindResource(typeof(Separator));
+        var origin=anchor?.TranslatePoint(new Point(),this)??Mouse.GetPosition(this);
+        menu.MaxHeight=Math.Max(100,Math.Min(420,ActualHeight-(anchor==null?origin.Y:origin.Y+anchor.ActualHeight)-20));
+        menu.CustomPopupPlacementCallback=(size,target,offset)=>
         {
-            Title = $"钢琴卷帘编辑器 - {_doc.Name}";
-            UpdateInfo();
-        }
+            double x=anchor==null?0:anchor.ActualWidth-size.Width,y=anchor?.ActualHeight??0;
+            x=Math.Clamp(x,8-origin.X,Math.Max(8-origin.X,ActualWidth-8-origin.X-size.Width));
+            y=Math.Clamp(y,8-origin.Y,Math.Max(8-origin.Y,ActualHeight-8-origin.Y-size.Height));
+            return new[]{new CustomPopupPlacement(new Point(x,y),PopupPrimaryAxis.None)};
+        };
+        menu.Opened+=(_,_)=>StyleMenuItems(menu.Items);
+        return _editorMenu=menu;
     }
-
-    void StatusToast(string msg) => Title = $"钢琴卷帘编辑器 - {_doc.Name}  ·  {msg}";
-
-    void BuildKeyLane()
+    void StyleMenuItems(ItemCollection items)
     {
-        KeyLane.Children.Add(new Border { Height = Roll.RulerH, Background = new SolidColorBrush(Color.FromRgb(0x17, 0x17, 0x17)) });
-        for (int row = 0; row < PianoRoll.Keys; row++)
-        {
-            int key = (PianoRoll.Keys - 1) - row;
-            var bg = (key % 5 == 0) ? Color.FromRgb(0x3a, 0x3a, 0x3a) : Color.FromRgb(0x2c, 0x2c, 0x2c);
-            var b = new Border
-            {
-                Height = Roll.RowH,
-                Background = new SolidColorBrush(bg),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x1a, 0x1a, 0x1a)),
-                BorderThickness = new Thickness(0, 0, 1, 1),
-                Child = new TextBlock
-                {
-                    Text = $"K{key}  {KeyLabels[key]}",
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)),
-                    FontSize = 11,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(8, 0, 0, 0)
-                }
-            };
-            KeyLane.Children.Add(b);
-        }
+        foreach(var item in items.OfType<MenuItem>())
+        {item.Style=(Style)FindResource(typeof(MenuItem));item.ToolTip=item.Header;StyleMenuItems(item.Items);}
     }
-
-    // 底部光遇琴键面板 (3×5, K0-4 / K5-9 / K10-14)
-    void BuildMapPanel()
+    static void AddMenu(ContextMenu menu, string text, Action action)
     {
-        for (int i = 0; i < 15; i++)
-        {
-            var b = new Button
-            {
-                Width = 54,
-                Height = 38,
-                Margin = new Thickness(3),
-                Background = MapDefault,
-                Foreground = Brushes.White,
-                FontSize = 11,
-                Content = $"K{i}\n{KeyLabels[i]}",
-                Tag = i
-            };
-            int idx = i;
-            b.Click += (_, __) => MapClick(idx);
-            _mapButtons[i] = b;
-            MapGrid.Children.Add(b);
-        }
+        var item = new MenuItem { Header = text }; item.Click += (_, _) => action(); menu.Items.Add(item);
     }
-
-    void Preview(int key) => AudioEngine.Play(key);
-
-    // 点底部琴键: 试听 + (非播放时)在游标位置 toggle 该键音符
-    void MapClick(int key)
+    void Title_MouseDown(object sender, MouseButtonEventArgs e) { if (e.ClickCount == 2) ToggleMaximize(); else if (e.ButtonState == MouseButtonState.Pressed) DragMove(); }
+    void Min_Click(object sender, MouseButtonEventArgs e) { WindowState = WindowState.Minimized; e.Handled = true; }
+    void Max_Click(object sender, MouseButtonEventArgs e) { ToggleMaximize(); e.Handled = true; }
+    void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    void Close_Click(object sender, MouseButtonEventArgs e) { Close(); e.Handled = true; }
+    protected override void OnClosing(CancelEventArgs e)
     {
-        Preview(key);
-        if (!_playing)
-        {
-            double beat = Roll.SnapBeat(Roll.PlayheadBeat);
-            var ex = Roll.Notes.Find(n => n.Key == key && Math.Abs(n.Beat - beat) < 1e-6);
-            if (ex != null) Roll.Notes.Remove(ex);
-            else Roll.Notes.Add(new Note { Key = key, Beat = beat });
-            Roll.InvalidateVisual();
-            UpdateInfo();
-        }
-        FlashKey(key);
+        if (_session.IsDirty && !ConfirmClose()) { e.Cancel = true; return; }
+        base.OnClosing(e);
     }
-
-    // 临时高亮一个键 (放音符/点击时); 播放中由 HighlightActiveKeys 统一管理
-    void FlashKey(int key)
-    {
-        if (key < 0 || key >= 15) return;
-        _mapButtons[key].Background = MapFlash;
-        if (!_playing)
-        {
-            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
-            t.Tick += (s, e) => { ((DispatcherTimer)s!).Stop(); if (!_playing) _mapButtons[key].Background = MapDefault; };
-            t.Start();
-        }
-    }
-
-    // 播放时: 游标附近(一个细分格内)的音符对应键亮起
-    void HighlightActiveKeys()
-    {
-        double win = 1.0 / Roll.Subdiv;
-        var active = new HashSet<int>();
-        foreach (var n in Roll.Notes)
-            if (Math.Abs(n.Beat - Roll.PlayheadBeat) < win) active.Add(n.Key);
-        for (int i = 0; i < 15; i++)
-            _mapButtons[i].Background = active.Contains(i) ? MapFlash : MapDefault;
-    }
-
-    void UpdateInfo() => InfoText.Text = $"音符 {Roll.Notes.Count}  ·  {Roll.TotalBeats} 拍";
-
-    double ParseBpm()
-    {
-        if (double.TryParse(BpmBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && v >= 1)
-            return v;
-        return 120;
-    }
-
-    void Play_Click(object sender, RoutedEventArgs e)
-    {
-        if (_playing) { StopPlay(); return; }
-        if (Roll.PlayheadBeat >= Roll.TotalBeats - 0.001) Roll.PlayheadBeat = 0;
-        _lastPlayBeat = Roll.PlayheadBeat - 1e-6;   // 含起点音符(如 beat 0)
-        _lastMs = 0;
-        _clock.Restart();
-        _playing = true;
-        CompositionTarget.Rendering += OnFrame;   // 跟随显示器刷新率, 高刷屏可达 120+
-        PlayBtn.Content = "⏸";
-    }
-
-    void Home_Click(object sender, RoutedEventArgs e)
-    {
-        StopPlay();
-        Roll.PlayheadBeat = 0;
-        ScrollToPlayhead();
-        HighlightActiveKeys();
-        Roll.InvalidateVisual();
-    }
-
-    void StepLeft_Click(object sender, RoutedEventArgs e) => Step(-1);
-    void StepRight_Click(object sender, RoutedEventArgs e) => Step(1);
-
-    // 游标移动一格(一个细分格 = 1/Subdiv 拍)
-    void Step(int dir)
-    {
-        if (_playing) return;   // 播放中不响应
-        double step = 1.0 / Roll.Subdiv;
-        Roll.PlayheadBeat = Math.Max(0, Roll.SnapBeat(Roll.PlayheadBeat) + dir * step);
-        ScrollToPlayhead();
-        HighlightActiveKeys();
-        Roll.InvalidateVisual();
-    }
-
-    // 游标移出视口时滚动跟随, 保证可见
-    void ScrollToPlayhead()
-    {
-        double phx = Roll.PlayheadBeat * Roll.BaseBeatWidth * Roll.Zoom;
-        if (phx < Scroll.HorizontalOffset + 40)
-            Scroll.ScrollToHorizontalOffset(Math.Max(0, phx - 40));
-        else if (phx > Scroll.HorizontalOffset + Scroll.ViewportWidth - 40)
-            Scroll.ScrollToHorizontalOffset(phx - Scroll.ViewportWidth + 40);
-    }
-
-    void StopPlay()
-    {
-        if (_playing) { CompositionTarget.Rendering -= OnFrame; _playing = false; }
-        _clock.Stop();
-        PlayBtn.Content = "▶";
-        for (int i = 0; i < 15; i++) _mapButtons[i].Background = MapDefault;
-    }
-
-    // 窗口级快捷键: 不依赖卷帘焦点; TextBox(如 BPM) 有焦点时放行, 让用户正常输入
-    protected override void OnPreviewKeyDown(KeyEventArgs e)
-    {
-        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
-        if (ctrl && e.Key == Key.S) { Save_Click(this, new RoutedEventArgs()); e.Handled = true; return; }   // 保存: 全局生效
-        if (Keyboard.FocusedElement is TextBox) { base.OnPreviewKeyDown(e); return; }
-        if (shift && e.Key == Key.X) { Roll.DeleteSelected(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.C) { Roll.Copy(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.X) { Roll.Cut(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.V) { Roll.Paste(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.Z) { Roll.Undo(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.Y) { Roll.Redo(); e.Handled = true; }
-        else if (e.Key == Key.Delete) { Roll.DeleteSelected(); e.Handled = true; }
-        else if (e.Key == Key.Space) { Play_Click(this, new RoutedEventArgs()); e.Handled = true; }
-        // ←/→: 有选区则移动音符, 否则移动游标(卷帘跟随)
-        else if (e.Key == Key.Left) { if (Roll.Selected.Count > 0) Roll.MoveSelected(-1, 0); else Step(-1); e.Handled = true; }
-        else if (e.Key == Key.Right) { if (Roll.Selected.Count > 0) Roll.MoveSelected(1, 0); else Step(1); e.Handled = true; }
-        // 物理键盘写谱: 按光遇键位对应键 → 在游标位置 toggle 该键音符
-        else if (!ctrl && !shift && KeyToLight.TryGetValue(e.Key, out int lk)) { MapClick(lk); e.Handled = true; }
-        base.OnPreviewKeyDown(e);
-    }
-
-    // 关闭窗口: 停播放定时器 + 静音, 否则播放中直接关会一直响
     protected override void OnClosed(EventArgs e)
     {
-        StopPlay();
-        AudioEngine.StopAll();
-        base.OnClosed(e);
-    }
-
-    void OnFrame(object? sender, EventArgs e)
-    {
-        double nowMs = _clock.Elapsed.TotalMilliseconds;
-        double dt = nowMs - _lastMs;
-        _lastMs = nowMs;
-
-        double msPerBeat = 60000.0 / ParseBpm();
-        Roll.PlayheadBeat += dt / msPerBeat;
-
-        // 触发游标新经过的音符发声
-        foreach (var n in Roll.Notes)
-            if (n.Beat > _lastPlayBeat && n.Beat <= Roll.PlayheadBeat) AudioEngine.Play(n.Key);
-        _lastPlayBeat = Roll.PlayheadBeat;
-
-        if (Roll.PlayheadBeat >= Roll.TotalBeats)
-        {
-            Roll.PlayheadBeat = Roll.TotalBeats;
-            StopPlay();
-        }
-
-        // 播放时游标固定视口中央, 卷帘向左流动
-        double phx = Roll.PlayheadBeat * Roll.BaseBeatWidth * Roll.Zoom;
-        Scroll.ScrollToHorizontalOffset(phx - Scroll.ViewportWidth / 2);
-
-        HighlightActiveKeys();
-        Roll.InvalidateVisual();
+        _closed = true; _playTimer.Stop(); Roll.CancelGesture(); Theme.Changed -= ThemeChanged;
+        CloseEditorChoices();
+        _commandMenu?.Close(true);
+        if(_editorMenu!=null)_editorMenu.IsOpen=false;
+        _session.Changed -= Changed; _session.SelectionChanged -= SelectionChanged;
+        try { _audition.Dispose(); } finally { StopKeyPreview(); if (_persistView) _view.Save(); base.OnClosed(e); }
     }
 }

@@ -1,4 +1,4 @@
-<Window x:Class="SMAP_WPF.MainWindow"
+﻿<Window x:Class="SMAP_WPF.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SMAP_WPF"
@@ -7,6 +7,8 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="ChoicePopupStyles.xaml"/></ResourceDictionary.MergedDictionaries>
         <!-- ===== 极简扁平图标 (Feather/Lucide 风格, 24x24) ===== -->
         <PathGeometry x:Key="IconPrev" Figures="M20 5 L20 19 L9 12 Z M4 5 L7 5 L7 19 L4 19 Z"/>
         <PathGeometry x:Key="IconNext" Figures="M4 5 L4 19 L15 12 Z M17 5 L20 5 L20 19 L17 19 Z"/>
@@ -229,53 +231,9 @@
         </Style>
 
         <!-- 不带菜单边缘自动滚动的 Popup 选项 -->
-        <Style x:Key="PopupOptionItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource MenuHi}"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource RowSel}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
-        <Style x:Key="LibraryChoiceButton" TargetType="Button">
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextFg}"/>
-            <Setter Property="Background" Value="{DynamicResource ComboBg}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BoxBorder}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
-                            <Grid>
-                                <ContentPresenter Margin="14,0,34,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                <Path Data="M0,0 L5,5 L10,0 Z" Fill="#999" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0"/>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Opacity" Value="0.88"/></Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+
+
 
         <!-- 深色细滚动条 -->
         <Style x:Key="ScrollThumb" TargetType="Thumb">
@@ -698,12 +656,13 @@
         </DataTemplate>
 
         <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextFg}"/></Style>
+    </ResourceDictionary>
     </Window.Resources>
 
     <!-- 圆角窗体 -->
-    <Border x:Name="WindowRoot" Background="{DynamicResource WindowBg}" CornerRadius="16" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
+    <Border x:Name="WindowRoot" Background="{DynamicResource WindowBg}" CornerRadius="21" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" Margin="8">
         <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
-        <Grid x:Name="RootScale" Margin="10" ClipToBounds="True" PreviewMouseLeftButtonDown="RootScale_PreviewMouseLeftButtonDown">
+        <Grid x:Name="RootScale" Margin="10" ClipToBounds="True">
             <Grid.LayoutTransform><ScaleTransform x:Name="UiScale"/></Grid.LayoutTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -727,7 +686,7 @@
             </Border>
 
             <!-- 主体三栏 -->
-            <Grid Grid.Row="1" Margin="4,12,4,4" ClipToBounds="True">
+            <Grid Grid.Row="1" Margin="0,12,0,0" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="268"/>
                     <ColumnDefinition Width="*" MinWidth="260"/>
@@ -773,9 +732,9 @@
                 </StackPanel>
 
                 <!-- 左(新): 音乐软件式侧边栏 (Stage1) -->
-                <DockPanel Grid.Column="0" Margin="0,0,16,0">
+                <DockPanel Grid.Column="0" Margin="0,0,12,0">
                     <!-- 头像资料卡: 点击登录/查看个人主页 -->
-                    <Border DockPanel.Dock="Top" Background="{DynamicResource BoxBg}" CornerRadius="12" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="Profile_Click">
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BoxBg}" CornerRadius="10" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="Profile_Click">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Grid Grid.Column="0" Width="56" Height="56">
@@ -792,15 +751,15 @@
                     </Border>
 
                     <!-- 本地 / 云端 切换 -->
-                    <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,14,0,0" Click="ShowLocal_Click"/>
-                    <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,10,0,0" Click="ShowCloud_Click"/>
+                    <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,12,0,0" Click="ShowLocal_Click"/>
+                    <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,12,0,0" Click="ShowCloud_Click"/>
 
                     <!-- 底部: 导入 / 设置 -->
                     <Button x:Name="SideSettingsBtn" DockPanel.Dock="Bottom" Content="设置" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Click="Settings_Click"/>
-                    <Button x:Name="SideImportBtn" DockPanel.Dock="Bottom" Content="导入" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Margin="0,0,0,10" Click="Import_Click"/>
+                    <Button x:Name="SideImportBtn" DockPanel.Dock="Bottom" Content="导入" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Margin="0,12,0,12" Click="Import_Click"/>
 
                     <!-- 我的收藏夹 (Stage2) -->
-                    <Grid DockPanel.Dock="Top" Margin="0,18,0,6">
+                    <Grid DockPanel.Dock="Top" Margin="0,12,0,6">
                         <TextBlock x:Name="FoldersHeader" Text="我的收藏夹" FontWeight="Bold" VerticalAlignment="Center"/>
                         <Button Content="＋" Style="{StaticResource IconBtn}" FontSize="16" HorizontalAlignment="Right" Click="AddFolder_Click" ToolTip="新建收藏夹"/>
                     </Grid>
@@ -859,21 +818,25 @@
                 </DockPanel>
 
                 <!-- 中: 曲目库 -->
-                <DockPanel x:Name="MidContent" Grid.Column="1" Margin="0,0,16,0">
+                <DockPanel x:Name="MidContent" Grid.Column="1" Margin="0,0,12,0">
                     <DockPanel.RenderTransform><TranslateTransform x:Name="MidSlide"/></DockPanel.RenderTransform>
-                    <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库" FontWeight="Bold" FontSize="16" Margin="2,0,0,10"/>
-                    <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Height="36" Margin="0,0,0,8" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
-                    <StackPanel x:Name="LocalFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库" FontWeight="Bold" FontSize="16" Margin="2,0,0,6"/>
+                    <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Height="36" Margin="0,0,0,12" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
+                    <Grid x:Name="LocalFilterRow" DockPanel.Dock="Top" Margin="0,0,0,12" Panel.ZIndex="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <ComboBox x:Name="FilterCombo" Visibility="Collapsed"/>
                         <ComboBox x:Name="SortCombo" Visibility="Collapsed"/>
-                        <Button x:Name="FilterChoiceBtn" Width="128" Style="{StaticResource LibraryChoiceButton}" ToolTip="筛选" Click="FilterChoice_Click"/>
-                        <Button x:Name="SortChoiceBtn" Width="140" Margin="10,0,0,0" Style="{StaticResource LibraryChoiceButton}" ToolTip="排序" Click="SortChoice_Click"/>
-                    </StackPanel>
+                        <local:JoinedChoiceButton x:Name="FilterChoiceBtn" ToolTip="筛选" Click="FilterChoice_Click"/>
+                        <local:JoinedChoiceButton x:Name="SortChoiceBtn" Grid.Column="2" ToolTip="排序" Click="SortChoice_Click"/>
+                    </Grid>
                     <!-- 云端筛选/排序 (仅云端模式显示) -->
-                    <StackPanel x:Name="CloudFilterRow" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10" Visibility="Collapsed">
-                        <ComboBox x:Name="CloudSortCombo" Width="128" Style="{StaticResource RoundCombo}" ToolTip="排序"/>
-                        <ComboBox x:Name="CloudDiffCombo" Width="140" Margin="10,0,0,0" Style="{StaticResource RoundCombo}" ToolTip="难度筛选"/>
-                    </StackPanel>
+                    <Grid x:Name="CloudFilterRow" DockPanel.Dock="Top" Margin="0,0,0,12" Visibility="Collapsed" Panel.ZIndex="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <ComboBox x:Name="CloudSortCombo" Visibility="Collapsed" ToolTip="排序"/>
+                        <ComboBox x:Name="CloudDiffCombo" Visibility="Collapsed" ToolTip="难度筛选"/>
+                        <local:JoinedChoiceButton x:Name="CloudSortChoiceBtn" ToolTip="{Binding ToolTip,ElementName=CloudSortCombo}" Click="CloudSortChoice_Click"/>
+                        <local:JoinedChoiceButton x:Name="CloudDiffChoiceBtn" Grid.Column="2" ToolTip="{Binding ToolTip,ElementName=CloudDiffCombo}" Click="CloudDiffChoice_Click"/>
+                    </Grid>
                     <Grid>
                         <ListView x:Name="SongList" Background="Transparent" Foreground="{DynamicResource TextFg}" BorderThickness="0"
                                   Margin="0" MouseDoubleClick="SongList_DoubleClick" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -887,7 +850,7 @@
                 </DockPanel>
 
                 <!-- 右: 虚拟琴键 -->
-                <Border x:Name="RightContent" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Width="430">
+                <Border x:Name="RightContent" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="10" Padding="16" Width="430">
                     <Border.RenderTransform><TranslateTransform x:Name="RightSlide"/></Border.RenderTransform>
                     <StackPanel>
                         <TextBlock x:Name="KeysHeader" Text="🎹 光遇按键映射 (3×5)" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" Visibility="Collapsed"/>
@@ -922,24 +885,28 @@
                     <!-- 设置列 -->
                     <StackPanel Grid.Column="0" Margin="0,0,24,0">
                         <TextBlock x:Name="SetTitleTx" Text="设置" FontSize="34" FontWeight="Bold" Margin="0,0,0,20"/>
-                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid Margin="0,0,0,10" Panel.ZIndex="4"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetLangLbl" Grid.Column="0" Text="语言:" VerticalAlignment="Center" FontSize="15"/>
-                            <ComboBox Grid.Column="1" x:Name="SetLangCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetLangCombo_Changed"/></Grid>
-                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <ComboBox x:Name="SetLangCombo" Visibility="Collapsed" SelectionChanged="SetLangCombo_Changed"/>
+                            <local:JoinedChoiceButton Grid.Column="1" x:Name="SetLangChoice" Height="40" Content="{Binding SelectedItem,ElementName=SetLangCombo}" Tag="{Binding ElementName=SetLangCombo}" Click="SettingsChoice_Click"/></Grid>
+                        <Grid Margin="0,0,0,10" Panel.ZIndex="3"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetThemeLbl" Grid.Column="0" Text="主题:" VerticalAlignment="Center" FontSize="15"/>
-                            <ComboBox Grid.Column="1" x:Name="SetThemeCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetThemeCombo_Changed"/></Grid>
+                            <ComboBox x:Name="SetThemeCombo" Visibility="Collapsed" SelectionChanged="SetThemeCombo_Changed"/>
+                            <local:JoinedChoiceButton Grid.Column="1" x:Name="SetThemeChoice" Height="40" Content="{Binding SelectedItem,ElementName=SetThemeCombo}" Tag="{Binding ElementName=SetThemeCombo}" Click="SettingsChoice_Click"/></Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetUpdateLbl" Grid.Column="0" Text="更新:" VerticalAlignment="Center" FontSize="15"/>
                             <Button x:Name="SetUpdateBtn" Grid.Column="1" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/></Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetLogLbl" Grid.Column="0" Text="日志:" VerticalAlignment="Center" FontSize="15"/>
                             <Button x:Name="SetLogBtn" Grid.Column="1" Content="上传日志" Style="{StaticResource NeutralBtn}" Click="SetLog_Click"/></Grid>
-                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid Margin="0,0,0,10" Panel.ZIndex="2"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetUiLbl" Grid.Column="0" Text="界面:" VerticalAlignment="Center" FontSize="15"/>
-                            <ComboBox Grid.Column="1" x:Name="SetUiCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetUiCombo_Changed"/></Grid>
-                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <ComboBox x:Name="SetUiCombo" Visibility="Collapsed" SelectionChanged="SetUiCombo_Changed"/>
+                            <local:JoinedChoiceButton Grid.Column="1" x:Name="SetUiChoice" Height="40" Content="{Binding SelectedItem,ElementName=SetUiCombo}" Tag="{Binding ElementName=SetUiCombo}" Click="SettingsChoice_Click"/></Grid>
+                        <Grid Margin="0,0,0,10" Panel.ZIndex="1"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetFontLbl" Grid.Column="0" Text="字体:" VerticalAlignment="Center" FontSize="15"/>
-                            <ComboBox Grid.Column="1" x:Name="SetFontCombo" Height="40" Style="{StaticResource RoundCombo}" SelectionChanged="SetFontCombo_Changed"/></Grid>
+                            <ComboBox x:Name="SetFontCombo" Visibility="Collapsed" SelectionChanged="SetFontCombo_Changed"/>
+                            <local:JoinedChoiceButton Grid.Column="1" x:Name="SetFontChoice" Height="40" Content="{Binding SelectedItem,ElementName=SetFontCombo}" Tag="{Binding ElementName=SetFontCombo}" Click="SettingsChoice_Click"/></Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetWaitLbl" Grid.Column="0" Text="等待:" VerticalAlignment="Center" FontSize="15"/>
                             <TextBox Grid.Column="1" x:Name="SetWaitBox" Height="40" Style="{StaticResource RoundBox}" HorizontalContentAlignment="Center" TextChanged="SetWaitBox_Changed"/></Grid>
@@ -963,7 +930,7 @@
                         </TextBlock>
                         <!-- 按键绑定网格: 仅点"绑定"后显示 -->
                         <StackPanel x:Name="SettingsBindArea" Visibility="Collapsed">
-                            <Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="12" Padding="14" HorizontalAlignment="Left">
+                            <Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="10" Padding="14" HorizontalAlignment="Left">
                                 <UniformGrid x:Name="SettingsPianoGrid" Rows="3" Columns="5"/>
                             </Border>
                             <TextBlock x:Name="SettingsBindHint" Text="点上方琴键格 → 按物理键完成重映射" FontSize="12" Foreground="{DynamicResource SubTextFg}" Margin="2,10,0,0" TextWrapping="Wrap"/>
@@ -973,8 +940,8 @@
             </Grid>
 
             <!-- 练习界面: 全屏大键盘 (覆盖主体三栏, 保留底部播放条); 卡片从主界面小键盘位置放大展开 -->
-            <Grid x:Name="PracticePanel" Grid.Row="1" Panel.ZIndex="8" Visibility="Collapsed" Margin="4,12,4,4">
-                <!-- 背景层: 单独淡入淡出, 好让卡片保持实心飞入 -->
+            <Grid x:Name="PracticePanel" Grid.Row="1" Panel.ZIndex="8" Visibility="Collapsed" Margin="0,12,0,0">
+                <!-- 背景覆盖整个主体，转场透明度由练习层统一控制。 -->
                 <Border x:Name="PracticeBg" Background="{DynamicResource WindowBg}"/>
                 <Button x:Name="PracticeBackBtn" Content="‹ 返回" Style="{StaticResource NeutralBtn}" Panel.ZIndex="10"
                         HorizontalAlignment="Left" VerticalAlignment="Top" Padding="18,8" Margin="8,4,0,0"
@@ -1037,14 +1004,14 @@
 
                 <Border x:Name="PracticeCard" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
-                        CornerRadius="18" Padding="40,32" RenderTransformOrigin="0.5,0.5">
+                        CornerRadius="10" Padding="40,32" RenderTransformOrigin="0.5,0.5">
                     <UniformGrid x:Name="PracticePianoGrid" Rows="3" Columns="5"/>
                 </Border>
             </Grid>
 
             <!-- 底部播放器栏 (beta) -->
             <Border Grid.Row="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
-                    CornerRadius="14" Margin="4,10,4,0">
+                    CornerRadius="10" Margin="0,12,0,0">
                 <Grid>
                     <!-- 主行: 左封面+歌名+星 / 中 倒计时+prev+play+next / 右 倍速 -->
                     <Grid Margin="14,14,14,12">
@@ -1116,11 +1083,11 @@
                                         Foreground="{DynamicResource SubTextFg}" Margin="0,0,2,0" Click="Cave_Click" ToolTip="洞穴音效开关">
                                     <Path Style="{StaticResource GlyphFill}" Data="{StaticResource IconMountain}"/>
                                 </Button>
-                                <Button x:Name="InstrumentPill" Content="音色:Piano" MaxWidth="150" Style="{StaticResource PillBtn}"
+                                <local:PillChoiceButton x:Name="InstrumentPill" Content="音色:Piano" MaxWidth="150"
                                         VerticalAlignment="Center" Margin="0,0,8,0" Click="Instrument_Click" ToolTip="选择音色"/>
-                                <Button x:Name="PitchPill" Content="音高:0" Style="{StaticResource PillBtn}"
+                                <local:PillChoiceButton x:Name="PitchPill" Content="音高:0"
                                         VerticalAlignment="Center" Margin="0,0,8,0" Click="Pitch_Click" ToolTip="音高(每乐器移调)"/>
-                                <Button x:Name="SpeedPill" Content="1.0x" Style="{StaticResource PillBtn}" VerticalAlignment="Center" Margin="0,0,8,0" Click="Speed_Click" ToolTip="播放速度"/>
+                                <local:PillChoiceButton x:Name="SpeedPill" Content="1.0x" VerticalAlignment="Center" Margin="0,0,8,0" Click="Speed_Click" ToolTip="播放速度"/>
                             </StackPanel>
                         </Grid>
                     </Grid>
@@ -1154,9 +1121,9 @@
                     Visibility="Collapsed" Panel.ZIndex="49" MouseLeftButtonDown="PlaylistBackdrop_Click"/>
 
             <!-- 播放列表浮层 (右侧滑出) -->
-            <Border x:Name="PlaylistPanel" Grid.Row="1" Grid.RowSpan="2" HorizontalAlignment="Right" Width="470" Margin="0,0,4,4"
+            <Border x:Name="PlaylistPanel" Grid.Row="1" Grid.RowSpan="2" HorizontalAlignment="Right" Width="470" Margin="0"
                     Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1"
-                    CornerRadius="14" Visibility="Collapsed" Panel.ZIndex="50">
+                    CornerRadius="10" Visibility="Collapsed" Panel.ZIndex="50">
                 <Border.Effect><DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5" Color="#000000"/></Border.Effect>
                 <Border.RenderTransform><TranslateTransform x:Name="PlaylistSlide"/></Border.RenderTransform>
                 <DockPanel Margin="14,12,10,12">
@@ -1178,53 +1145,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- 音色选择不用 ContextMenu，避免鼠标越过菜单边缘时触发原生自动滚动 -->
-            <Popup x:Name="InstrumentPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
-                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
-                        CornerRadius="8" Padding="4" MaxHeight="296"
-                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=InstrumentPopup}">
-                    <ListBox x:Name="InstrumentList" Background="Transparent" BorderThickness="0"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
-                             PreviewMouseLeftButtonUp="InstrumentList_Click"/>
-                </Border>
-            </Popup>
-
-            <Popup x:Name="PitchPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
-                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
-                        CornerRadius="8" Padding="4" MaxHeight="296" MinWidth="104">
-                    <ListBox x:Name="PitchList" Background="Transparent" BorderThickness="0"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
-                             PreviewMouseLeftButtonUp="PitchList_Click"/>
-                </Border>
-            </Popup>
-
-            <Popup x:Name="SpeedPopup" Placement="Top" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
-                <Border Background="{DynamicResource BoxBg}" BorderBrush="{DynamicResource BtnBorder}" BorderThickness="1"
-                        CornerRadius="8" Padding="4" MaxHeight="296"
-                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=SpeedPopup}">
-                    <ListBox x:Name="SpeedList" Background="Transparent" BorderThickness="0"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             VirtualizingPanel.ScrollUnit="Item" ItemContainerStyle="{StaticResource PopupOptionItem}"
-                             PreviewMouseLeftButtonUp="SpeedList_Click"/>
-                </Border>
-            </Popup>
-
-            <Popup x:Name="LibraryChoicePopup" Placement="Bottom" AllowsTransparency="True" StaysOpen="True" PopupAnimation="None">
-                <Border x:Name="LibraryChoiceChrome" Background="{DynamicResource ComboBg}" BorderBrush="{DynamicResource BoxBorder}"
-                        BorderThickness="1" CornerRadius="10" Padding="4" RenderTransformOrigin="0.5,0"
-                        MinWidth="{Binding PlacementTarget.ActualWidth, ElementName=LibraryChoicePopup}">
-                    <Border.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform x:Name="LibraryChoiceScale" ScaleX="1" ScaleY="1"/>
-                            <TranslateTransform x:Name="LibraryChoiceMove" Y="0"/>
-                        </TransformGroup>
-                    </Border.RenderTransform>
-                    <ListBox x:Name="LibraryChoiceList" Background="Transparent" BorderThickness="0"
-                             ItemContainerStyle="{StaticResource PopupOptionItem}" PreviewMouseLeftButtonUp="LibraryChoiceList_Click"/>
-                </Border>
-            </Popup>
+            <local:AnimatedChoicePopup x:Name="LibraryChoicePopup"/>
 
             <!-- 轻提示 toast -->
             <Border x:Name="Toast" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,18"
