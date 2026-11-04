@@ -74,7 +74,7 @@ public partial class PianoRoll
         _free = (modifiers & ModifierKeys.Alt) != 0 || !SnapEnabled;
         if (button == MouseButton.Middle) { _gesture = Gesture.Pan; return; }
         if (p.Y < RulerHeight && p.X >= LaneWidth && button == MouseButton.Left)
-        { PlayheadBeat = SnapBeat(BeatAt(p.X), _free); PlayheadChanged?.Invoke(); return; }
+        { CenterCursor = !_free; PlayheadBeat = SnapBeat(BeatAt(p.X), _free); PlayheadChanged?.Invoke(); return; }
         if (p.X < LaneWidth || KeyAt(p.Y) < 0) return;
         if (button == MouseButton.Left && (modifiers & ModifierKeys.Control) != 0)
         { _gesture = Gesture.Select; _addSelection = (modifiers & ModifierKeys.Shift) != 0; return; }

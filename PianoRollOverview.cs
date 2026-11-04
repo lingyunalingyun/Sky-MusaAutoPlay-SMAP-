@@ -63,7 +63,7 @@ public sealed class PianoRollOverview:FrameworkElement
         double size=Math.Min(ActualWidth-left,(double)(Roll.VisibleBeats/_extent)*ActualWidth);
         var accent=Resource("Accent");var fill=accent.Clone();fill.Opacity=.12;
         overlay.DrawRectangle(fill,new Pen(accent,1.5),new Rect(left,1,Math.Max(0,size),Math.Max(0,ActualHeight-2)));
-        double cursor=(double)(Roll.PlayheadBeat/_extent)*ActualWidth;
+        double cursor=(double)(Roll.CursorDisplayBeat/_extent)*ActualWidth;
         if(cursor>=0&&cursor<=ActualWidth)overlay.DrawLine(new Pen(new SolidColorBrush(Color.FromRgb(228,121,104)),1.5),new Point(cursor,1),new Point(cursor,ActualHeight-1));
         if((_hover||_drag!=RangeDrag.None)&&size>0&&ActualWidth>=HandleWidth&&ActualHeight>4)
         {

@@ -31,6 +31,8 @@ public partial class PianoRoll : FrameworkElement
     double _zoom = 1, _verticalZoom = 1, _verticalOffset;
     decimal _viewBeat, _playhead;
     bool _references;
+    internal bool CenterCursor { get; set; } = true;
+    internal decimal CursorDisplayBeat => _playhead + (CenterCursor && SnapEnabled && _session != null ? .5m / _session.Project.GridSubdiv : 0);
     public RollTool Tool { get; set; }
     public bool SnapEnabled { get; set; } = true;
     public Action? EditStarting, ViewChanged, PlayheadChanged;

@@ -245,7 +245,7 @@ public partial class PianoRoll
     }
     void DrawCursor()
     {
-        using var dc = _cursor.RenderOpen(); double x = LaneWidth + (double)(_playhead - _viewBeat) * BeatWidth;
+        using var dc = _cursor.RenderOpen(); double x = LaneWidth + (double)(CursorDisplayBeat - _viewBeat) * BeatWidth;
         if (x < LaneWidth || x > ActualWidth || ActualHeight <= 0) return;
         dc.DrawLine(Stroke(CursorBrush, 1.5), new Point(x, 0), new Point(x, ActualHeight));
         dc.DrawGeometry(CursorBrush, null, Geometry.Parse($"M{(x - 5).ToString(CultureInfo.InvariantCulture)},0 L{(x + 5).ToString(CultureInfo.InvariantCulture)},0 L{x.ToString(CultureInfo.InvariantCulture)},6 Z"));

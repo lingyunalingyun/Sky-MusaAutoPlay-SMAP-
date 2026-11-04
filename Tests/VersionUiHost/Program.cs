@@ -75,6 +75,7 @@ static class Program
             else if(args.Contains("editor-reference-keys"))EditorReferenceKeys(args.Length>1?args[1]:null);
             else if(args.Contains("editor-open"))EditorOpen();
             else if(args.Contains("track-toggles"))TrackToggles(args.Length>1?args[1]:null);
+            else if(args.Contains("cursor-center"))CursorCenter(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -264,6 +265,32 @@ static class Program
         main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,Environment.TickCount,Key.U){RoutedEvent=Keyboard.PreviewKeyUpEvent});
         Check(session.CurrentStepIndex==2,"Physical practice key did not advance");main.Close();File.Delete(file);
         Console.WriteLine("LIBRARY_PRACTICE sort=mouse-up;initial_follow=True;repeat=ignored;wrong_key=ignored");
+    }
+    static void CursorCenter(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        foreach(int grid in new[]{4,8,3})
+        {
+            var track=new ProjectTrack();track=track with{Notes=new(){new(){TrackId=track.Id,Key=4,Beat=0},new(){TrackId=track.Id,Key=7,Beat=2}}};
+            var window=new EditorWindow(new(){GridSubdiv=grid,Tracks=new(){track}}){AudioEnabled=false};window.Show();Pump();var roll=window.Viewport;var session=window.Session;
+            IEnumerable<GeometryDrawing> Geometry(Drawing d){if(d is DrawingGroup g)foreach(var c in g.Children)foreach(var x in Geometry(c))yield return x;else if(d is GeometryDrawing geometry)yield return geometry;}
+            double CursorX()=>Geometry(((DrawingVisual)Field(roll,"_cursor")!).Drawing).Select(g=>g.Geometry).OfType<LineGeometry>().Single().StartPoint.X;
+            void Centered(string stage){Pump();double expected=PianoRoll.LaneWidth+(double)(roll.PlayheadBeat-roll.ViewBeat+.5m/grid)*roll.BeatWidth;Check(Math.Abs(CursorX()-expected)<.000001,stage+" cursor is not centered on snap cell");}
+            string identity=PerformanceIdentity.ForProject(session.Project);int history=session.UndoCount;
+            Centered("Initial");Check(roll.PlayheadBeat==0&&roll.KeysAtPlayhead().SetEquals(new[]{4})&&EditorWindow.PreviewSequence(session.Project).Notes.Min(n=>n.StartMicroseconds)==0,"Centering changed beat zero, key highlight or first note start");
+            session.Select(new[]{track.Notes[0].Id});window.HandleKey(Key.Right,0);Centered("Right");Check(roll.PlayheadBeat==1m/grid,"Right changed semantic grid step");window.HandleKey(Key.Left,0);Centered("Left");window.HandleKey(Key.Left,0);Check(roll.PlayheadBeat==0,"Left crossed zero");
+            roll.SetZoom(2,1);roll.SetView(0);Centered("Zoom");
+            var overview=(PianoRollOverview)window.FindName("Overview");overview.RefreshView();var red=Color.FromRgb(228,121,104);
+            var line=Geometry(((DrawingVisual)Field(overview,"_view")!).Drawing).Single(g=>g.Geometry is LineGeometry&&g.Pen?.Brush is SolidColorBrush b&&b.Color==red);
+            Check(Math.Abs(((LineGeometry)line.Geometry).StartPoint.X-(double)(roll.CursorDisplayBeat/overview.ExtentBeats)*overview.ActualWidth)<.000001,"Overview cursor disagrees with centered roll cursor");
+            roll.CenterCursor=false;roll.PlayheadBeat=.37m;Pump();Check(Math.Abs(CursorX()-(PianoRoll.LaneWidth+(double)(.37m-roll.ViewBeat)*roll.BeatWidth))<.000001,"Continuous playback cursor gained a half-cell time offset");
+            window.HandleKey(Key.Home,0);Centered("Home");roll.SnapEnabled=false;roll.PlayheadBeat=.37m;Pump();Check(roll.CursorDisplayBeat==.37m,"Free positioning was snapped or offset");roll.SnapEnabled=true;
+            roll.PointerDown(new Point(PianoRoll.LaneWidth+roll.BeatWidth*1.2,10),MouseButton.Left,0);Centered("Ruler");
+            Check(session.UndoCount==history&&PerformanceIdentity.ForProject(session.Project)==identity,"Cursor centering changed notes or undo history");
+            if(output!=null&&grid==4)Capture(window,Path.Combine(output,"cursor-cell-center.png"));
+            session.MarkSaved();window.Close();
+        }
+        Console.WriteLine("CURSOR_CENTER initial=True;arrows=True;home=True;overview=True;timing=True;free=True");
     }
     static void TrackToggles(string? output)
     {

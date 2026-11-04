@@ -52,6 +52,7 @@ public partial class EditorWindow
             var prepared = await Task.Run(() => (sequence: PreviewSequence(snapshot), output: (INoteOutput)new EditorAudioOutput(snapshot)));
             if (_closed || generation != _playGeneration) { prepared.output.StopAll(); return; }
             if (start >= prepared.sequence.DurationMs) { start = 0; Roll.PlayheadBeat = 0; }
+            Roll.CenterCursor = false;
             _audition.Play(prepared.sequence, 1, () => Dispatcher.BeginInvoke(() => FinishPlayback(generation)), prepared.output, start);
             _playing = true; _playTimer.Start(); RefreshLabels();
         }
@@ -73,6 +74,7 @@ public partial class EditorWindow
     void FinishPlayback(long generation)
     {
         if (_closed || generation != _playGeneration) return;
+        Roll.CenterCursor = false;
         Roll.PlayheadBeat = (_displayTimeline ?? new ProjectTimeline(_session.Project.Tempos)).MicrosecondsToBeat((decimal)(_audition.PositionMs + _playOffsetMs) * 1000);
         if (_follow) Roll.EnsurePlayheadVisible();
         _playing = false; _playTimer.Stop(); RefreshLabels();
@@ -82,6 +84,7 @@ public partial class EditorWindow
         if (!_playing) return;
         double ms = _audition.PositionMs + _playOffsetMs;
         if (_regionEnd is { } end && ms >= end) { StopPlayback(); return; }
+        Roll.CenterCursor = false;
         Roll.PlayheadBeat = (_displayTimeline ?? new ProjectTimeline(_session.Project.Tempos)).MicrosecondsToBeat((decimal)ms * 1000);
         if (_follow) Roll.EnsurePlayheadVisible(); RefreshStatus();
     }
@@ -112,6 +115,7 @@ public partial class EditorWindow
             string[]? voices = _currentOnly ? c.Voices.Where(v => MidiSource.StableId($"{c.Source.Sha256}:track:{v.VoiceId}") == _session.ActiveTrackId).Select(v => v.VoiceId).ToArray() : null;
             var plan = await Task.Run(() => MidiAudition.Original(c.Source, voices, start, _regionEnd));
             if (_closed || generation != _playGeneration) return;
+            Roll.CenterCursor = false;
             plan.Play(_audition, 1, () => Dispatcher.BeginInvoke(() => FinishPlayback(generation)));
             _playing = true; _playTimer.Start(); StatusText.Text = S("originalNotice");
         }
@@ -136,7 +140,7 @@ public partial class EditorWindow
         var current = new MenuItem { Header = S("currentOnly"), IsCheckable = true, IsChecked = _currentOnly }; current.Click += (_, _) => { PauseForEdit(); _currentOnly = current.IsChecked; }; menu.Items.Add(current);
         AddMenu(menu, S("region"), PreviewRegion);
         if (_session.Project.MidiConversion != null) { AddMenu(menu, S("original"), async () => await PreviewOriginal()); AddMenu(menu, S("remap"), Remap); }
-        AddMenu(menu, S("home"), () => { StopPlayback(); Roll.PlayheadBeat = 0; Roll.SetView(0); });
+        AddMenu(menu, S("home"), () => { StopPlayback(); Roll.CenterCursor = true; Roll.PlayheadBeat = 0; Roll.SetView(0); });
         AddMenu(menu, S("zoomIn"), () => Roll.SetZoom(Roll.Zoom * 1.25, Roll.VerticalZoom)); AddMenu(menu, S("zoomOut"), () => Roll.SetZoom(Roll.Zoom / 1.25, Roll.VerticalZoom));
         var motion = new MenuItem { Header = S("reduceMotion"), IsCheckable = true, IsChecked = _view.ReduceMotion }; motion.Click += (_, _) => _view.ReduceMotion = motion.IsChecked; menu.Items.Add(motion);
         AddMenu(menu, S("help"), () => MsgBox.Info(this, S("helpText"), S("help")));
@@ -184,7 +188,7 @@ public partial class EditorWindow
         StopPlayback(); Roll.CancelGesture(); CloseEditorChoices(); _commandMenu?.Close(true); Overview.EndRangeDrag();
         _regionEndBeat = null; _regionEnd = null; _displayTimeline = null;
         _path = Path.GetExtension(path).Equals(".smap", StringComparison.OrdinalIgnoreCase) ? Path.GetFullPath(path) : null;
-        Attach(project); Roll.PlayheadBeat = 0; Roll.SetView(0); RefreshTitle();
+        Attach(project); Roll.CenterCursor = true; Roll.PlayheadBeat = 0; Roll.SetView(0); RefreshTitle();
         return true;
     }
     internal bool Save(bool saveAs = false)
@@ -294,11 +298,11 @@ public partial class EditorWindow
         else if (ctrl && key == Key.Y) Edit(_session.Redo);
         else if (key == Key.Delete || shift && key == Key.X) Edit(_session.DeleteSelected);
         else if (key == Key.Space) { if (!repeat) _ = TogglePlayback(); }
-        else if (key == Key.Home) { StopPlayback(); Roll.PlayheadBeat = 0; Roll.SetView(0); }
+        else if (key == Key.Home) { StopPlayback(); Roll.CenterCursor = true; Roll.PlayheadBeat = 0; Roll.SetView(0); }
         else if (key is Key.Left or Key.Right)
         {
             decimal delta = (key == Key.Left ? -1 : 1) / (decimal)_session.Project.GridSubdiv;
-            Roll.PlayheadBeat = Math.Max(0, Roll.PlayheadBeat + delta); Roll.EnsurePlayheadVisible(); Roll.PlayheadChanged?.Invoke();
+            Roll.CenterCursor = true; Roll.PlayheadBeat = Math.Max(0, Roll.PlayheadBeat + delta); Roll.EnsurePlayheadVisible(); Roll.PlayheadChanged?.Invoke();
         }
         else if (key is Key.Up or Key.Down)
         { if (_session.Selected.Count > 0) Edit(() => _session.MoveSelected(0, key == Key.Up ? 1 : -1)); else Roll.SetView(Roll.ViewBeat, Roll.VerticalOffset + (key == Key.Up ? -22 : 22)); }
