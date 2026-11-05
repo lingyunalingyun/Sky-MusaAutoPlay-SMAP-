@@ -92,7 +92,7 @@ public partial class EditorWindow : Window
     void BuildToolbar()
     {
         _play = MakeButton(S("play"), async () => await TogglePlayback()); ToolBar.Children.Add(_play);
-        _play.SetResourceReference(Control.BackgroundProperty, "Accent"); _play.Foreground = Brushes.Black;
+        _play.SetResourceReference(Control.BackgroundProperty, "PracticeActionBg"); _play.SetResourceReference(Control.ForegroundProperty, "ActionFg");
         _play.Height = 32;
         ToolBar.Children.Add(MakeButton("■", StopPlayback, S("stop")));
         _undo = MakeButton("↶", () => Edit(_session.Undo), S("undo")); _redo = MakeButton("↷", () => Edit(_session.Redo), S("redo"));

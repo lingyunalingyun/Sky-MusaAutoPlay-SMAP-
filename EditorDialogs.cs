@@ -34,12 +34,20 @@ sealed class EditorFieldsDialog : ChromeWindow
     {
         var dialog = new ChromeWindow(Lang.S("ed.saveChanges"), 430) { Owner = owner };
         var panel = new StackPanel { Margin = new Thickness(18) }; int result = 2;
-        panel.Children.Add(new TextBlock { Text = Lang.S("ed.saveChanges"), Foreground = owner.TryFindResource("TextFg") as System.Windows.Media.Brush, Margin = new Thickness(0, 0, 0, 14) });
+        panel.Children.Add(new TextBlock { Text = Lang.S("ed.saveChanges"), Foreground = owner.TryFindResource("TextFg") as System.Windows.Media.Brush, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
+        var buttons = new Grid();
+        for (int column = 0; column < 5; column++)
+            buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = column % 2 == 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(8) });
         foreach (var (label, index) in new[] { (Lang.S("ed.save"), 0), (Lang.S("ed.discard"), 1), (Lang.S("d.cancel"), 2) })
         {
-            var button = new Button { Content = label, MinHeight = 34, Margin = new Thickness(0, 3, 0, 3), Template = BtnTpl() };
-            button.Click += (_, _) => { result = index; dialog.Close(); }; panel.Children.Add(button);
+            var button = new Button { Content = label, Height = 36, FontSize = 14, BorderThickness = new Thickness(1), Cursor = System.Windows.Input.Cursors.Hand, Template = BtnTpl() };
+            button.SetResourceReference(Control.BackgroundProperty, index == 0 ? "PracticeActionBg" : "NeutralBtnBg");
+            button.SetResourceReference(Control.ForegroundProperty, index == 0 ? "ActionFg" : "NeutralBtnFg");
+            button.SetResourceReference(Control.BorderBrushProperty, "BtnBorder");
+            Grid.SetColumn(button, index * 2);
+            button.Click += (_, _) => { result = index; dialog.Close(); }; buttons.Children.Add(button);
         }
+        panel.Children.Add(buttons);
         dialog.SetBody(panel); dialog.ShowDialog(); return result;
     }
     public static string[]? Ask(Window owner, string title, (string label, string value)[] fields, string[]? choices, int selected, out int selection)
