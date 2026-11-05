@@ -23,7 +23,7 @@ public partial class MainWindow
         var outgoing = PrepareWorkspaceTransition(editor.WorkspaceMotionAllowed);
         CloseLibraryChoice(true);
         _rowMenu?.SetCurrentValue(ContextMenu.IsOpenProperty, false);
-        _workspaceHidden = RootScale.Children.OfType<FrameworkElement>()
+        _workspaceHidden = WorkspaceScene.Children.OfType<FrameworkElement>()
             .Where(e => Grid.GetRow(e) > 0 && !ReferenceEquals(e, EditorWorkspaceHost) && !ReferenceEquals(e, WorkspaceTransitionLayer))
             .Select(e => (e, e.Visibility)).ToArray();
         foreach (var (element, _) in _workspaceHidden) element.Visibility = Visibility.Collapsed;
@@ -54,13 +54,13 @@ public partial class MainWindow
 
     BitmapSource? CaptureWorkspacePage()
     {
-        RootScale.UpdateLayout();
-        double top = 52, width = RootScale.ActualWidth, height = RootScale.ActualHeight;
+        WorkspaceScene.UpdateLayout();
+        double top = 12, width = WorkspaceScene.ActualWidth, height = WorkspaceScene.ActualHeight;
         if (!IsVisible || width < 1 || height <= top) return null;
-        var dpi = VisualTreeHelper.GetDpi(RootScale);
+        var dpi = VisualTreeHelper.GetDpi(WorkspaceScene);
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
-            dc.DrawRectangle(new VisualBrush(RootScale) { Stretch = Stretch.Fill }, null, new Rect(0, 0, width, height));
+            dc.DrawRectangle(new VisualBrush(WorkspaceScene) { Stretch = Stretch.Fill }, null, new Rect(0, 0, width, height));
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width * dpi.DpiScaleX), (int)Math.Ceiling(height * dpi.DpiScaleY),
             96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
         bitmap.Render(visual); bitmap.Freeze();
@@ -70,10 +70,28 @@ public partial class MainWindow
     }
     BitmapSource? PrepareWorkspaceTransition(bool motion)
     {
-        var outgoing = motion ? CaptureWorkspacePage() : null;
+        var outgoing = motion ? _workspaceTransitioning && WorkspaceTransitionLayer.IsVisible ? CaptureWorkspaceTransitionFrame() : CaptureWorkspacePage() : null;
         ++_workspaceTransitionGen; _workspaceFinishTimer?.Stop();
         RestoreWorkspacePage();
         return outgoing;
+    }
+    BitmapSource CaptureWorkspaceTransitionFrame()
+    {
+        var size = WorkspaceTransitionLayer.RenderSize;
+        var dpi = VisualTreeHelper.GetDpi(WorkspaceTransitionLayer);
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            var bounds = new Rect(size);
+            dc.DrawRectangle((Brush)FindResource("WindowBg"), null, bounds);
+            foreach (var image in new[] { WorkspaceOutgoing, WorkspaceIncoming })
+            {
+                dc.PushOpacity(image.Opacity); dc.DrawImage(image.Source, bounds); dc.Pop();
+            }
+        }
+        var bitmap = new RenderTargetBitmap(Math.Max(1, (int)Math.Ceiling(size.Width * dpi.DpiScaleX)), Math.Max(1, (int)Math.Ceiling(size.Height * dpi.DpiScaleY)),
+            96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+        bitmap.Render(visual); bitmap.Freeze(); return bitmap;
     }
     void RestoreWorkspacePage()
     {
@@ -88,7 +106,6 @@ public partial class MainWindow
         int generation = _workspaceTransitionGen;
         bool animate = outgoing != null;
         _workspaceTransitioning = animate;
-        AnimateWorkspaceCaption(animate);
         if (!animate) { FinishWorkspaceTransition(generation); return; }
         WindowRoot.Effect = null;
         WorkspaceOutgoing.Source = outgoing; WorkspaceOutgoing.Opacity = 1; WorkspaceIncoming.Opacity = 0;
@@ -96,18 +113,17 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(() =>
         {
             if (generation != _workspaceTransitionGen || !_workspaceTransitioning) return;
-            WorkspaceTransitionLayer.Visibility = Visibility.Collapsed;
             WorkspaceIncoming.Source = CaptureWorkspacePage();
             _workspaceIncoming = incoming.Where(e => e.Visibility == Visibility.Visible).Select(e => (e, e.Visibility)).ToArray();
             foreach (var (element, _) in _workspaceIncoming) element.Visibility = Visibility.Hidden;
             WorkspaceTransitionLayer.Visibility = Visibility.Visible;
-            var duration = TimeSpan.FromMilliseconds(220);
-            WorkspaceOutgoing.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
-            WorkspaceIncoming.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+            AnimateWorkspaceCaption(true);
+            WorkspaceOutgoing.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(110)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+            WorkspaceIncoming.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { BeginTime = TimeSpan.FromMilliseconds(110), EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+            _workspaceFinishTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(360) };
+            _workspaceFinishTimer.Tick += (_, _) => FinishWorkspaceTransition(generation);
+            _workspaceFinishTimer.Start();
         }, DispatcherPriority.ContextIdle);
-        _workspaceFinishTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(360) };
-        _workspaceFinishTimer.Tick += (_, _) => FinishWorkspaceTransition(generation);
-        _workspaceFinishTimer.Start();
     }
     void AnimateWorkspaceCaption(bool animate)
     {
@@ -143,17 +159,9 @@ public partial class MainWindow
     void FinishWorkspaceTransition(int generation)
     {
         if (generation != _workspaceTransitionGen) return;
-        EditorBackButton.ApplyTemplate();
         _workspaceFinishTimer?.Stop(); _workspaceFinishTimer = null; _workspaceTransitioning = false;
         RestoreWorkspacePage();
-        EditorBackButton.BeginAnimation(WidthProperty, null); EditorBackButton.BeginAnimation(HeightProperty, null);
-        EditorBackButton.BeginAnimation(Canvas.LeftProperty, null); EditorBackButton.BeginAnimation(Canvas.TopProperty, null);
-        CaptionTitles.BeginAnimation(MarginProperty, null);
-        HomeCaption.BeginAnimation(OpacityProperty, null); EditorCaption.BeginAnimation(OpacityProperty, null);
-        if (EditorBackButton.Template.FindName("MorphShape", EditorBackButton) is Rectangle shape)
-        { shape.BeginAnimation(Rectangle.RadiusXProperty, null); shape.BeginAnimation(Rectangle.RadiusYProperty, null); shape.BeginAnimation(Shape.StrokeThicknessProperty, null); }
-        if (EditorBackButton.Template.FindName("BackLabel", EditorBackButton) is TextBlock label) label.BeginAnimation(OpacityProperty, null);
-        if (EditorBackButton.Background is SolidColorBrush fill) fill.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        AnimateWorkspaceCaption(false);
         HomeCaption.Visibility = _workspaceEditor == null ? Visibility.Visible : Visibility.Collapsed;
         EditorCaption.Visibility = _workspaceEditor == null ? Visibility.Collapsed : Visibility.Visible;
         if (_workspaceEditor == null) BindingOperations.ClearBinding(EditorCaptionText, TextBlock.TextProperty);

@@ -556,24 +556,40 @@ static class Program
             void Back()=>back.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(back.ActualWidth==14&&back.ActualHeight==14&&!back.IsHitTestVisible,"Homepage dot did not start as the noninteractive original circle");
             Open();Pump();Check(Running()&&layer.IsVisible&&oldImage.Source!=null&&newImage.Source!=null,"Transition did not cache both page states");
-            var widths=new List<double>();var opacity=new List<double>();
-            EventHandler render=(_,_)=> {widths.Add(back.ActualWidth);opacity.Add(newImage.Opacity);};
+            var widths=new List<double>();var opacity=new List<double>();var overlaps=new List<bool>();
+            EventHandler render=(_,_)=> {widths.Add(back.ActualWidth);opacity.Add(newImage.Opacity);overlaps.Add(oldImage.Opacity>.001&&newImage.Opacity>.001);};
             CompositionTarget.Rendering+=render;
             try
             {
                 var clock=Stopwatch.StartNew();Until(()=>clock.ElapsedMilliseconds>=90);
                 Check(back.ActualWidth>14&&back.ActualHeight>14&&back.ActualHeight<28,"Circle jumped to button instead of interpolating");
-                Check(newImage.Opacity>0&&newImage.Opacity<1&&oldImage.Opacity>0&&oldImage.Opacity<1,"Page opacity did not crossfade");
+                Check(!(newImage.Opacity>.001&&oldImage.Opacity>.001),"Old and new pages appeared together during fade");
                 Check(!host.IsVisible&&host.Visibility==Visibility.Hidden,"Live page was not held at its final layout during cached crossfade");
-                if(output!=null)Capture(main,Path.Combine(output,$"motion-{theme}-mid.png"));
                 Settle();
             }
             finally {CompositionTarget.Rendering-=render;}
             Check(widths.Select(v=>Math.Round(v,2)).Distinct().Count()>=3&&opacity.Select(v=>Math.Round(v,3)).Distinct().Count()>=3,"Motion did not produce intermediate rendered frames");
+            Check(overlaps.All(value=>!value),"Rendered fade frames mixed old and new controls");
             Check(host.IsVisible&&!layer.IsVisible&&oldImage.Source==null&&newImage.Source==null,"Enter completion retained snapshots or hid live editor");
             Check(Math.Abs(Canvas.GetLeft(back)-6)<.001&&Math.Abs(Canvas.GetTop(back)-6)<.001&&back.ActualHeight==28&&back.IsHitTestVisible,"Animated Back lost equal six-DIP left/top/bottom insets or interaction");
             Check(Math.Abs(((Grid)main.FindName("CaptionTitles")).Margin.Left-Canvas.GetLeft(back)-back.ActualWidth-12)<.001,"Caption text gap changed after equalizing Back insets");
             if(output!=null)Capture(main,Path.Combine(output,$"motion-{theme}-open.png"));
+            var play=(Button)Field(editors.Single(),"_play")!;var practice=(Button)main.FindName("PracticeBtn");
+            Check(ReferenceEquals(play.Background,practice.Background)&&ReferenceEquals(play.Foreground,practice.Foreground),"Preview action does not share Practice theme colors");
+            // A fully opaque overlay must never become part of a clean page capture.
+            var marker=new System.Windows.Shapes.Rectangle{Fill=Brushes.Magenta};layer.Children.Add(marker);layer.Visibility=Visibility.Visible;main.UpdateLayout();Pump();
+            try
+            {
+                var clean=(BitmapSource)Call(main,"CaptureWorkspacePage")!;
+                var pixel=new byte[4];clean.CopyPixels(new Int32Rect(clean.PixelWidth/2,clean.PixelHeight/2,1,1),pixel,4,0);
+                Check(!(pixel[0]>240&&pixel[1]<20&&pixel[2]>240),"Clean page capture included the transition overlay");
+            }
+            finally {layer.Children.Remove(marker);layer.Visibility=Visibility.Collapsed;}
+            if(output!=null)
+            {
+                Back();Pump();Settle();Open();Pump();var captureClock=Stopwatch.StartNew();Until(()=>captureClock.ElapsedMilliseconds>=90);
+                Capture(main,Path.Combine(output,$"motion-{theme}-mid.png"));Settle();
+            }
             Back();Pump();var closeClock=Stopwatch.StartNew();Until(()=>closeClock.ElapsedMilliseconds>=80);
             Check(Running()&&back.ActualWidth>14&&layer.IsVisible,"Return skipped shrink/fade");
             // Reopen while the previous reverse animation is still running.
@@ -622,7 +638,7 @@ static class Program
         Check(((Border)editor.FindName("TitleSurface")).Visibility==Visibility.Collapsed&&((Border)editor.FindName("ToolbarSurface")).Margin.Top==0,"Editor retained a second title or top gap");
         editor.Viewport.Focus();KeyPress(Key.Right);Pump();Check(editor.Viewport.PlayheadBeat==.25m,"Host arrow did not reach editor cursor");
         KeyPress(Key.Y);main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main)!,Environment.TickCount,Key.Y){RoutedEvent=Keyboard.PreviewKeyUpEvent});Pump();
-        Check(editor.Session.ActiveTrack.Notes.Count==1&&editor.Session.IsDirty,"Host performance key did not edit score");
+        Check(editor.Session.ActiveTrack.Notes.Count==1&&editor.Session.IsDirty,$"Host performance key did not edit score: notes={editor.Session.ActiveTrack.Notes.Count}; dirty={editor.Session.IsDirty}; modifiers={Keyboard.Modifiers}");
         Check(((TextBlock)main.FindName("EditorCaptionText")).Text==editor.Title&&editor.Title.EndsWith("*"),"Shared title lost current project/dirty marker");
         var more=(CommandMenuButton)editor.FindName("MoreButton");Click(more);Check(more.IsOpen&&ReferenceEquals(PresentationSource.FromVisual(more.Chrome),PresentationSource.FromVisual(main)),"Menu detached from main workspace");more.Close(true);
         editor.ToggleAdvanced();Pump();Check(((FrameworkElement)editor.FindName("TrackSurface")).IsVisible,"Advanced workspace lost sidebar");
