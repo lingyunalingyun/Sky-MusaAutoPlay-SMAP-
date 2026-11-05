@@ -673,20 +673,24 @@
             <!-- 标题栏 -->
             <Border Grid.Row="0" Height="40" CornerRadius="10" Background="{DynamicResource TitleGrad}" MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid>
-                    <StackPanel x:Name="HomeCaption" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                        <Ellipse Width="14" Height="14" Fill="#e8e8f5"/>
-                        <TextBlock Text="SMAP - 光遇自动演奏" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <DockPanel x:Name="EditorCaption" Visibility="Collapsed" Margin="0,0,140,0">
-                        <Button x:Name="EditorBackButton" DockPanel.Dock="Left" Style="{StaticResource NeutralBtn}" Height="28" MinHeight="0" Padding="10,0" Margin="8,6,0,6" FontSize="12" Click="EditorBack_Click">
+                    <Grid x:Name="CaptionTitles" Margin="36,0,140,0" ClipToBounds="True" IsHitTestVisible="False">
+                        <StackPanel x:Name="HomeCaption" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="SMAP - 光遇自动演奏" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <DockPanel x:Name="EditorCaption" Visibility="Collapsed" Opacity="0">
+                            <TextBlock x:Name="EditorCaptionText" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </Grid>
+                    <Canvas>
+                        <Button x:Name="EditorBackButton" Canvas.Left="14" Canvas.Top="13" Style="{StaticResource NeutralBtn}" Width="14" Height="14" MinHeight="0" MinWidth="0" Padding="10,0" Margin="0" FontSize="12" Background="#e8e8f5" IsHitTestVisible="False" Focusable="False" Click="EditorBack_Click">
                             <Button.Template><ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
+                                <Grid ClipToBounds="True">
+                                    <Rectangle x:Name="MorphShape" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="0" RadiusX="7" RadiusY="7"/>
+                                    <TextBlock x:Name="BackLabel" Text="{TemplateBinding Content}" Opacity="0" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
                             </ControlTemplate></Button.Template>
                         </Button>
-                        <TextBlock x:Name="EditorCaptionText" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    </DockPanel>
+                    </Canvas>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
                         <Button Content="—" Style="{StaticResource CaptionBtn}" Click="Min_Click"/>
                         <Button x:Name="MaxBtn" Content="☐" FontSize="13" Style="{StaticResource CaptionBtn}" Click="Max_Click"/>
@@ -1156,6 +1160,10 @@
             </Border>
 
             <ContentControl x:Name="EditorWorkspaceHost" Grid.Row="1" Grid.RowSpan="2" Panel.ZIndex="60" Margin="0,12,0,0" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+            <Grid x:Name="WorkspaceTransitionLayer" Grid.Row="1" Grid.RowSpan="2" Panel.ZIndex="70" Margin="0,12,0,0" Visibility="Collapsed" IsHitTestVisible="False">
+                <Image x:Name="WorkspaceOutgoing" Stretch="Fill"/>
+                <Image x:Name="WorkspaceIncoming" Stretch="Fill"/>
+            </Grid>
             <local:AnimatedChoicePopup x:Name="LibraryChoicePopup"/>
 
             <!-- 轻提示 toast -->

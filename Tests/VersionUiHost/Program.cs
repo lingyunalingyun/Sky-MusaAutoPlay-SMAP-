@@ -78,6 +78,7 @@ static class Program
             else if(args.Contains("cursor-center"))CursorCenter(args.Length>1?args[1]:null);
             else if(args.Contains("editor-space"))EditorSpace();
             else if(args.Contains("toolbar-stable"))ToolbarStable(args.Length>1?args[1]:null);
+            else if(args.Contains("workspace-motion"))WorkspaceMotion(args.Length>1?args[1]:null);
             else if(args.Any(a=>a is "practice-cover" or "practice-timing" or "practice-return" or "practice-rebound"))PracticeReturn(args[0],args.Length>1?args[1]:null);
             else Boundaries();
             Console.WriteLine(JsonSerializer.Serialize(new{checks=_checks,mapping=false,game_capture=false}));app.Shutdown();return 0;
@@ -539,6 +540,55 @@ static class Program
     static extern bool IsWindowEnabled(IntPtr window);
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     static extern IntPtr GetWindow(IntPtr window,uint command);
+    static void WorkspaceMotion(string? output)
+    {
+        if(output!=null)Directory.CreateDirectory(output);
+        Check(SystemParameters.ClientAreaAnimation,"System animation setting is disabled; animated review is unavailable");
+        foreach(var theme in Enum.GetValues<AppTheme>())
+        {
+            Theme.Apply(theme,persist:false);var main=CreateMain(new Registrar(),new Observer());main.Width=1232;main.Height=800;Pump();
+            var host=(ContentControl)main.FindName("EditorWorkspaceHost");var layer=(Grid)main.FindName("WorkspaceTransitionLayer");
+            var oldImage=(Image)main.FindName("WorkspaceOutgoing");var newImage=(Image)main.FindName("WorkspaceIncoming");var back=(Button)main.FindName("EditorBackButton");
+            var editors=(HashSet<EditorWindow>)Field(main,"_editors")!;
+            bool Running()=>(bool)Field(main,"_workspaceTransitioning")!;
+            void Settle(){Until(()=>!Running());Pump();}
+            void Open()=>Call(main,"OpenEditor",new object[]{null!});
+            void Back()=>back.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(back.ActualWidth==14&&back.ActualHeight==14&&!back.IsHitTestVisible,"Homepage dot did not start as the noninteractive original circle");
+            Open();Pump();Check(Running()&&layer.IsVisible&&oldImage.Source!=null&&newImage.Source!=null,"Transition did not cache both page states");
+            var widths=new List<double>();var opacity=new List<double>();
+            EventHandler render=(_,_)=> {widths.Add(back.ActualWidth);opacity.Add(newImage.Opacity);};
+            CompositionTarget.Rendering+=render;
+            try
+            {
+                var clock=Stopwatch.StartNew();Until(()=>clock.ElapsedMilliseconds>=90);
+                Check(back.ActualWidth>14&&back.ActualHeight>14&&back.ActualHeight<28,"Circle jumped to button instead of interpolating");
+                Check(newImage.Opacity>0&&newImage.Opacity<1&&oldImage.Opacity>0&&oldImage.Opacity<1,"Page opacity did not crossfade");
+                Check(!host.IsVisible&&host.Visibility==Visibility.Hidden,"Live page was not held at its final layout during cached crossfade");
+                if(output!=null)Capture(main,Path.Combine(output,$"motion-{theme}-mid.png"));
+                Settle();
+            }
+            finally {CompositionTarget.Rendering-=render;}
+            Check(widths.Select(v=>Math.Round(v,2)).Distinct().Count()>=3&&opacity.Select(v=>Math.Round(v,3)).Distinct().Count()>=3,"Motion did not produce intermediate rendered frames");
+            Check(host.IsVisible&&!layer.IsVisible&&oldImage.Source==null&&newImage.Source==null,"Enter completion retained snapshots or hid live editor");
+            Check(Math.Abs(Canvas.GetLeft(back)-6)<.001&&Math.Abs(Canvas.GetTop(back)-6)<.001&&back.ActualHeight==28&&back.IsHitTestVisible,"Animated Back lost equal six-DIP left/top/bottom insets or interaction");
+            Check(Math.Abs(((Grid)main.FindName("CaptionTitles")).Margin.Left-Canvas.GetLeft(back)-back.ActualWidth-12)<.001,"Caption text gap changed after equalizing Back insets");
+            if(output!=null)Capture(main,Path.Combine(output,$"motion-{theme}-open.png"));
+            Back();Pump();var closeClock=Stopwatch.StartNew();Until(()=>closeClock.ElapsedMilliseconds>=80);
+            Check(Running()&&back.ActualWidth>14&&layer.IsVisible,"Return skipped shrink/fade");
+            // Reopen while the previous reverse animation is still running.
+            Open();Pump();Settle();Check(editors.Count==1&&host.IsVisible&&back.ActualWidth>14&&!layer.IsVisible,"Stale close completion hid rapid reopen");
+            Check(oldImage.Source==null&&newImage.Source==null,"Rapid reopen retained page bitmaps");
+            Back();Pump();Settle();Check(!host.IsVisible&&back.ActualWidth==14&&back.ActualHeight==14&&!back.IsHitTestVisible,"Return did not restore original dot");
+            Open();Pump();main.Width=1120;Pump();Check(!Running()&&!layer.IsVisible&&host.IsVisible,"Resize left a stretched transition or invisible live page");
+            var editor=editors.Single();((EditorViewPreferences)Field(editor,"_view")!).ReduceMotion=true;
+            Back();Pump();Check(!Running()&&!layer.IsVisible&&back.ActualWidth==14&&oldImage.Source==null,"Reduced motion still animated or retained snapshots");
+            Open();Pump();main.Close();Pump();Check(!main.IsVisible&&!Running()&&oldImage.Source==null&&newImage.Source==null,"Closing main retained transition timer/cache");
+        }
+        var unshown=new MainWindow(true);unshown.Close();Check(!unshown.IsVisible,"Closing unshown main required an applied caption template");
+        Console.WriteLine("WORKSPACE_MOTION morph=True;fade=True;interrupt=True;cleanup=True;reduced=True");
+    }
+
     static void EditorWindowMode()
     {
         var registrar=new Registrar();var observer=new Observer();var main=CreateMain(registrar,observer);main.Width=1232;main.Height=800;Pump();
@@ -548,7 +598,8 @@ static class Program
         var song=new SongInfo { Name="Selected score",File=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap") };
         var list=(ListView)main.FindName("SongList");list.ItemsSource=new[]{song};list.SelectedItem=song;
         var playerName=(TextBlock)main.FindName("PlayerSongName");playerName.Text="Retained player information";
-        void Click(Button b){b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+        void Settled()=>Until(()=>!(bool)Field(main,"_workspaceTransitioning")!);
+        void Click(Button b){b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Settled();}
         void KeyPress(Key key)=>main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main)!,Environment.TickCount,key){RoutedEvent=Keyboard.PreviewKeyDownEvent});
         void Confirm(Action action,string choice)
         {
@@ -561,7 +612,7 @@ static class Program
             };
             timer.Start();action();timer.Stop();Pump();Check(prompted,"Unsaved project did not prompt");
         }
-        Call(main,"OpenEditor",new object[]{null!});Pump();var editor=editors.Single();
+        Call(main,"OpenEditor",new object[]{null!});Pump();Settled();var editor=editors.Single();
         Check(!editor.IsVisible&&new WindowInteropHelper(editor).Handle==IntPtr.Zero,"Embedded editor created a native window");
         Check(host.Content is FrameworkElement surface&&ReferenceEquals(Window.GetWindow(surface),main)&&host.IsVisible,"Editor surface did not join main visual tree");
         Check(player.Visibility==Visibility.Collapsed&&((FrameworkElement)main.FindName("HomeCaption")).Visibility==Visibility.Collapsed,"Home/player leaked into workspace");
@@ -599,7 +650,7 @@ static class Program
             foreach(var theme in Enum.GetValues<AppTheme>())foreach(var language in Enum.GetValues<AppLang>())
             {
                 Theme.Apply(theme,persist:false);typeof(Lang).GetProperty(nameof(Lang.Current))!.SetValue(null,language);
-                Call(main,"OpenEditor",new object[]{null!});editor=editors.Single();Pump();
+                Call(main,"OpenEditor",new object[]{null!});editor=editors.Single();Pump();Settled();
                 Check(host.IsVisible&&editor.Viewport.ActualHeight>100&&!player.IsVisible,"Themed workspace failed to fill main window");
                 Check(((TextBlock)main.FindName("EditorCaptionText")).Text==editor.Title&&Equals(back.Content,Lang.S("practice.back")),"Workspace caption/back localization failed");
                 if(output!=null&&language==AppLang.ZhCN)Capture(main,Path.Combine(output,$"workspace-{theme}.png"));

@@ -3056,6 +3056,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        FinishWorkspaceTransition(_workspaceTransitionGen);
         StopGamePractice();
         CloseInputRouting();
         if(_hwnd!=IntPtr.Zero)HwndSource.FromHwnd(_hwnd)?.RemoveHook(WndProc);

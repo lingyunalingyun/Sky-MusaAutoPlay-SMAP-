@@ -10,6 +10,7 @@ public partial class EditorWindow
     Window? _workspaceOwner;
     FrameworkElement? _workspaceRoot;
     Window DialogOwner => _workspaceOwner ?? this;
+    internal bool WorkspaceMotionAllowed => !_view.ReduceMotion && SystemParameters.ClientAreaAnimation;
 
     // Reuse the editor surface and session without showing or creating a second native window.
     internal FrameworkElement Embed(Window owner)
