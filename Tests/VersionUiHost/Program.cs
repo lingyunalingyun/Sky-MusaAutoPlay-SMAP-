@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
@@ -541,52 +541,77 @@ static class Program
     static extern IntPtr GetWindow(IntPtr window,uint command);
     static void EditorWindowMode()
     {
-        var main=new MainWindow(true);main.Show();Pump();
+        var registrar=new Registrar();var observer=new Observer();var main=CreateMain(registrar,observer);main.Width=1232;main.Height=800;Pump();
+        var handle=new WindowInteropHelper(main).Handle;main.ShortcutForeground=()=>handle;
         var editors=(HashSet<EditorWindow>)Field(main,"_editors")!;
-        bool blocked=false;var guard=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(250) };
-        guard.Tick+=(_,_)=> { blocked=true;guard.Stop();foreach(var editor in Application.Current.Windows.OfType<EditorWindow>().ToArray()){editor.Session.MarkSaved();editor.Close();} };
-        guard.Start();Call(main,"OpenEditor",new object[]{null!});guard.Stop();Pump();
-        Check(!blocked&&editors.Count==1,"Production editor entry blocked in a modal loop");
-        var editor=editors.Single();var mainHandle=new WindowInteropHelper(main).Handle;var editorHandle=new WindowInteropHelper(editor).Handle;
-        Check(editor.Owner==null&&GetWindow(editorHandle,4)==IntPtr.Zero&&!editor.Topmost,"Editor is still owned or topmost");
-        Check(IsWindowEnabled(mainHandle),"Editor disabled the main window");
-        main.Activate();Until(()=>main.IsActive);Check(!editor.IsActive,"Main cannot be activated above editor");
-        editor.Activate();Until(()=>editor.IsActive);Check(!main.IsActive,"Editor cannot be activated independently");
-        editor.WindowState=WindowState.Minimized;Pump();Check(main.WindowState!=WindowState.Minimized&&main.IsVisible,"Minimizing editor affected main");
-        editor.WindowState=WindowState.Normal;main.WindowState=WindowState.Minimized;Pump();Check(editor.IsVisible&&editor.WindowState==WindowState.Normal,"Minimizing main minimized editor");main.WindowState=WindowState.Normal;
-        main.Hide();Pump();Check(editor.IsVisible,"Hiding main hid editor");main.Show();Pump();
-        var dialog=new Window { Owner=editor,Content="Modal editor dialog",Width=260,Height=140,ShowInTaskbar=false };
-        bool mainStayedOpen=false,dialogModal=false;var timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(100) };
-        timer.Tick+=(_,_)=>
+        var host=(ContentControl)main.FindName("EditorWorkspaceHost");var player=(Border)main.FindName("PlayerSurface");var back=(Button)main.FindName("EditorBackButton");
+        var song=new SongInfo { Name="Selected score",File=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap") };
+        var list=(ListView)main.FindName("SongList");list.ItemsSource=new[]{song};list.SelectedItem=song;
+        var playerName=(TextBlock)main.FindName("PlayerSongName");playerName.Text="Retained player information";
+        void Click(Button b){b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+        void KeyPress(Key key)=>main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main)!,Environment.TickCount,key){RoutedEvent=Keyboard.PreviewKeyDownEvent});
+        void Confirm(Action action,string choice)
         {
-            timer.Stop();dialogModal=!IsWindowEnabled(mainHandle)&&!IsWindowEnabled(editorHandle);
-            main.Close();mainStayedOpen=main.IsVisible&&editor.IsVisible&&editors.Count==1;dialog.Close();
-        };
-        timer.Start();dialog.ShowDialog();Pump();
-        Check(dialogModal&&mainStayedOpen,"Editor dialog lost modality or main close bypassed dialog");
-        bool cancel=true;System.ComponentModel.CancelEventHandler veto=(_,e)=>e.Cancel=cancel;
-        editor.Closing+=veto;main.Close();Pump();Check(main.IsVisible&&editor.IsVisible&&editors.Count==1,"Cancelled editor close still closed main");
-        cancel=false;editor.Closing-=veto;
-        editor.Session.Create(0,0);bool savePrompt=false;var confirm=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(100) };
-        confirm.Tick+=(_,_)=>
+            bool prompted=false;var timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(50) };
+            timer.Tick+=(_,_)=>
+            {
+                timer.Stop();var dialog=Application.Current.Windows.OfType<ChromeWindow>().Single(w=>ReferenceEquals(w.Owner,main));
+                prompted=true;Check(!IsWindowEnabled(handle),"Save dialog failed to disable its visible owner");
+                Descendants<Button>(dialog).Single(b=>Equals(b.Content,choice)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            };
+            timer.Start();action();timer.Stop();Pump();Check(prompted,"Unsaved project did not prompt");
+        }
+        Call(main,"OpenEditor",new object[]{null!});Pump();var editor=editors.Single();
+        Check(!editor.IsVisible&&new WindowInteropHelper(editor).Handle==IntPtr.Zero,"Embedded editor created a native window");
+        Check(host.Content is FrameworkElement surface&&ReferenceEquals(Window.GetWindow(surface),main)&&host.IsVisible,"Editor surface did not join main visual tree");
+        Check(player.Visibility==Visibility.Collapsed&&((FrameworkElement)main.FindName("HomeCaption")).Visibility==Visibility.Collapsed,"Home/player leaked into workspace");
+        Check(registrar.Active.Count==0,"Main global shortcuts remained registered in editor");
+        var point=back.TranslatePoint(new Point(),main);var caption=(FrameworkElement)main.FindName("EditorCaption");var cap=caption.TranslatePoint(new Point(),main);
+        Check(Math.Abs(point.Y-cap.Y-6)<.1&&Math.Abs(cap.Y+caption.ActualHeight-point.Y-back.ActualHeight-6)<.1,"Back button lost equal six-DIP vertical insets");
+        Check(((Border)editor.FindName("TitleSurface")).Visibility==Visibility.Collapsed&&((Border)editor.FindName("ToolbarSurface")).Margin.Top==0,"Editor retained a second title or top gap");
+        editor.Viewport.Focus();KeyPress(Key.Right);Pump();Check(editor.Viewport.PlayheadBeat==.25m,"Host arrow did not reach editor cursor");
+        KeyPress(Key.Y);main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main)!,Environment.TickCount,Key.Y){RoutedEvent=Keyboard.PreviewKeyUpEvent});Pump();
+        Check(editor.Session.ActiveTrack.Notes.Count==1&&editor.Session.IsDirty,"Host performance key did not edit score");
+        Check(((TextBlock)main.FindName("EditorCaptionText")).Text==editor.Title&&editor.Title.EndsWith("*"),"Shared title lost current project/dirty marker");
+        var more=(CommandMenuButton)editor.FindName("MoreButton");Click(more);Check(more.IsOpen&&ReferenceEquals(PresentationSource.FromVisual(more.Chrome),PresentationSource.FromVisual(main)),"Menu detached from main workspace");more.Close(true);
+        editor.ToggleAdvanced();Pump();Check(((FrameworkElement)editor.FindName("TrackSurface")).IsVisible,"Advanced workspace lost sidebar");
+        main.Width=1080;Pump();Check(((FrameworkElement)editor.FindName("TrackSurface")).Visibility==Visibility.Collapsed,"Embedded compact layout used stale hidden-window width");main.Width=1232;Pump();editor.ToggleAdvanced();Pump();
+        Call(main,"OpenEditor",new object[]{null!});Check(editors.Count==1,"Workspace opened a second hidden editor instead of retaining current project");
+        Confirm(()=>Click(back),Lang.S("d.cancel"));Check(host.IsVisible&&editor.Session.IsDirty&&editors.Count==1,"Cancel Back lost workspace changes");
+        Confirm(()=>main.Close(),Lang.S("d.cancel"));Check(main.IsVisible&&host.IsVisible&&editors.Count==1,"Cancel app close lost editor");
+        var dialogCheck=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(50) };bool modal=false;
+        dialogCheck.Tick+=(_,_)=>
         {
-            confirm.Stop();var prompt=Application.Current.Windows.OfType<ChromeWindow>().Single(w=>ReferenceEquals(w.Owner,editor));
-            savePrompt=true;Descendants<Button>(prompt).Single(b=>Equals(b.Content,Lang.S("d.cancel"))).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            dialogCheck.Stop();var dialog=Application.Current.Windows.OfType<ChromeWindow>().Single(w=>ReferenceEquals(w.Owner,main));
+            modal=!IsWindowEnabled(handle);main.Close();Check(main.IsVisible&&editors.Count==1,"Main close bypassed editor-owned field dialog");dialog.Close();
         };
-        confirm.Start();main.Close();Pump();Check(savePrompt&&main.IsVisible&&editor.IsVisible&&editor.Session.IsDirty,"Unsaved cancel did not preserve editor and main");editor.Session.MarkSaved();
+        dialogCheck.Start();Call(editor,"ShowTempoMenu");dialogCheck.Stop();Check(modal,"Editor fields were owned by hidden controller");
+        var output=Environment.GetEnvironmentVariable("SMAP_WORKSPACE_SCREENSHOTS");if(output!=null){Directory.CreateDirectory(output);Capture(main,Path.Combine(output,"workspace-simple.png"));editor.ToggleAdvanced();Pump();Capture(main,Path.Combine(output,"workspace-advanced.png"));}
+        Confirm(()=>Click(back),Lang.S("ed.discard"));
+        Check(!host.IsVisible&&host.Content==null&&editors.Count==0&&player.IsVisible,"Back did not restore homepage and dispose editor");
+        Check(ReferenceEquals(list.SelectedItem,song)&&playerName.Text=="Retained player information","Returning lost selected score or player information");
+        Check(registrar.Active.Count==8,"Back did not restore main global shortcuts");
         string path=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap");
         try
         {
-            SmapFile.Save(EditorSession.NewProject(),path);Call(main,"OpenEditor",new SongInfo { File=path,Name="Window lifecycle" });Pump();
-            Check(editors.Count==2&&editors.All(w=>w.Owner==null),"Opening another editor lost existing window");
-            var second=editors.Single(w=>!ReferenceEquals(w,editor));second.Session.Create(2,1);
-            Check((bool)Call(second,"Save",false)!&&!second.Session.IsDirty&&SmapFile.Load(path).Tracks[0].Notes.Count==1,"Nonmodal editor lost save operation or event callback");
-            second.Close();Pump();Check(editors.Count==1&&editor.IsVisible,"Closing one editor removed another");
+            Call(main,"OpenEditor",new object[]{null!});editor=editors.Single();typeof(EditorWindow).GetField("_path",Private)!.SetValue(editor,path);editor.Session.Create(4,2);
+            Confirm(()=>Click(back),Lang.S("ed.save"));Check(File.Exists(path)&&SmapFile.Load(path).Tracks[0].Notes.Count==1&&!host.IsVisible,"Save on Back failed or retained editor");
+            foreach(var theme in Enum.GetValues<AppTheme>())foreach(var language in Enum.GetValues<AppLang>())
+            {
+                Theme.Apply(theme,persist:false);typeof(Lang).GetProperty(nameof(Lang.Current))!.SetValue(null,language);
+                Call(main,"OpenEditor",new object[]{null!});editor=editors.Single();Pump();
+                Check(host.IsVisible&&editor.Viewport.ActualHeight>100&&!player.IsVisible,"Themed workspace failed to fill main window");
+                Check(((TextBlock)main.FindName("EditorCaptionText")).Text==editor.Title&&Equals(back.Content,Lang.S("practice.back")),"Workspace caption/back localization failed");
+                if(output!=null&&language==AppLang.ZhCN)Capture(main,Path.Combine(output,$"workspace-{theme}.png"));
+                Click(back);Check(editors.Count==0&&host.Content==null&&player.IsVisible,"Repeated workspace entry leaked session or did not restore home");
+            }
+            Call(main,"OpenEditor",new object[]{null!});editor=editors.Single();editor.Session.Create(7,3);
+            Confirm(()=>main.Close(),Lang.S("ed.discard"));Check(!main.IsVisible&&editors.Count==0&&host.Content==null,"App close left workspace/session alive");
         }
-        finally { File.Delete(path); }
-        main.Close();Pump();Check(!main.IsVisible&&!editor.IsVisible&&editors.Count==0,"Main close left editor or tracking subscription behind");
-        Console.WriteLine("EDITOR_WINDOW_MODE nonmodal=True;unowned=True;activation=True;minimize=True;close=True;dialog=True");
+        finally {File.Delete(path);}
+        Console.WriteLine("EDITOR_WORKSPACE native_window=False;header_insets=6;player_hidden=True;keys=True;dialogs=True;cancel=True;save=True;discard=True;return=True;close=True");
     }
+
     static void EditorCommandMenu(string? output)
     {
         if(output!=null)Directory.CreateDirectory(output);

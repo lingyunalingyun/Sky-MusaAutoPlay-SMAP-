@@ -156,7 +156,8 @@ public partial class EditorWindow : Window
     }
     void RefreshLayoutMode()
     {
-        _compact = ActualWidth > 0 && ActualWidth < 1060;
+        double width = _workspaceRoot?.ActualWidth ?? ActualWidth;
+        _compact = width > 0 && width < 1060;
         bool tracks = _advanced && !_compact;
         TrackColumn.Width = new GridLength(tracks ? 268 : 0);
         TrackSurface.Visibility = tracks ? Visibility.Visible : Visibility.Collapsed;
@@ -169,7 +170,7 @@ public partial class EditorWindow : Window
             if (_advanced && !_compact) TrackHost.Content = _trackScroll;
             if (inspector) InspectorHost.Content = _inspectorScroll;
         }
-        MapGrid.Visibility = _keyboard && (!_compact || _keyboardExplicit) && Height > 600 ? Visibility.Visible : Visibility.Collapsed;
+        MapGrid.Visibility = _keyboard && (!_compact || _keyboardExplicit) && (_workspaceOwner?.ActualHeight ?? Height) > 600 ? Visibility.Visible : Visibility.Collapsed;
         HintText.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
         ModeButton.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
         _tempo.Visibility = _meter.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
@@ -255,7 +256,7 @@ public partial class EditorWindow : Window
     {
         Logger.Exception("编辑操作失败", error); string key = "ed.error." + error.Message; string message = Lang.S(key);
         if (message == key) message = S("error"); StatusText.Text = message;
-        MsgBox.Info(this, message, S("title"));
+        MsgBox.Info(DialogOwner, message, S("title"));
     }
     static Button MakeButton(string text, Action action, string? tooltip = null)
     {
@@ -269,15 +270,16 @@ public partial class EditorWindow : Window
     ContextMenu NewMenu(FrameworkElement? anchor = null)
     {
         if(_editorMenu!=null)_editorMenu.IsOpen=false;
-        var menu = new ContextMenu { Width=320,Style=(Style)FindResource(typeof(ContextMenu)),PlacementTarget=anchor??this,Placement=PlacementMode.Custom };
+        var owner = DialogOwner;
+        var menu = new ContextMenu { Width=320,Style=(Style)FindResource(typeof(ContextMenu)),PlacementTarget=anchor??owner,Placement=PlacementMode.Custom };
         menu.Resources[typeof(ScrollBar)]=FindResource(typeof(ScrollBar));menu.Resources[typeof(MenuItem)]=FindResource(typeof(MenuItem));menu.Resources[typeof(Separator)]=FindResource(typeof(Separator));
-        var origin=anchor?.TranslatePoint(new Point(),this)??Mouse.GetPosition(this);
-        menu.MaxHeight=Math.Max(100,Math.Min(420,ActualHeight-(anchor==null?origin.Y:origin.Y+anchor.ActualHeight)-20));
+        var origin=anchor?.TranslatePoint(new Point(),owner)??Mouse.GetPosition(owner);
+        menu.MaxHeight=Math.Max(100,Math.Min(420,owner.ActualHeight-(anchor==null?origin.Y:origin.Y+anchor.ActualHeight)-20));
         menu.CustomPopupPlacementCallback=(size,target,offset)=>
         {
             double x=anchor==null?0:anchor.ActualWidth-size.Width,y=anchor?.ActualHeight??0;
-            x=Math.Clamp(x,8-origin.X,Math.Max(8-origin.X,ActualWidth-8-origin.X-size.Width));
-            y=Math.Clamp(y,8-origin.Y,Math.Max(8-origin.Y,ActualHeight-8-origin.Y-size.Height));
+            x=Math.Clamp(x,8-origin.X,Math.Max(8-origin.X,owner.ActualWidth-8-origin.X-size.Width));
+            y=Math.Clamp(y,8-origin.Y,Math.Max(8-origin.Y,owner.ActualHeight-8-origin.Y-size.Height));
             return new[]{new CustomPopupPlacement(new Point(x,y),PopupPrimaryAxis.None)};
         };
         menu.Opened+=(_,_)=>StyleMenuItems(menu.Items);
@@ -312,6 +314,7 @@ public partial class EditorWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true; _playTimer.Stop(); Roll.CancelGesture(); Theme.Changed -= ThemeChanged;
+        ReleaseWorkspace();
         Overview.EndRangeDrag();
         CloseEditorChoices();
         _commandMenu?.Close(true);

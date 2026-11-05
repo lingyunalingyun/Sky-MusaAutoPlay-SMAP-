@@ -45,6 +45,7 @@ public partial class MainWindow
     bool EditorForeground(IntPtr hwnd)
     {
         var editors=Application.Current.Windows.OfType<EditorWindow>().Select(w=>new WindowInteropHelper(w).Handle).ToHashSet();
+        if (_workspaceEditor != null) editors.Add(new WindowInteropHelper(this).Handle);
         while(hwnd!=IntPtr.Zero){if(editors.Contains(hwnd))return true;hwnd=ShortcutOwner(hwnd,4);}
         return false;
     }

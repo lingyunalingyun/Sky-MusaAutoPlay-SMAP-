@@ -35,7 +35,7 @@ public class VersionUiIntegrationTests(ITestOutputHelper output)
     [InlineData("editor-choices","EDITOR_CHOICES snap=True;tools=True;keyboard=True;history=True;joined=True")]
     [InlineData("editor-track-choice","EDITOR_TRACK_CHOICE identity=True;switch=True;keyboard=True;busy=True;history=True")]
     [InlineData("editor-command-menu","EDITOR_COMMAND_MENU joined=True;track=True;commands=True;palette=True;lifecycle=True;motion=True")]
-    [InlineData("editor-window-mode","EDITOR_WINDOW_MODE nonmodal=True;unowned=True;activation=True;minimize=True;close=True;dialog=True")]
+    [InlineData("editor-window-mode","EDITOR_WORKSPACE native_window=False;header_insets=6;player_hidden=True;keys=True;dialogs=True;cancel=True;save=True;discard=True;return=True;close=True")]
     [InlineData("roll-note-preview","ROLL_NOTE_PREVIEW ghost=False;hover=True;edge_handle=True;marquee=True;history=True")]
     [InlineData("overview-range","OVERVIEW_RANGE left=True;right=True;pan=True;bounds=True;cache=True;cleanup=True")]
     [InlineData("editor-reference-keys","EDITOR_REFERENCE_KEYS grey=True;readonly=True;cursor=True;focus=True;restore=True")]

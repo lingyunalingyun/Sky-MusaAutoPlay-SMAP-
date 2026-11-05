@@ -133,7 +133,7 @@ public partial class EditorWindow
         menu.Items.Add(new Separator());
         AddMenu(menu, S("selectAll"), () => _session.Select(_session.ActiveTrack.Notes.Select(n => n.Id)));
         AddMenu(menu, S("delete"), () => Edit(_session.DeleteSelected));
-        AddMenu(menu, S("quantize"), () => { if (_session.Selected.Count > 0 && MsgBox.Choice(this, F("quantizeConfirm", _session.Selected.Count), S("quantize"), S("apply"), Lang.S("d.cancel"))) Edit(_session.QuantizeSelected); });
+        AddMenu(menu, S("quantize"), () => { if (_session.Selected.Count > 0 && MsgBox.Choice(DialogOwner, F("quantizeConfirm", _session.Selected.Count), S("quantize"), S("apply"), Lang.S("d.cancel"))) Edit(_session.QuantizeSelected); });
         AddMenu(menu, S("split"), () => Edit(() => _session.SplitSelected(Roll.PlayheadBeat)));
         AddMenu(menu, S("properties"), EditNoteProperties); AddMenu(menu, S("trackSettings"), () => EditTrack(_session.ActiveTrack));
         menu.Items.Add(new Separator());
@@ -143,12 +143,12 @@ public partial class EditorWindow
         AddMenu(menu, S("home"), () => { StopPlayback(); Roll.CenterCursor = true; Roll.PlayheadBeat = 0; Roll.SetView(0); });
         AddMenu(menu, S("zoomIn"), () => Roll.SetZoom(Roll.Zoom * 1.25, Roll.VerticalZoom)); AddMenu(menu, S("zoomOut"), () => Roll.SetZoom(Roll.Zoom / 1.25, Roll.VerticalZoom));
         var motion = new MenuItem { Header = S("reduceMotion"), IsCheckable = true, IsChecked = _view.ReduceMotion }; motion.Click += (_, _) => { _view.ReduceMotion = motion.IsChecked; Roll.Focus(); }; menu.Items.Add(motion);
-        AddMenu(menu, S("help"), () => MsgBox.Info(this, S("helpText"), S("help")));
+        AddMenu(menu, S("help"), () => MsgBox.Info(DialogOwner, S("helpText"), S("help")));
         ToggleCommandMenu(MoreButton, menu);
     }
     void PreviewRegion()
     {
-        var values = EditorFieldsDialog.Ask(this, S("region"), new[] { (S("startSeconds"), "0"), (S("endSeconds"), "") }); if (values == null) return;
+        var values = EditorFieldsDialog.Ask(DialogOwner, S("region"), new[] { (S("startSeconds"), "0"), (S("endSeconds"), "") }); if (values == null) return;
         try
         {
             if (!MidiImportDialog.TryTime(values[0], out double start) || (!string.IsNullOrWhiteSpace(values[1]) && !MidiImportDialog.TryTime(values[1], out _))) throw new FormatException();
@@ -169,7 +169,7 @@ public partial class EditorWindow
             CheckFileExists = true, Multiselect = false,
             InitialDirectory = _path != null ? Path.GetDirectoryName(_path) : Directory.Exists(SongLibrary.SongsDir) ? SongLibrary.SongsDir : null
         };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(DialogOwner) != true) return;
         try { OpenProjectFile(dialog.FileName); } catch (Exception error) { ShowError(error); }
     }
     static SmapProject ReadEditorProject(string path)
@@ -200,7 +200,7 @@ public partial class EditorWindow
             if (saveAs || path == null)
             {
                 var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "SMAP (*.smap)|*.smap", DefaultExt = ".smap", AddExtension = true, FileName = SongLibrary.NativeFileStem(string.IsNullOrWhiteSpace(_session.Project.Metadata.Name) ? S("untitled") : _session.Project.Metadata.Name), InitialDirectory = Directory.Exists(SongLibrary.SongsDir) ? SongLibrary.SongsDir : null };
-                if (dialog.ShowDialog(this) != true) return false; path = dialog.FileName;
+                if (dialog.ShowDialog(DialogOwner) != true) return false; path = dialog.FileName;
             }
             SmapFile.Save(_session.Project, path); _path = path; _session.MarkSaved(); RefreshTitle(); StatusText.Text = F("saved", Path.GetFileName(path)); Saved?.Invoke(path); return true;
         }
@@ -208,13 +208,13 @@ public partial class EditorWindow
     }
     bool ConfirmClose()
     {
-        var result = EditorFieldsDialog.ConfirmSave(this);
+        var result = EditorFieldsDialog.ConfirmSave(DialogOwner);
         return result == 0 ? Save() : result == 1;
     }
     void ExportTrack(Guid id)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "SMAP (*.smap)|*.smap", DefaultExt = ".smap", FileName = SongLibrary.NativeFileStem(TrackName(_session.Project.Tracks.Single(t => t.Id == id))) };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(DialogOwner) != true) return;
         try { var p = _session.Project; SmapFile.Save(p with { Tracks = new() { p.Tracks.Single(t => t.Id == id) with { Muted = false, Solo = false } } }, dialog.FileName); } catch (Exception error) { ShowError(error); }
     }
     void ExportLegacy()
@@ -223,36 +223,36 @@ public partial class EditorWindow
         {
             _ = LegacyProjectAdapter.ToDocument(_session.Project, _session.ActiveTrackId);
             var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "TXT (*.txt)|*.txt|JSON (*.json)|*.json", FileName = SongLibrary.NativeFileStem(TrackName(_session.ActiveTrack)) };
-            if (dialog.ShowDialog(this) == true) LegacyProjectAdapter.SaveLegacy(_session.Project, dialog.FileName, _session.ActiveTrackId);
+            if (dialog.ShowDialog(DialogOwner) == true) LegacyProjectAdapter.SaveLegacy(_session.Project, dialog.FileName, _session.ActiveTrackId);
         }
-        catch (Exception error) { Logger.Exception("旧格式导出失败", error); MsgBox.Info(this, Lang.S("midi3.lossy") + "\n" + S("saveAs"), S("exportLegacy")); }
+        catch (Exception error) { Logger.Exception("旧格式导出失败", error); MsgBox.Info(DialogOwner, Lang.S("midi3.lossy") + "\n" + S("saveAs"), S("exportLegacy")); }
     }
     void ExportMidi()
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "MIDI (*.mid)|*.mid", DefaultExt = ".mid" };
-        if (dialog.ShowDialog(this) != true) return; try { MidiProjectConverter.ExportPerformance(_session.Project, dialog.FileName); } catch (Exception error) { ShowError(error); }
+        if (dialog.ShowDialog(DialogOwner) != true) return; try { MidiProjectConverter.ExportPerformance(_session.Project, dialog.FileName); } catch (Exception error) { ShowError(error); }
     }
     void ExportOriginal()
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "MIDI (*.mid)|*.mid", DefaultExt = ".mid" };
-        if (dialog.ShowDialog(this) != true) return; try { MidiProjectConverter.ExportOriginal(_session.Project, dialog.FileName); } catch (Exception error) { ShowError(error); }
+        if (dialog.ShowDialog(DialogOwner) != true) return; try { MidiProjectConverter.ExportOriginal(_session.Project, dialog.FileName); } catch (Exception error) { ShowError(error); }
     }
     void EditMetadata()
     {
-        var m = _session.Project.Metadata; var values = EditorFieldsDialog.Ask(this, S("metadata"), new[] { (S("name"), m.Name), (S("author"), m.Author), (S("transcriber"), m.TranscribedBy), (S("description"), m.Description) });
+        var m = _session.Project.Metadata; var values = EditorFieldsDialog.Ask(DialogOwner, S("metadata"), new[] { (S("name"), m.Name), (S("author"), m.Author), (S("transcriber"), m.TranscribedBy), (S("description"), m.Description) });
         if (values != null) Edit(() => _session.ReplaceProject(_session.Project with { Metadata = m with { Name = values[0], Author = values[1], TranscribedBy = values[2], Description = values[3] } }));
     }
     void ShowTempoMenu()
     {
         var point = _session.Project.Tempos.Where(t => t.Beat <= Roll.PlayheadBeat).OrderBy(t => t.Beat).Last();
-        var fields = EditorFieldsDialog.Ask(this, "BPM", new[] { (S("position"), point.Beat.ToString(CultureInfo.CurrentCulture)), ("BPM", (60_000_000m / point.MicrosecondsPerBeat).ToString("0.######", CultureInfo.CurrentCulture)) });
+        var fields = EditorFieldsDialog.Ask(DialogOwner, "BPM", new[] { (S("position"), point.Beat.ToString(CultureInfo.CurrentCulture)), ("BPM", (60_000_000m / point.MicrosecondsPerBeat).ToString("0.######", CultureInfo.CurrentCulture)) });
         if (fields == null) return;
         Edit(() => { decimal beat = Decimal(fields[0]), bpm = Decimal(fields[1]); if (beat < 0 || bpm <= 0) throw new FormatException(); var points = _session.Project.Tempos.Where(t => t.Beat != beat).Append(new TempoPoint(beat, 60_000_000m / bpm)).OrderBy(t => t.Beat).ToList(); _session.ReplaceProject(_session.Project with { Tempos = points }); });
     }
     void ShowMeterMenu()
     {
         var point = _session.Project.Meters.Where(t => t.Beat <= Roll.PlayheadBeat).OrderBy(t => t.Beat).Last();
-        var fields = EditorFieldsDialog.Ask(this, "♩", new[] { (S("position"), point.Beat.ToString(CultureInfo.CurrentCulture)), (S("meter"), $"{point.Numerator}/{point.Denominator}") }); if (fields == null) return;
+        var fields = EditorFieldsDialog.Ask(DialogOwner, "♩", new[] { (S("position"), point.Beat.ToString(CultureInfo.CurrentCulture)), (S("meter"), $"{point.Numerator}/{point.Denominator}") }); if (fields == null) return;
         Edit(() => { decimal beat = Decimal(fields[0]); var parts = fields[1].Split('/'); if (parts.Length != 2) throw new FormatException(); int n = int.Parse(parts[0]), d = int.Parse(parts[1]); var points = _session.Project.Meters.Where(m => m.Beat != beat).Append(new MeterPoint(beat, n, d)).OrderBy(m => m.Beat).ToList(); _session.ReplaceProject(_session.Project with { Meters = points }); });
     }
     protected override void OnPreviewKeyDown(KeyEventArgs e)

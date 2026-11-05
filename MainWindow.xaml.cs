@@ -579,9 +579,9 @@ public partial class MainWindow : Window
     {
         foreach (var editor in _editors.ToArray())
         {
-            if (!editor.IsEnabled || ComponentDispatcher.IsThreadModal)
+            if (!IsEnabled || !editor.IsEnabled || ComponentDispatcher.IsThreadModal)
             {
-                editor.Activate(); e.Cancel = true; return;
+                Activate(); e.Cancel = true; return;
             }
             editor.Close();
             if (_editors.Contains(editor)) { e.Cancel = true; return; }
@@ -827,31 +827,30 @@ public partial class MainWindow : Window
 
     void OpenEditor(SongInfo? song)
     {
+        if (_workspaceEditor != null) { _workspaceEditor.Viewport.Focus(); return; }
         if (_playing || _previewing) StopPlaying();
         if (_gamePracticeOn) GamePracticeSwitch.IsChecked = false;
         _practiceSession?.Pause(true);
         EditorWindow? win = null;
         try
         {
-            win = new EditorWindow(EditorSession.NewProject(), persistView: !_verificationMode)
+            win = new EditorWindow(EditorSession.NewProject(), persistView: !_verificationMode) { AudioEnabled = !_verificationMode };
+            if (song != null) win.LoadSong(song);
+            win.Saved += _ =>
             {
-                WindowStartupLocation = WindowStartupLocation.Manual,
-                AudioEnabled = !_verificationMode,
+                string? selected = Selected?.File;
+                RefreshLibrary();
+                if (selected != null) SongList.SelectedItem = SongList.Items.OfType<SongInfo>().FirstOrDefault(s => s.File == selected);
             };
-            win.Left = Left + (ActualWidth - win.Width) / 2;
-            win.Top = Top + (ActualHeight - win.Height) / 2;
-            if (song != null) { win.LoadSong(song); FilePathBox.Text = song.Name; }
-            win.Saved += _ => RefreshLibrary();
-            win.Activated += (_, _) => { RefreshShortcutFocus(); Dispatcher.BeginInvoke(RefreshShortcutFocus); };
-            win.Deactivated += (_, _) => Dispatcher.BeginInvoke(RefreshShortcutFocus);
             _editors.Add(win);
             win.Closed += (_, _) =>
             {
                 _editors.Remove(win);
+                LeaveEditorWorkspace(win);
                 Dispatcher.BeginInvoke(RefreshShortcutFocus);
                 if (_editors.Count == 0) _practiceSession?.Pause(_practicePaused || _playing || _previewing);
             };
-            win.Show();
+            EnterEditorWorkspace(win);
         }
         catch (Exception error) { win?.Close(); Logger.Exception("工程编辑失败", error); ShowToast(Lang.S("ed.error")); }
         finally { if (_editors.Count == 0) _practiceSession?.Pause(_practicePaused || _playing || _previewing); }
@@ -1229,6 +1228,7 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
     {
+        if (_workspaceEditor != null) { _workspaceEditor.WorkspaceKeyDown(e); return; }
         // 重绑等待中: 捕获下一次按键
         if (_remapIndex >= 0)
         {
@@ -1278,6 +1278,7 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyUp(System.Windows.Input.KeyEventArgs e)
     {
+        if (_workspaceEditor != null) { _workspaceEditor.WorkspaceKeyUp(e); return; }
         var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
         int vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);_localPerformanceDown.Remove((ushort)vk);
         // 松开物理键 -> 停对应琴键的持续长音

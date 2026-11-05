@@ -65,7 +65,7 @@ public partial class EditorWindow
         var menu = NewMenu();
         AddMenu(menu, S("rename"), () =>
         {
-            if (EditorFieldsDialog.Ask(this, S("rename"), new[] { (S("name"), TrackName(track)) }) is { } fields)
+            if (EditorFieldsDialog.Ask(DialogOwner, S("rename"), new[] { (S("name"), TrackName(track)) }) is { } fields)
                 Edit(() => _session.UpdateTrack(track with { Name = fields[0] }));
         });
         AddMenu(menu, S("trackSettings"), () => EditTrack(track));
@@ -79,7 +79,7 @@ public partial class EditorWindow
         AddMenu(menu, S("exportTrack"), () => ExportTrack(track.Id));
         AddMenu(menu, S("deleteTrack"), () =>
         {
-            if (MsgBox.Choice(this, F("deleteConfirm", TrackName(track), track.Notes.Count), S("deleteTrack"), S("delete"), Lang.S("d.cancel")))
+            if (MsgBox.Choice(DialogOwner, F("deleteConfirm", TrackName(track), track.Notes.Count), S("deleteTrack"), S("delete"), Lang.S("d.cancel")))
                 Edit(() => _session.DeleteTrack(track.Id));
         });
         ToggleCommandMenu(anchor, menu);
@@ -136,7 +136,7 @@ public partial class EditorWindow
     {
         var notes = _session.SelectedNotes(); if (notes.Length == 0) return;
         var first = notes[0];
-        var fields = EditorFieldsDialog.Ask(this, S("properties"), new[]{(S("position"),first.Beat.ToString(CultureInfo.CurrentCulture)),(S("key"),first.Key.ToString()),
+        var fields = EditorFieldsDialog.Ask(DialogOwner, S("properties"), new[]{(S("position"),first.Beat.ToString(CultureInfo.CurrentCulture)),(S("key"),first.Key.ToString()),
             (S("length"),first.LengthBeats.ToString(CultureInfo.CurrentCulture))}, new[] { S("tap"), S("hold") }, first.Action == NoteAction.Tap ? 0 : 1, out int action);
         if (fields == null) return;
         Edit(() =>
@@ -149,7 +149,7 @@ public partial class EditorWindow
     }
     void EditTrack(ProjectTrack track)
     {
-        var dialog = new EditorTrackDialog(track) { Owner = this };
+        var dialog = new EditorTrackDialog(track) { Owner = DialogOwner };
         if (dialog.ShowDialog() == true && dialog.Result is { } result) Edit(() => _session.UpdateTrack(result));
     }
     void RestoreNote(ProjectNote note)
@@ -168,9 +168,9 @@ public partial class EditorWindow
         if (_busy || _session.Project.MidiConversion == null) return; PauseForEdit();
         try
         {
-            var dialog = new MidiImportDialog(_session.Project) { Owner = this };
+            var dialog = new MidiImportDialog(_session.Project) { Owner = DialogOwner };
             if (dialog.ShowDialog() != true || dialog.ResultProject is not { } remapped) return;
-            var preview = new EditorRemapDialog(_session, remapped) { Owner = this };
+            var preview = new EditorRemapDialog(_session, remapped) { Owner = DialogOwner };
             if (preview.ShowDialog() == true && preview.Plan is { } plan) Edit(() => _session.ReplaceProject(plan.Project));
         }
         catch (Exception error) { ShowError(error); }

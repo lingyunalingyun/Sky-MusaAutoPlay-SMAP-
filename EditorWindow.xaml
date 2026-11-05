@@ -133,7 +133,7 @@
     </Window.Resources>
     <Grid>
     <Border x:Name="WindowSurface" Background="{DynamicResource WindowBg}" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" CornerRadius="21" Margin="6" Padding="10">
-        <Grid>
+        <Grid x:Name="EditorLayout">
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="40"/>
