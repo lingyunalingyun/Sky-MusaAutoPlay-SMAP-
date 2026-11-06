@@ -468,6 +468,8 @@ public partial class MainWindow : Window
         cm.Items.Add(open);
         cm.Items.Add(new Separator());
         cm.Items.Add(edit);
+        var export = new MenuItem { Header = Lang.S("score.title") };
+        export.Click += (_, __) => ExportSongScore(s); cm.Items.Add(export);
         cm.Items.Add(info);
         return cm;
     }
@@ -805,9 +807,21 @@ public partial class MainWindow : Window
         cm.Items.Add(open);
         cm.Items.Add(new Separator());
         cm.Items.Add(edit);
+        var export = new MenuItem { Header = Lang.S("score.title") };
+        export.Click += (_, __) => ExportSongScore(s); cm.Items.Add(export);
         cm.Items.Add(info);
         cm.Items.Add(upload);
         return cm;
+    }
+
+    void ExportSongScore(SongInfo song)
+    {
+        try
+        {
+            var project = IsNative(song) ? SmapFile.Load(song.File) : LegacyProjectAdapter.FromDocument(SongLibrary.LoadDocument(song));
+            new ScoreExportDialog(this, project, project.Tracks.FirstOrDefault()?.Id ?? Guid.Empty).ShowDialog();
+        }
+        catch (Exception error) { Logger.Exception("图片谱导出失败", error); ShowToast(ScoreExportDialog.ErrorText(error.Message)); }
     }
 
     // 从磁盘删除曲谱(并从收藏夹/播放列表清理)
