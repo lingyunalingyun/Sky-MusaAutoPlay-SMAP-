@@ -128,6 +128,7 @@ public partial class EditorWindow
         AddMenu(menu, S("openProject"), OpenProject);
         AddMenu(menu, S("saveAs"), () => Save(true)); AddMenu(menu, S("metadata"), EditMetadata);
         AddMenu(menu, S("exportTrack"), () => ExportTrack(_session.ActiveTrackId));
+        AddMenu(menu, Lang.S("score.title"), () => { PauseForEdit(); new ScoreExportDialog(DialogOwner, _session.Project, _session.ActiveTrackId).ShowDialog(); Roll.Focus(); });
         AddMenu(menu, S("exportLegacy"), ExportLegacy); AddMenu(menu, S("exportMidi"), ExportMidi);
         if (_session.Project.OriginalMidi != null) AddMenu(menu, S("exportOriginal"), ExportOriginal);
         menu.Items.Add(new Separator());
@@ -165,15 +166,17 @@ public partial class EditorWindow
         PauseForEdit();
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = S("openProject"), Filter = S("projectFiles") + "|*.smap;*.txt;*.json|SMAP (*.smap)|*.smap|TXT / JSON|*.txt;*.json",
+            Title = S("openProject"), Filter = S("projectFiles") + "|*.smap;*.txt;*.json;*.png;*.svg|SMAP (*.smap)|*.smap|TXT / JSON|*.txt;*.json|" + Lang.S("score.imageFiles") + "|*.png;*.svg",
             CheckFileExists = true, Multiselect = false,
             InitialDirectory = _path != null ? Path.GetDirectoryName(_path) : Directory.Exists(SongLibrary.SongsDir) ? SongLibrary.SongsDir : null
         };
         if (dialog.ShowDialog(DialogOwner) != true) return;
         try { OpenProjectFile(dialog.FileName); } catch (Exception error) { ShowError(error); }
     }
-    static SmapProject ReadEditorProject(string path)
-        => Path.GetExtension(path).Equals(".smap", StringComparison.OrdinalIgnoreCase) ? SmapFile.Load(path) : LegacyProjectAdapter.Load(path);
+    static SmapProject ReadEditorProject(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".smap" => SmapFile.Load(path), ".png" or ".svg" => ScoreImageData.Read(path), _ => LegacyProjectAdapter.Load(path)
+    };
     internal bool OpenProjectFile(string path)
     {
         if (_busy) return false;

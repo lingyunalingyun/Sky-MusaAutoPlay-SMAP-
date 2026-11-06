@@ -46,6 +46,34 @@ public static class SmapFile
     public static SmapProject Load(string path)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return LoadArchive(file);
+    }
+
+    public static byte[] ToBytes(SmapProject project)
+    {
+        ProjectValidation.Validate(project);
+        ValidateMidi(project.OriginalMidi);
+        MidiProjectConverter.ValidateOriginal(project);
+        using var manifest = new LimitedBuffer(MaxManifestBytes);
+        JsonSerializer.Serialize(manifest, project, Options);
+        using var output = new LimitedBuffer(MaxArchiveBytes);
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(archive, "project.json", manifest.GetBuffer().AsSpan(0, (int)manifest.Length));
+            if (project.OriginalMidi is { } midi) WriteEntry(archive, "source.mid", midi);
+        }
+        return output.ToArray();
+    }
+
+    public static SmapProject FromBytes(byte[] bytes)
+    {
+        if (bytes.Length > MaxArchiveBytes) throw new InvalidDataException("工程压缩包过大。");
+        using var stream = new MemoryStream(bytes, writable: false);
+        return LoadArchive(stream);
+    }
+
+    static SmapProject LoadArchive(Stream file)
+    {
         if (file.Length > MaxArchiveBytes) throw new InvalidDataException("工程压缩包过大。");
         using var archive = new ZipArchive(file, ZipArchiveMode.Read);
         if (archive.Entries.Count is < 1 or > 2) throw new InvalidDataException("工程压缩包条目数量无效。");

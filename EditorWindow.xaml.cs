@@ -255,6 +255,8 @@ public partial class EditorWindow : Window
     void ShowError(Exception error)
     {
         Logger.Exception("编辑操作失败", error); string key = "ed.error." + error.Message; string message = Lang.S(key);
+        if (message == key && error.Message.StartsWith("Score", StringComparison.Ordinal))
+        { key = "score." + error.Message; message = Lang.S(key); }
         if (message == key) message = S("error"); StatusText.Text = message;
         MsgBox.Info(DialogOwner, message, S("title"));
     }

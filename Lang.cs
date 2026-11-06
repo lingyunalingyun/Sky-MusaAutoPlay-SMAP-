@@ -9,7 +9,7 @@ public enum AppLang { ZhCN, ZhTW, En, Ja }
 /// <summary>多语言: 简体/繁体/英文/日文。key→4语言, 运行时切+持久化。动态状态消息暂未纳入(阶段二)。</summary>
 public static partial class Lang
 {
-    static Lang() { AddMidiTranslations(); AddEditorTranslations(); AddMappingTranslations(); }
+    static Lang() { AddMidiTranslations(); AddEditorTranslations(); AddMappingTranslations(); AddScoreTranslations(); }
     public static AppLang Current { get; private set; } = AppLang.ZhCN;
 
     /// <summary>菜单里显示的语言原生名。</summary>
