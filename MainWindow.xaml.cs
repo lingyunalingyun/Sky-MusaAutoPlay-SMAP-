@@ -2847,18 +2847,24 @@ public partial class MainWindow : Window
         {
             Title = "选择要导入的曲谱 (可多选)",
             Multiselect = true,
-            Filter = "所有支持格式|*.json;*.txt;*.smap;*.mid;*.midi|曲谱 (json/txt/smap)|*.json;*.txt;*.smap|MIDI|*.mid;*.midi|所有文件|*.*"
+            Filter = "所有支持格式|*.json;*.txt;*.smap;*.mid;*.midi;*.png;*.svg|曲谱 (json/txt/smap)|*.json;*.txt;*.smap|" + Lang.S("score.imageFiles") + "|*.png;*.svg|MIDI|*.mid;*.midi|所有文件|*.*"
         };
         if (dlg.ShowDialog(this) != true) return;
+        ImportFiles(dlg.FileNames);
+    }
 
+    void ImportFiles(IEnumerable<string> files)
+    {
         System.IO.Directory.CreateDirectory(SongLibrary.SongsDir);
         int ok = 0, fail = 0;
-        foreach (var src in dlg.FileNames)
+        var imageErrors = new List<string>();
+        foreach (var src in files)
         {
             var ext = System.IO.Path.GetExtension(src).ToLowerInvariant();
             try
             {
                 if (ext is ".mid" or ".midi") { if (ImportMidi(src)) ok++; else fail++; }
+                else if (ext is ".png" or ".svg") { SongLibrary.WriteNative(ScoreImageData.Read(src)); ok++; }
                 else
                 {
                     if (ext == ".smap") _ = SmapFile.Load(src);
@@ -2867,10 +2873,15 @@ public partial class MainWindow : Window
                     ok++;
                 }
             }
-            catch { fail++; }
+            catch (Exception error)
+            {
+                fail++;
+                if (ext is ".png" or ".svg") imageErrors.Add(System.IO.Path.GetFileName(src) + ": " + ScoreExportDialog.ErrorText(error.Message));
+            }
         }
         RefreshLibrary();
         StatusText.Text = fail == 0 ? $"状态: ✅ 已导入 {ok} 个曲谱" : $"状态: 导入 {ok} 个, 失败 {fail} 个";
+        if (imageErrors.Count > 0) MsgBox.Info(this, string.Join("\n", imageErrors), Lang.S("score.imageFiles"));
     }
 
     // 返回 true=已导入; false=用户取消或无音符
