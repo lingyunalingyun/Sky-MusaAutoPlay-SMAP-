@@ -10,6 +10,15 @@ namespace SMAP.Tests;
 public class SmapFileTests
 {
     [Fact]
+    public void EmbeddedArchivesAreReproducibleAndLoadWithoutLosingData()
+    {
+        var p = TestProject.Sample(); byte[] first = SmapFile.ToBytes(p), second = SmapFile.ToBytes(SmapFile.FromBytes(first));
+        Assert.Equal(first, second);
+        using var archive = new ZipArchive(new MemoryStream(first));
+        Assert.All(archive.Entries, e => Assert.Equal(new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero).DateTime, e.LastWriteTime.DateTime));
+        Assert.Equal(PerformanceIdentity.ForProject(p), PerformanceIdentity.ForProject(SmapFile.FromBytes(second)));
+    }
+    [Fact]
     public void RepeatedRoundTripsPreserveIdsNotesMetadataMidiAndHash()
     {
         using var files = new TestProject(); var p = TestProject.Sample() with

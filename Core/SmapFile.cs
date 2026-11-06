@@ -59,8 +59,8 @@ public static class SmapFile
         using var output = new LimitedBuffer(MaxArchiveBytes);
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
         {
-            WriteEntry(archive, "project.json", manifest.GetBuffer().AsSpan(0, (int)manifest.Length));
-            if (project.OriginalMidi is { } midi) WriteEntry(archive, "source.mid", midi);
+            WriteEntry(archive, "project.json", manifest.GetBuffer().AsSpan(0, (int)manifest.Length), deterministic: true);
+            if (project.OriginalMidi is { } midi) WriteEntry(archive, "source.mid", midi, deterministic: true);
         }
         return output.ToArray();
     }
@@ -132,9 +132,10 @@ public static class SmapFile
         return output.ToArray();
     }
 
-    static void WriteEntry(ZipArchive archive, string name, ReadOnlySpan<byte> bytes)
+    static void WriteEntry(ZipArchive archive, string name, ReadOnlySpan<byte> bytes, bool deterministic = false)
     {
         var entry = archive.CreateEntry(name, CompressionLevel.Optimal);
+        if (deterministic) entry.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
         using var output = entry.Open();
         output.Write(bytes);
     }
