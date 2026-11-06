@@ -1,27 +1,33 @@
-using System.Globalization;
 using System.IO;
-using System.Text.Json;
 
 namespace SMAP_WPF.Core;
 
 public enum ScoreOrientation { Portrait, Landscape }
+public enum ScoreSpacing { Standard, Compact }
 public enum ScoreKeyState { Idle, Tap, HoldStart, HoldMiddle, HoldEnd, Absent }
 public sealed record ScoreColumn(decimal Beat, string Label, IReadOnlyList<ScoreKeyState> Keys,
-    decimal RestBeats, int EventOrder = 0);
-public sealed record ScoreTile(Guid TrackId, long BarNumber, int Part, decimal StartBeat, decimal EndBeat,
-    IReadOnlyList<ScoreColumn> Columns);
-public sealed record ScorePage(int Index, IReadOnlyList<ScoreTile> Tiles);
+    decimal RestBeats, int EventOrder = 0)
+{
+    public decimal DurationBeats { get; init; }
+    public bool HasEvent { get; init; }
+}
+public sealed record ScoreCell(Guid TrackId, long BarNumber, decimal StartBeat, decimal EndBeat, ScoreColumn Column);
+public sealed record ScoreSlot(ScoreCell Cell, double Width);
+public sealed record ScoreRow(IReadOnlyList<ScoreSlot> Slots);
+public sealed record ScorePage(int Index, IReadOnlyList<ScoreRow> Rows);
 
 public sealed record ScoreExportOptions
 {
     public required IReadOnlyList<Guid> TrackIds { get; init; }
     public ScoreOrientation Orientation { get; init; }
+    public ScoreSpacing Spacing { get; init; }
+    public bool SimplifySpeed { get; init; } = true;
     public bool IncludeOriginalMidi { get; init; }
 }
 
 public sealed record ScoreExportDocument(SmapProject Project, byte[] Payload, string PerformanceHash,
     int CanonicalVersion, ScoreExportOptions Options, IReadOnlyList<ScorePage> Pages,
-    IReadOnlyList<string> Notices)
+    IReadOnlyList<string> Notices, int DisplayFactor)
 {
     public int Width => Options.Orientation == ScoreOrientation.Landscape ? 2240 : 1260;
     public int Height => Options.Orientation == ScoreOrientation.Landscape ? 1260 : 2240;
@@ -30,8 +36,7 @@ public sealed record ScoreExportDocument(SmapProject Project, byte[] Payload, st
 public static class ScoreExport
 {
     public const int MaxPages = 256;
-    const int MaxColumns = MaxPages * 8 * 4;
-    static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
+    const int MaxColumns = MaxPages * 48;
 
     // Serializing the projection also makes a detached snapshot of mutable note/tempo lists.
     public static SmapProject ProjectSelection(SmapProject project, ScoreExportOptions options)
@@ -59,9 +64,11 @@ public static class ScoreExport
         CancellationToken cancellation = default)
     {
         if (!Enum.IsDefined(options.Orientation)) throw new InvalidDataException("ScoreInvalidOrientation");
+        if (!Enum.IsDefined(options.Spacing)) throw new InvalidDataException("ScoreInvalidSpacing");
         var snapshot = ProjectSelection(project, options);
         var payload = SmapFile.ToBytes(snapshot);
-        var notices = new HashSet<string> { "ScoreReadableRhythm" };
+        var notices = new HashSet<string>();
+        int factor = ScoreLayout.DisplayFactor(snapshot, options.SimplifySpeed);
         foreach (var track in snapshot.Tracks)
         {
             var capability = InstrumentCapabilities.ForTrack(track);
@@ -80,7 +87,7 @@ public static class ScoreExport
         bool tapAtEnd = notes.Any(n => n.Action == NoteAction.Tap && n.Beat == last);
         var map = new EditorMeterMap(snapshot.Meters);
         decimal finish = map.EndOfBar(last, tapAtEnd || last == 0);
-        var tiles = new List<ScoreTile>();
+        var groups = new List<ScoreCell[]>();
         int columns = 0;
         // Per-track event sweeps retain independent note IDs; no grid rounding or pixel analysis.
         var sweeps = snapshot.Tracks.ToDictionary(t => t.Id, t => new TrackSweep(t));
@@ -109,32 +116,30 @@ public static class ScoreExport
                 int index = Array.BinarySearch(events, b);
                 if (index >= 0) continue;
                 index = ~index;
-                decimal tolerance = unit / 1000;
+                decimal tolerance = unit / 96;
                 if (index < events.Length && events[index] - b <= tolerance
                     || index > 0 && b - events[index - 1] <= tolerance) continue;
                 moments.Add(b);
             }
-            if (moments.Count > MaxColumns - columns) throw new InvalidDataException("ScoreTooLarge");
+            if (moments.Count > (MaxColumns - columns) / snapshot.Tracks.Count) throw new InvalidDataException("ScoreTooLarge");
             var byTrack = snapshot.Tracks.ToDictionary(t => t.Id, _ => new List<ScoreColumn>());
             var beats = moments.ToArray();
-            var labels = beats.Select(b => b == end ? "|" : RhythmLabel((b - start) / unit + 1) ?? "").ToArray();
-            var ambiguous = labels.Where(l => l.Length > 0 && l != "|").GroupBy(l => l).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+            string previousLabel = "";
             for (int i = 0; i < beats.Length; i++)
             {
                 decimal beat = beats[i], next = i + 1 < beats.Length ? beats[i + 1] : end;
-                string label = ambiguous.Contains(labels[i]) ? "" : labels[i];
-                if (label.Length == 0) notices.Add("ScoreFreeRhythm");
+                string label = ScoreLayout.BeatLabel(snapshot, start, end, beat, factor);
+                if (label == previousLabel) label = "·"; else previousLabel = label;
                 foreach (var track in snapshot.Tracks)
                 {
                     var cells = sweeps[track.Id].At(beat, label, (next - beat) / unit).ToArray();
-                    if (cells.Any(c => c.RestBeats > 0 && RhythmLabel(c.RestBeats) == null)) notices.Add("ScoreFreeRhythm");
                     byTrack[track.Id].AddRange(cells);
                 }
             }
-            int count = byTrack.Values.Max(c => c.Count);
-            columns += count;
             // Align simultaneous tracks, including separate release/restart columns at the same beat.
             var keys = byTrack.Values.SelectMany(c => c.Select(x => (x.Beat, x.EventOrder))).Distinct().OrderBy(x => x.Beat).ThenBy(x => x.EventOrder).ToArray();
+            if (keys.Length > (MaxColumns - columns) / snapshot.Tracks.Count) throw new InvalidDataException("ScoreTooLarge");
+            columns += keys.Length * snapshot.Tracks.Count;
             foreach (var track in snapshot.Tracks)
             {
                 var own = byTrack[track.Id].ToDictionary(c => (c.Beat, c.EventOrder));
@@ -145,41 +150,40 @@ public static class ScoreExport
                     else
                     {
                         var existing = own[(key.Beat, 0)];
-                        aligned.Add(existing with { Keys = existing.Keys.Select(k => k == ScoreKeyState.HoldStart ? ScoreKeyState.HoldMiddle : k is ScoreKeyState.HoldEnd or ScoreKeyState.Tap ? ScoreKeyState.Idle : k).ToArray(), EventOrder = key.EventOrder, RestBeats = 0 });
+                        aligned.Add(existing with { Keys = existing.Keys.Select(k => k == ScoreKeyState.HoldStart ? ScoreKeyState.HoldMiddle : k is ScoreKeyState.HoldEnd or ScoreKeyState.Tap ? ScoreKeyState.Idle : k).ToArray(), EventOrder = key.EventOrder, RestBeats = 0, HasEvent = false });
                     }
                 }
                 byTrack[track.Id] = aligned;
             }
-            for (int part = 0; part * 4 < keys.Length; part++)
-                foreach (var track in snapshot.Tracks)
-                    tiles.Add(new(track.Id, barNumber, part, start, end, byTrack[track.Id].Skip(part * 4).Take(4).ToArray()));
-            if (tiles.Count > MaxPages * 8) throw new InvalidDataException("ScoreTooLarge");
+            for (int i = 0; i < keys.Length; i++)
+            {
+                decimal duration = i + 1 < keys.Length ? keys[i + 1].Beat - keys[i].Beat : end - keys[i].Beat;
+                var group = snapshot.Tracks.Select(t =>
+                {
+                    var c = byTrack[t.Id][i];
+                    bool rest = c.Keys.All(k => k is ScoreKeyState.Idle or ScoreKeyState.Absent);
+                    return new ScoreCell(t.Id, barNumber, start, end, c with { DurationBeats = duration, RestBeats = rest ? duration / unit : 0 });
+                }).ToArray();
+                bool context = snapshot.Tempos.Any(t => t.Beat == keys[i].Beat) || snapshot.Meters.Any(m => m.Beat == keys[i].Beat);
+                bool silent = group.All(c => c.Column.RestBeats > 0 && !c.Column.HasEvent);
+                if (options.Spacing == ScoreSpacing.Compact && !context && silent && groups.Count > 0
+                    && groups[^1].All(c => c.BarNumber == barNumber && c.Column.RestBeats > 0 && !c.Column.HasEvent))
+                {
+                    groups[^1] = groups[^1].Select((cell, j) => cell with { Column = cell.Column with
+                    { DurationBeats = cell.Column.DurationBeats + group[j].Column.DurationBeats, RestBeats = cell.Column.RestBeats + group[j].Column.RestBeats } }).ToArray();
+                }
+                else groups.Add(group);
+            }
             start = end; barNumber++;
         }
-        var pages = tiles.Chunk(8).Select((p, i) => new ScorePage(i + 1, p)).ToArray();
+        var pages = ScoreLayout.Paginate(groups, options, factor, cancellation);
         return new(snapshot, payload, PerformanceIdentity.ForTracks(snapshot, options.TrackIds), Canonical(snapshot),
-            options with { TrackIds = options.TrackIds.ToArray() }, pages, notices.Order().ToArray());
+            options with { TrackIds = options.TrackIds.ToArray() }, pages, notices.Order().ToArray(), factor);
     }
 
     public static int Canonical(SmapProject p) => p.Tracks.Any(t => t.Capability != null || t.KeyDomain != NoteKeyDomain.LegacyOrdinal)
         ? PerformanceIdentity.CapabilityCanonicalVersion : p.Tracks.Any(t => t.Notes.Any(n => n.RetriggerOnOverlap))
         ? PerformanceIdentity.RetriggerCanonicalVersion : PerformanceIdentity.CanonicalVersion;
-
-    // Readable notation only: tolerate legacy timing jitter without rounding stored events.
-    // Do not invent uncommon rational rhythms or print a machine-precision decimal beat.
-    internal static string? RhythmLabel(decimal value)
-    {
-        foreach (int denominator in new[] { 1, 2, 4, 8, 16, 3, 6, 12 })
-        {
-            decimal numerator = decimal.Round(value * denominator);
-            if (value > 0 && numerator == 0 || Math.Abs(value - numerator / denominator) > 1m / 96) continue;
-            decimal whole = decimal.Truncate(numerator / denominator), remainder = numerator % denominator;
-            if (remainder == 0) return whole.ToString(Invariant);
-            string fraction = remainder.ToString(Invariant) + "/" + denominator.ToString(Invariant);
-            return whole == 0 ? fraction : whole.ToString(Invariant) + "+" + fraction;
-        }
-        return null;
-    }
 
     sealed class TrackSweep
     {
@@ -223,10 +227,10 @@ public static class ScoreExport
             releaseKeys.UnionWith(retrigger);
             bool conflict = starting.Any(n => releaseKeys.Contains(Key(n)));
             if (conflict)
-                yield return new(beat, label, States(releaseKeys, Array.Empty<ProjectNote>()), 0);
+                yield return new(beat, label, States(releaseKeys, Array.Empty<ProjectNote>()), 0) { HasEvent = changes.Count > 0 };
             var states = States(conflict ? new HashSet<int>() : releaseKeys, starting);
             foreach (var n in starting.Where(n => n.Action == NoteAction.Hold)) _active[n.Id] = n;
-            yield return new(beat, label, states, states.All(s => s is ScoreKeyState.Idle or ScoreKeyState.Absent) ? rest : 0, conflict ? 1 : 0);
+            yield return new(beat, label, states, states.All(s => s is ScoreKeyState.Idle or ScoreKeyState.Absent) ? rest : 0, conflict ? 1 : 0) { HasEvent = changes.Count > 0 };
         }
         ScoreKeyState[] States(HashSet<int> releases, IReadOnlyList<ProjectNote> starts)
         {

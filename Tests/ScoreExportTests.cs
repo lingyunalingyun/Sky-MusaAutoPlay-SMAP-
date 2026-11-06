@@ -13,7 +13,7 @@ public class ScoreExportTests
     static ScoreExportOptions Options(SmapProject p, ScoreOrientation orientation = ScoreOrientation.Portrait)
         => new() { TrackIds = p.Tracks.Select(t => t.Id).ToArray(), Orientation = orientation };
     static ScoreExportDocument Prepare(SmapProject p) => ScoreExport.Prepare(p, Options(p));
-    static ScoreColumn[] Cells(ScoreExportDocument d) => d.Pages.SelectMany(p => p.Tiles).SelectMany(t => t.Columns).ToArray();
+    static ScoreColumn[] Cells(ScoreExportDocument d) => d.Pages.SelectMany(p => p.Rows).SelectMany(r => r.Slots).Select(s => s.Cell.Column).ToArray();
     static SmapProject Holds(params (decimal beat, decimal length, bool retrigger)[] values)
     {
         var p = TestProject.SingleTap(); var t = p.Tracks[0];
@@ -36,7 +36,7 @@ public class ScoreExportTests
         Assert.Equal(ScoreKeyState.HoldStart, cells.Single(c => c.Beat == 0).Keys[7]);
         Assert.Equal(ScoreKeyState.HoldMiddle, cells.Single(c => c.Beat == 1).Keys[7]);
         Assert.Equal(ScoreKeyState.HoldEnd, cells.Single(c => c.Beat == 2.375m).Keys[7]);
-        Assert.Equal("3+3/8", cells.Single(c => c.Beat == 2.375m).Label);
+        Assert.Equal("\u00b7", cells.Single(c => c.Beat == 2.375m).Label);
         Assert.Equal(ScoreKeyState.Idle, cells.Single(c => c.Beat == 3).Keys[7]);
     }
     [Fact]
@@ -52,37 +52,23 @@ public class ScoreExportTests
         Assert.Equal(ScoreKeyState.Tap, cells.Single(c => c.Beat == 1.00008m).Keys[2]);
         Assert.Equal(ScoreKeyState.Tap, cells.Single(c => c.Beat == 1.00009m).Keys[3]);
         // Close but distinct events must not masquerade as a single quantized attack.
-        Assert.Equal("", cells.Single(c => c.Beat == 1.00008m).Label);
-        Assert.Equal("", cells.Single(c => c.Beat == 1.00009m).Label);
-        Assert.Contains("ScoreFreeRhythm", d.Notices);
+        Assert.Equal("2", cells.Single(c => c.Beat == 1.00008m).Label);
+        Assert.Equal("\u00b7", cells.Single(c => c.Beat == 1.00009m).Label);
         Assert.Equal(PerformanceIdentity.ForProject(p), PerformanceIdentity.ForProject(ScoreImageData.Recover(ScoreImageData.Create(d, 1))));
     }
     [Fact]
     public void UnrecognizedRhythmIsMarkedWithoutChangingPerformance()
     {
         var p = Holds((.29m, .41m, false)); var d = Prepare(p);
-        Assert.Equal("", Cells(d).Single(c => c.Beat == .29m).Label);
-        Assert.Contains("ScoreFreeRhythm", d.Notices);
+        Assert.Equal("\u00b7", Cells(d).Single(c => c.Beat == .29m).Label);
         Assert.Equal(PerformanceIdentity.ForProject(p), PerformanceIdentity.ForProject(ScoreImageData.Recover(ScoreImageData.Create(d, 1))));
-    }
-    [Theory]
-    [InlineData("2.50008", "2+1/2")]
-    [InlineData("1.33333333333333", "1+1/3")]
-    [InlineData("1.375", "1+3/8")]
-    [InlineData("1.0625", "1+1/16")]
-    [InlineData("1.9999", "2")]
-    [InlineData("0.00008", null)]
-    [InlineData("1.29", null)]
-    public void RhythmicLabelsUseCommonFractionsInsteadOfDecimalApproximations(string value, string? expected)
-    {
-        Assert.Equal(expected, ScoreExport.RhythmLabel(decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture)));
     }
     [Fact]
     public void SustainedKeyAcrossPageIsNotPressedAgain()
     {
         var doc = Prepare(Holds((0, 40, false)));
         Assert.True(doc.Pages.Count > 1);
-        var next = doc.Pages[1].Tiles[0].Columns[0];
+        var next = doc.Pages[1].Rows[0].Slots[0].Cell.Column;
         Assert.Equal(ScoreKeyState.HoldMiddle, next.Keys[7]); Assert.Equal(0, next.RestBeats);
         Assert.Single(Cells(doc), c => c.Keys[7] == ScoreKeyState.HoldStart);
         Assert.Single(Cells(doc), c => c.Keys[7] == ScoreKeyState.HoldEnd);
@@ -113,7 +99,7 @@ public class ScoreExportTests
     {
         var p = Holds((0, 1, false), (1, 1, false)); var id = Guid.NewGuid();
         p = p with { Tracks = p.Tracks.Append(new ProjectTrack { Id = id, Notes = new() { new() { TrackId = id, Key = 3, Beat = 1 } } }).ToList() };
-        var cells = Prepare(p).Pages.SelectMany(p => p.Tiles).Where(t => t.TrackId == id).SelectMany(t => t.Columns).Where(c => c.Beat == 1).ToArray();
+        var cells = Prepare(p).Pages.SelectMany(p => p.Rows).SelectMany(r => r.Slots).Where(s => s.Cell.TrackId == id).Select(s => s.Cell.Column).Where(c => c.Beat == 1).ToArray();
         Assert.Equal(new[] { ScoreKeyState.Tap, ScoreKeyState.Idle }, cells.Select(c => c.Keys[3]));
     }
     [Fact]
@@ -164,7 +150,7 @@ public class ScoreExportTests
         var p = TestProject.SingleTap(); var t = p.Tracks[0];
         p = p with { Tracks = new() { t with { Notes = Enumerable.Range(0, 100).Select(i => new ProjectNote { TrackId = t.Id, Key = i % 15, Beat = i / 16m }).ToList() } } };
         var doc = Prepare(p); Assert.All(p.Tracks[0].Notes, n => Assert.Contains(Cells(doc), c => c.Beat == n.Beat && c.Keys[n.Key] == ScoreKeyState.Tap));
-        Assert.All(doc.Pages.SelectMany(p => p.Tiles), t => Assert.InRange(t.Columns.Count, 1, 4)); Assert.True(doc.Pages.Count > 1);
+        Assert.All(doc.Pages.SelectMany(p => p.Rows), r => Assert.True(r.Slots.Sum(s => s.Width) <= ScoreLayout.Body(doc.Options.Orientation).Width)); Assert.True(doc.Pages.Count > 1);
     }
     [Fact]
     public void RestDurationUsesTheCurrentMeterDenominatorPulse()
@@ -176,7 +162,7 @@ public class ScoreExportTests
     public void MeterChangesAndTempoEventsAreShownAtOriginalBeat()
     {
         var p = Holds((0, 7, false)) with { Meters = new() { new(0, 4, 4), new(2.5m, 6, 8) }, Tempos = new() { new(0, 500000), new(1.125m, 700000) } };
-        var d = Prepare(p); Assert.Contains(Cells(d), c => c.Beat == 1.125m); Assert.Contains(d.Pages.SelectMany(p => p.Tiles), t => t.StartBeat == 2.5m);
+        var d = Prepare(p); Assert.Contains(Cells(d), c => c.Beat == 1.125m); Assert.Contains(d.Pages.SelectMany(p => p.Rows).SelectMany(r => r.Slots), s => s.Cell.StartBeat == 2.5m);
     }
     [Fact]
     public void PngAndSvgRecoverSameNativeProjectAndHash()

@@ -12,15 +12,16 @@ public sealed class ScoreExportDialog : ChromeWindow
     readonly SmapProject _project;
     readonly Dictionary<Guid, CheckBox> _tracks = new();
     readonly ComboBox _orientation, _format;
-    readonly CheckBox _midi;
+    readonly CheckBox _midi, _simplify;
     readonly Image _preview = new() { Stretch = Stretch.Uniform };
-    readonly TextBlock _status, _pageLabel;
+    readonly TextBlock _status, _pageLabel, _layoutNote;
     readonly StackPanel _settings;
-    readonly Button _export, _previous, _next;
+    readonly Button _export, _prepare, _previous, _next, _standard, _compact;
     readonly CancellationTokenSource _cancel = new();
     ScoreExportDocument? _document;
     int _page;
     bool _busy, _closed;
+    ScoreSpacing _spacing;
     static string S(string key) => Lang.S("score." + key);
 
     public ScoreExportDialog(Window owner, SmapProject project, Guid activeTrack) : base(S("title"), 980)
@@ -35,22 +36,32 @@ public sealed class ScoreExportDialog : ChromeWindow
         var list = new StackPanel();
         foreach (var track in project.Tracks)
         {
-            var check = new CheckBox { Content = string.IsNullOrWhiteSpace(track.Name) ? S("track") : track.Name,
+            var check = new CheckBox { Content = new TextBlock { Text = string.IsNullOrWhiteSpace(track.Name) ? S("track") : track.Name, TextWrapping = TextWrapping.Wrap },
                 IsChecked = track.Id == activeTrack, Foreground = B("TextFg"), Margin = new Thickness(0, 5, 0, 5) };
             check.Checked += (_, _) => InvalidatePreview(); check.Unchecked += (_, _) => InvalidatePreview();
             _tracks[track.Id] = check; list.Children.Add(check);
         }
         _settings.Children.Add(new ScrollViewer { Content = list, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         _settings.Children.Add(Label(S("orientation"))); _orientation = Combo(new[] { S("portrait"), S("landscape") }); _settings.Children.Add(_orientation);
+        _settings.Children.Add(Label(S("layout")));
+        var modes = new Grid(); modes.ColumnDefinitions.Add(new ColumnDefinition()); modes.ColumnDefinitions.Add(new ColumnDefinition());
+        _standard = Neutral(S("standard")); _compact = Neutral(S("compact")); _standard.Margin = new Thickness(0, 0, 4, 0); _compact.Margin = new Thickness(4, 0, 0, 0);
+        _standard.Click += (_, _) => SetSpacing(ScoreSpacing.Standard); _compact.Click += (_, _) => SetSpacing(ScoreSpacing.Compact);
+        modes.Children.Add(_standard); Grid.SetColumn(_compact, 1); modes.Children.Add(_compact); _settings.Children.Add(modes);
+        _layoutNote = Label(S("standardNote")); _settings.Children.Add(_layoutNote);
+        _simplify = new CheckBox { Content = new TextBlock { Text = S("simplifySpeed"), TextWrapping = TextWrapping.Wrap }, IsChecked = true,
+            Foreground = B("TextFg"), Margin = new Thickness(0, 8, 0, 5), ToolTip = S("displayOnly") };
+        _simplify.Checked += (_, _) => InvalidatePreview(); _simplify.Unchecked += (_, _) => InvalidatePreview(); _settings.Children.Add(_simplify);
         _settings.Children.Add(Label(S("format"))); _format = Combo(new[] { "SVG + PNG", "SVG", "PNG" }); _settings.Children.Add(_format);
         _midi = new CheckBox { Content = new TextBlock { Text = S("includeMidi"), TextWrapping = TextWrapping.Wrap }, Foreground = B("TextFg"),
             IsChecked = false, Visibility = project.OriginalMidi == null ? Visibility.Collapsed : Visibility.Visible, Margin = new Thickness(0, 12, 0, 8) };
         _midi.Checked += (_, _) => InvalidatePreview(); _midi.Unchecked += (_, _) => InvalidatePreview(); _settings.Children.Add(_midi);
         _settings.Children.Add(Label(S("dataNotice")));
-        var prepare = Neutral(S("preview")); prepare.Margin = new Thickness(0, 12, 0, 8); prepare.Click += async (_, _) => await Prepare(); _settings.Children.Add(prepare);
+        var actions = new StackPanel(); _prepare = Neutral(S("preview")); _prepare.Margin = new Thickness(0, 12, 0, 8); _prepare.Click += async (_, _) => await Prepare(); actions.Children.Add(_prepare);
         _export = Neutral(S("export")); _export.IsEnabled = false; _export.SetResourceReference(BackgroundProperty, "PracticeActionBg"); _export.SetResourceReference(ForegroundProperty, "ActionFg");
-        _export.Click += async (_, _) => await Export(); _settings.Children.Add(_export);
-        root.Children.Add(new ScrollViewer { Content = _settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        _export.Click += async (_, _) => await Export(); actions.Children.Add(_export);
+        var left = new Grid(); left.RowDefinitions.Add(new RowDefinition()); left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        left.Children.Add(new ScrollViewer { Content = _settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }); Grid.SetRow(actions, 1); left.Children.Add(actions); root.Children.Add(left);
         var viewer = new Border { Background = B("PanelBg"), BorderBrush = B("BoxBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(8), Child = _preview };
         Grid.SetColumn(viewer, 2); root.Children.Add(viewer);
         var bottom = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
@@ -59,7 +70,14 @@ public sealed class ScoreExportDialog : ChromeWindow
         _pageLabel = Label("—"); _pageLabel.VerticalAlignment = VerticalAlignment.Center; _pageLabel.Margin = new Thickness(16, 0, 16, 0); navigation.Children.Add(_pageLabel);
         _next = Neutral("›"); _next.Width = 48; _next.IsEnabled = false; _next.Click += (_, _) => { _page++; ShowPage(); }; navigation.Children.Add(_next);
         bottom.Children.Add(navigation); _status = Label(S("choose")); _status.MinHeight = 42; bottom.Children.Add(_status);
-        Grid.SetRow(bottom, 1); Grid.SetColumnSpan(bottom, 3); root.Children.Add(bottom); SetBody(root);
+        Grid.SetRow(bottom, 1); Grid.SetColumnSpan(bottom, 3); root.Children.Add(bottom); SetBody(root); SetSpacing(ScoreSpacing.Standard);
+    }
+    void SetSpacing(ScoreSpacing spacing)
+    {
+        _spacing = spacing;
+        foreach (var (button, selected) in new[] { (_standard, spacing == ScoreSpacing.Standard), (_compact, spacing == ScoreSpacing.Compact) })
+        { button.Background = B(selected ? "PracticeActionBg" : "NeutralBtnBg"); button.Foreground = B(selected ? "ActionFg" : "NeutralBtnFg"); }
+        _layoutNote.Text = S(spacing == ScoreSpacing.Standard ? "standardNote" : "compactNote"); InvalidatePreview();
     }
     TextBlock Label(string text, double size = 13) => new() { Text = text, FontSize = size, Foreground = B("TextFg"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 5) };
     ComboBox Combo(string[] values)
@@ -71,16 +89,18 @@ public sealed class ScoreExportDialog : ChromeWindow
     {
         _document = null; if (_export != null) _export.IsEnabled = false;
         if (_previous != null) _previous.IsEnabled = _next.IsEnabled = false;
-        _preview.Source = null;
+        _preview.Source = null; if (_pageLabel != null) _pageLabel.Text = "—";
     }
     void Busy(bool value)
     {
-        _busy = value; _settings.IsEnabled = !value; _previous.IsEnabled = _next.IsEnabled = false;
+        _busy = value; _settings.IsEnabled = _prepare.IsEnabled = !value; _export.IsEnabled = !value && _document != null; _previous.IsEnabled = _next.IsEnabled = false;
         if (!value && _document != null) { _previous.IsEnabled = _page > 0; _next.IsEnabled = _page + 1 < _document.Pages.Count; }
     }
     async Task Prepare()
     {
-        var options = new ScoreExportOptions { TrackIds = _tracks.Where(t => t.Value.IsChecked == true).Select(t => t.Key).ToArray(), Orientation = (ScoreOrientation)_orientation.SelectedIndex, IncludeOriginalMidi = _midi.IsChecked == true };
+        var options = new ScoreExportOptions { TrackIds = _tracks.Where(t => t.Value.IsChecked == true).Select(t => t.Key).ToArray(), Orientation = (ScoreOrientation)_orientation.SelectedIndex,
+            Spacing = _spacing, SimplifySpeed = _simplify.IsChecked == true, IncludeOriginalMidi = _midi.IsChecked == true };
+        InvalidatePreview();
         Busy(true); _status.Text = S("working");
         try
         {
@@ -90,7 +110,7 @@ public sealed class ScoreExportDialog : ChromeWindow
             _status.Text = string.Format(S("ready"), document.Pages.Count) + (document.Notices.Count > 0 ? "\n" + string.Join("\n", document.Notices.Select(ErrorText)) : "");
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_closed) _status.Text = ErrorText(error.Message); }
+        catch (Exception error) { if (!_closed) { InvalidatePreview(); _status.Text = ErrorText(error.Message); } }
         finally { if (!_closed) Busy(false); }
     }
     void ShowPage()
