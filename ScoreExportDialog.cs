@@ -12,6 +12,7 @@ public sealed class ScoreExportDialog : ChromeWindow
     readonly SmapProject _project;
     readonly Dictionary<Guid, CheckBox> _tracks = new();
     readonly ComboBox _orientation, _format;
+    readonly List<JoinedChoiceButton> _choices = new();
     readonly CheckBox _midi, _simplify;
     readonly Image _preview = new() { Stretch = Stretch.Uniform };
     readonly TextBlock _status, _pageLabel, _layoutNote;
@@ -42,7 +43,8 @@ public sealed class ScoreExportDialog : ChromeWindow
             _tracks[track.Id] = check; list.Children.Add(check);
         }
         _settings.Children.Add(new ScrollViewer { Content = list, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        _settings.Children.Add(Label(S("orientation"))); _orientation = Combo(new[] { S("portrait"), S("landscape") }); _settings.Children.Add(_orientation);
+        _settings.Children.Add(Label(S("orientation"))); _orientation = Combo(new[] { S("portrait"), S("landscape") }); _settings.Children.Add(Choice(_orientation));
+        _settings.Children.Add(Label(S("format"))); _format = Combo(new[] { "SVG + PNG", "SVG", "PNG" }); _settings.Children.Add(Choice(_format));
         _settings.Children.Add(Label(S("layout")));
         var modes = new Grid(); modes.ColumnDefinitions.Add(new ColumnDefinition()); modes.ColumnDefinitions.Add(new ColumnDefinition());
         _standard = Neutral(S("standard")); _compact = Neutral(S("compact")); _standard.Margin = new Thickness(0, 0, 4, 0); _compact.Margin = new Thickness(4, 0, 0, 0);
@@ -52,7 +54,6 @@ public sealed class ScoreExportDialog : ChromeWindow
         _simplify = new CheckBox { Content = new TextBlock { Text = S("simplifySpeed"), TextWrapping = TextWrapping.Wrap }, IsChecked = true,
             Foreground = B("TextFg"), Margin = new Thickness(0, 8, 0, 5), ToolTip = S("displayOnly") };
         _simplify.Checked += (_, _) => InvalidatePreview(); _simplify.Unchecked += (_, _) => InvalidatePreview(); _settings.Children.Add(_simplify);
-        _settings.Children.Add(Label(S("format"))); _format = Combo(new[] { "SVG + PNG", "SVG", "PNG" }); _settings.Children.Add(_format);
         _midi = new CheckBox { Content = new TextBlock { Text = S("includeMidi"), TextWrapping = TextWrapping.Wrap }, Foreground = B("TextFg"),
             IsChecked = false, Visibility = project.OriginalMidi == null ? Visibility.Collapsed : Visibility.Visible, Margin = new Thickness(0, 12, 0, 8) };
         _midi.Checked += (_, _) => InvalidatePreview(); _midi.Unchecked += (_, _) => InvalidatePreview(); _settings.Children.Add(_midi);
@@ -82,8 +83,25 @@ public sealed class ScoreExportDialog : ChromeWindow
     TextBlock Label(string text, double size = 13) => new() { Text = text, FontSize = size, Foreground = B("TextFg"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 5) };
     ComboBox Combo(string[] values)
     {
-        var box = new ComboBox { ItemsSource = values, SelectedIndex = 0, Height = 34, Background = B("BoxBg"), Foreground = B("TextFg"), Template = ComboTpl() };
+        var box = new ComboBox { ItemsSource = values, SelectedIndex = 0 };
         box.SelectionChanged += (_, _) => InvalidatePreview(); return box;
+    }
+    JoinedChoiceButton Choice(ComboBox model)
+    {
+        var button = new JoinedChoiceButton { Height = 34, FontSize = 13, Cursor = System.Windows.Input.Cursors.Hand };
+        button.Chrome.CornerRadius = new CornerRadius(8);
+        button.SetBinding(ContentControl.ContentProperty, new System.Windows.Data.Binding("SelectedItem") { Source = model });
+        button.Click += (_, _) =>
+        {
+            foreach (var choice in _choices)
+            {
+                if (!ReferenceEquals(choice, button)) choice.Close(true);
+                Panel.SetZIndex(choice, ReferenceEquals(choice, button) ? 1 : 0);
+            }
+            button.Toggle(model);
+        };
+        button.IsEnabledChanged += (_, _) => { if (!button.IsEnabled) button.Close(true); };
+        _choices.Add(button); return button;
     }
     void InvalidatePreview()
     {
