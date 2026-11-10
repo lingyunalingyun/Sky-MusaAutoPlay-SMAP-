@@ -4,66 +4,80 @@ using System.Windows.Media;
 
 namespace SMAP_WPF;
 
-/// <summary>缪斯树屋登录对话框。成功后 CloudApi 写入登录态, DialogResult=true。</summary>
+/// <summary>缪斯树屋登录对话框。成功后 CloudApi 写入登录态，DialogResult=true。</summary>
 public class LoginDialog : ChromeWindow
 {
-    public LoginDialog(Window owner) : base("登录 — 缪斯树屋", 360)
+    public LoginDialog(Window owner) : this(owner, CloudApi.LoginAsync) { }
+
+    internal LoginDialog(Window owner, Func<string, string, Task<string?>> authenticate) : base(Lang.Login("title"), 420)
     {
         Owner = owner;
+        var panel = new Grid { Height = 358, Margin = new Thickness(24, 0, 24, 0) };
+        void Place(FrameworkElement element, double top)
+        { element.VerticalAlignment = VerticalAlignment.Top; element.Margin = new Thickness(0, top, 0, 0); panel.Children.Add(element); }
+        TextBlock Label(string text, double size, string brush = "SubTextFg")
+        {
+            var label = new TextBlock { Text = text, FontSize = size };
+            label.SetResourceReference(TextBlock.ForegroundProperty, brush); return label;
+        }
 
-        var title = new TextBlock { Text = "缪斯树屋", FontSize = 22, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
-        var sub = new TextBlock { Text = "musetreehouse.com", FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 16) };
+        var title = Label(Lang.Login("brand"), 20, "TextFg"); title.FontWeight = FontWeights.SemiBold;
+        Place(title, 23); Place(Label("musetreehouse.com", 12), 56);
+        Place(Label(Lang.Login("username"), 13), 89);
+        Place(Label(Lang.Login("password"), 13), 169);
 
-        var user = MakeText();
-        var pass = PassInput();
-        var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0x6b, 0x6b)), FontSize = 11, TextWrapping = TextWrapping.Wrap, MinHeight = 18, Margin = new Thickness(0, 2, 0, 0) };
+        var user = new TextBox { VerticalContentAlignment = VerticalAlignment.Center };
+        var pass = new PasswordBox { VerticalContentAlignment = VerticalAlignment.Center };
+        foreach (var field in new Control[] { user, pass })
+        {
+            field.Height = 42; field.FontSize = 14; field.BorderThickness = new Thickness(1);
+            field.FocusVisualStyle = null; field.Template = InputTemplate(field is PasswordBox ? "PasswordBox" : "TextBox");
+            field.SetResourceReference(BackgroundProperty, "BoxBg"); field.SetResourceReference(ForegroundProperty, "TextFg");
+            field.SetResourceReference(BorderBrushProperty, "BoxBorder");
+        }
+        user.SetResourceReference(TextBox.CaretBrushProperty, "TextFg");
+        pass.SetResourceReference(PasswordBox.CaretBrushProperty, "TextFg");
+        Place(user, 113); Place(pass, 193);
 
-        var login = new Button { Content = "登  录", Height = 38, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Background = new SolidColorBrush(Color.FromRgb(0x4d, 0x8e, 0xff)), IsDefault = true };
-        var cancel = new Button { Content = "取消", Height = 32, IsCancel = true, Margin = new Thickness(0, 6, 0, 0), Background = Brushes.Transparent, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)) };
+        var error = Label("", 12);
+        error.Foreground = (Brush)new BrushConverter().ConvertFromString(Theme.Current switch
+        { AppTheme.Light => "#b43131", AppTheme.SunsetPink => "#a42957", _ => "#ff8c8c" })!;
+        error.TextWrapping = TextWrapping.Wrap;
+        Place(new ScrollViewer { Content = error, Height = 38, Focusable = false, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, 244);
 
+        var cancel = Neutral(Lang.Login("cancel")); cancel.Height = 42; cancel.IsCancel = true;
+        var login = Neutral(Lang.Login("submit")); login.Height = 42; login.IsDefault = true; login.FontWeight = FontWeights.SemiBold;
+        login.SetResourceReference(BackgroundProperty, "PracticeActionBg"); login.SetResourceReference(ForegroundProperty, "ActionFg");
+        login.SetResourceReference(BorderBrushProperty, "PracticeActionBg");
+        var actions = new Grid { Height = 42 };
+        actions.ColumnDefinitions.Add(new ColumnDefinition()); actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) }); actions.ColumnDefinitions.Add(new ColumnDefinition());
+        actions.Children.Add(cancel); Grid.SetColumn(login, 2); actions.Children.Add(login); Place(actions, 289);
+
+        bool busy = false, closed = false;
         async void DoLogin()
         {
-            var u = user.Text.Trim();
-            if (u.Length == 0 || pass.Password.Length == 0) { error.Text = "请输入账号和密码"; return; }
-            login.IsEnabled = false; login.Content = "登录中..."; error.Text = "";
-            var err = await CloudApi.LoginAsync(u, pass.Password);
-            if (err == null) { DialogResult = true; }
-            else { error.Text = err; login.IsEnabled = true; login.Content = "登  录"; }
+            if (busy || closed) return;
+            string username = user.Text.Trim();
+            if (username.Length == 0 || pass.Password.Length == 0) { error.Text = Lang.Login("required"); return; }
+            busy = true; login.IsEnabled = user.IsEnabled = pass.IsEnabled = false;
+            login.Content = Lang.Login("working"); error.Text = "";
+            string? message = await authenticate(username, pass.Password);
+            if (closed) return;
+            if (message == null) { DialogResult = true; return; }
+            error.Text = message; busy = false; login.IsEnabled = user.IsEnabled = pass.IsEnabled = true;
+            login.Content = Lang.Login("submit");
         }
-        login.Click += (_, __) => DoLogin();
-        pass.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) DoLogin(); };
-
-        var panel = new StackPanel { Margin = new Thickness(32, 8, 32, 20) };
-        panel.Children.Add(title);
-        panel.Children.Add(sub);
-        panel.Children.Add(Labeled("用户名或邮箱", user));
-        panel.Children.Add(Labeled("密码", pass));
-        panel.Children.Add(error);
-        panel.Children.Add(login);
-        panel.Children.Add(cancel);
+        login.Click += (_, _) => DoLogin();
+        // IsDefault owns Enter; a second PasswordBox key handler would submit twice.
+        Loaded += (_, _) => user.Focus(); Closed += (_, _) => closed = true;
         SetBody(panel);
-        Loaded += (_, __) => user.Focus();
     }
 
-    static TextBox MakeText() => new()
-    {
-        Height = 34, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 13,
-        Background = new SolidColorBrush(Color.FromRgb(0x4a, 0x4a, 0x4a)), Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)),
-        BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66))
-    };
-
-    static PasswordBox PassInput() => new()
-    {
-        Height = 34, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 13,
-        Background = new SolidColorBrush(Color.FromRgb(0x4a, 0x4a, 0x4a)), Foreground = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0)),
-        BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66))
-    };
-
-    static StackPanel Labeled(string label, Control field)
-    {
-        var p = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
-        p.Children.Add(new TextBlock { Text = label, Foreground = new SolidColorBrush(Color.FromRgb(0xaa, 0xaa, 0xaa)), FontSize = 11, Margin = new Thickness(0, 0, 0, 3) });
-        p.Children.Add(field);
-        return p;
-    }
+    static ControlTemplate InputTemplate(string target) => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        "<ControlTemplate TargetType='" + target + "' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>" +
+        "<Border x:Name='field' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='8' Padding='12,0'>" +
+        "<ScrollViewer x:Name='PART_ContentHost' VerticalAlignment='Center'/></Border>" +
+        "<ControlTemplate.Triggers><Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='field' Property='BorderBrush' Value='{DynamicResource Accent}'/></Trigger>" +
+        "<Trigger Property='IsEnabled' Value='False'><Setter TargetName='field' Property='Opacity' Value='0.65'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
 }
