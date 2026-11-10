@@ -128,7 +128,7 @@ public partial class EditorWindow
         AddMenu(menu, S("openProject"), OpenProject);
         AddMenu(menu, S("saveAs"), () => Save(true)); AddMenu(menu, S("metadata"), EditMetadata);
         AddMenu(menu, S("exportTrack"), () => ExportTrack(_session.ActiveTrackId));
-        AddMenu(menu, Lang.S("score.title"), () => { PauseForEdit(); new ScoreExportDialog(DialogOwner, _session.Project, _session.ActiveTrackId).ShowDialog(); Roll.Focus(); });
+        AddMenu(menu, Lang.Sharing("publish"), async () => await OpenNativeShare());
         AddMenu(menu, S("exportLegacy"), ExportLegacy); AddMenu(menu, S("exportMidi"), ExportMidi);
         if (_session.Project.OriginalMidi != null) AddMenu(menu, S("exportOriginal"), ExportOriginal);
         menu.Items.Add(new Separator());

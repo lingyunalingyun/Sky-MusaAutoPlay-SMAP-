@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -164,6 +164,7 @@ public partial class MainWindow : Window
         LocalLibBtn.Content = Lang.S("nav.local");
         CloudLibBtn.Content = Lang.S("nav.cloud");
         SideImportBtn.Content = Lang.S("side.import");
+        NativeCodeButton.Content = Lang.Sharing("get");
         SideSettingsBtn.Content = Lang.S("side.settings");
         UpdateFoldersHeader();
         UpdateProfileCard();
@@ -468,8 +469,7 @@ public partial class MainWindow : Window
         cm.Items.Add(open);
         cm.Items.Add(new Separator());
         cm.Items.Add(edit);
-        var export = new MenuItem { Header = Lang.S("score.title") };
-        export.Click += (_, __) => ExportSongScore(s); cm.Items.Add(export);
+        AddNativeSharingMenu(cm, s);
         cm.Items.Add(info);
         return cm;
     }
@@ -783,17 +783,6 @@ public partial class MainWindow : Window
         edit.Click += (_, __) => OpenEditor(s);
         var info = new MenuItem { Header = Lang.S("m.songInfo") };
         info.Click += (_, __) => PlaylistSongInfo(s);
-        var upload = new MenuItem { Header = Lang.S("m.uploadCloud") };
-        upload.Click += (_, __) =>
-        {
-            if (!RequireLegacyDocument(s)) return;
-            if (!CloudApi.LoggedIn)
-            {
-                if (new LoginDialog(this).ShowDialog() != true) return;
-                UpdateLoginButton();
-            }
-            if (new UploadDialog(this, s.File, s.Name).ShowDialog() == true) ShowToast(string.Format(Lang.S("t.uploaded"), s.Name));
-        };
         cm.Items.Add(add);
         cm.Items.Add(BuildFavToMenu(s));
         // 正在查看某收藏夹时: 从该收藏夹移除(不删歌)
@@ -807,21 +796,9 @@ public partial class MainWindow : Window
         cm.Items.Add(open);
         cm.Items.Add(new Separator());
         cm.Items.Add(edit);
-        var export = new MenuItem { Header = Lang.S("score.title") };
-        export.Click += (_, __) => ExportSongScore(s); cm.Items.Add(export);
         cm.Items.Add(info);
-        cm.Items.Add(upload);
+        AddNativeSharingMenu(cm, s);
         return cm;
-    }
-
-    void ExportSongScore(SongInfo song)
-    {
-        try
-        {
-            var project = IsNative(song) ? SmapFile.Load(song.File) : LegacyProjectAdapter.FromDocument(SongLibrary.LoadDocument(song));
-            new ScoreExportDialog(this, project, project.Tracks.FirstOrDefault()?.Id ?? Guid.Empty).ShowDialog();
-        }
-        catch (Exception error) { Logger.Exception("图片谱导出失败", error); ShowToast(ScoreExportDialog.ErrorText(error.Message)); }
     }
 
     // 从磁盘删除曲谱(并从收藏夹/播放列表清理)

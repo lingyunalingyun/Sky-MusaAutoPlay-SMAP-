@@ -29,6 +29,7 @@ public sealed record ScoreExportDocument(SmapProject Project, byte[] Payload, st
     int CanonicalVersion, ScoreExportOptions Options, IReadOnlyList<ScorePage> Pages,
     IReadOnlyList<string> Notices, int DisplayFactor)
 {
+    public string? VerifiedShareCode { get; init; }
     public int Width => Options.Orientation == ScoreOrientation.Landscape ? 2240 : 1260;
     public int Height => Options.Orientation == ScoreOrientation.Landscape ? 1260 : 2240;
 }

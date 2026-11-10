@@ -108,6 +108,7 @@ public static partial class ScoreImageExporter
             c.Text(2200, 84, instrument, 38, 340, "end", true); c.Text(2200, 140, pitch, 30, 355, "end");
             c.Text(1120, 1213, number, 34, 180, "middle", true, "#626873");
             c.Text(2200, 1213, person, 30, 640, "end", true);
+            if (d.VerifiedShareCode is { } code) c.Text(40, 1213, code, 32, 900, bold: true);
         }
         else
         {
@@ -122,6 +123,7 @@ public static partial class ScoreImageExporter
             for (int i = 0; i < t.Lines.Length; i++) Vertical(c, t.Lines.Length == 1 ? 95 : i == 0 ? 124 : 70, 1120, t.Lines[i], t.Size, 1360, "middle", true, complete: true);
             Vertical(c, 1212, 45, person, 28, 740, bold: true);
             Vertical(c, 1212, 1120, number, 30, 180, "middle", true, "#626873");
+            if (d.VerifiedShareCode is { } code) Vertical(c, 1212, 2190, code, 30, 800, "end", true);
         }
     }
     static string Rest(ScoreExportDocument d, ScoreCell cell)
