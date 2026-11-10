@@ -18,14 +18,16 @@ public sealed class SharingModeTabs : UserControl
     public int SelectedIndex => _selected;
     public bool OfflineEnabled { get => _buttons[1].IsEnabled; set => _buttons[1].IsEnabled = value; }
 
-    public SharingModeTabs()
+    public SharingModeTabs() : this([Lang.Sharing("onlineMode"), Lang.Sharing("offlineMode")]) { }
+
+    public SharingModeTabs(string[] labels, double width = 270, double height = 40)
     {
-        Width = 270; Height = 40;
-        _layout.ColumnDefinitions.Add(new ColumnDefinition()); _layout.ColumnDefinitions.Add(new ColumnDefinition());
+        Width = width; Height = height;
+        foreach (var _ in labels) _layout.ColumnDefinitions.Add(new ColumnDefinition());
         _selection = new Border { CornerRadius = new CornerRadius(7), HorizontalAlignment = HorizontalAlignment.Left,
             RenderTransform = _offset, IsHitTestVisible = false, Effect = new DropShadowEffect { BlurRadius = 5, ShadowDepth = 1, Opacity = .13 } };
-        Grid.SetColumnSpan(_selection, 2); _layout.Children.Add(_selection);
-        _buttons = [CreateButton(Lang.Sharing("onlineMode"), 0), CreateButton(Lang.Sharing("offlineMode"), 1)];
+        Grid.SetColumnSpan(_selection, labels.Length); _layout.Children.Add(_selection);
+        _buttons = labels.Select(CreateButton).ToArray();
         _track = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(3), Child = _layout }; Content = _track;
         _layout.SizeChanged += (_, _) => Move(false);
         Loaded += (_, _) => { Theme.Changed += Palette; Palette(); };
@@ -40,20 +42,20 @@ public sealed class SharingModeTabs : UserControl
         button.Click += (_, _) => Select(index);
         button.PreviewKeyDown += (_, e) =>
         {
-            int next = e.Key switch { Key.Left or Key.Right => 1 - _selected, Key.Home => 0, Key.End => 1, _ => -1 };
+            int next = e.Key switch { Key.Left => (_selected + _buttons.Length - 1) % _buttons.Length, Key.Right => (_selected + 1) % _buttons.Length, Key.Home => 0, Key.End => _buttons.Length - 1, _ => -1 };
             if (next >= 0 && _buttons[next].IsEnabled) { e.Handled = true; Select(next); _buttons[next].Focus(); }
         };
         Grid.SetColumn(button, index); _layout.Children.Add(button); return button;
     }
     public void Select(int index)
     {
-        if (index is < 0 or > 1 || !_buttons[index].IsEnabled || index == _selected) return;
+        if (index < 0 || index >= _buttons.Length || !_buttons[index].IsEnabled || index == _selected) return;
         _selected = index; Move(SystemParameters.ClientAreaAnimation); UpdateLabels(true); SelectionChanged?.Invoke(index); _buttons[index].Focus();
     }
     void Move(bool animate)
     {
-        double from = _offset.X, target = _selected * _layout.ActualWidth / 2;
-        _selection.Width = Math.Max(0, _layout.ActualWidth / 2); _offset.BeginAnimation(TranslateTransform.XProperty, null); _offset.X = target;
+        double from = _offset.X, target = _selected * _layout.ActualWidth / _buttons.Length;
+        _selection.Width = Math.Max(0, _layout.ActualWidth / _buttons.Length); _offset.BeginAnimation(TranslateTransform.XProperty, null); _offset.X = target;
         if (animate) _offset.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(260))
         { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop });
     }

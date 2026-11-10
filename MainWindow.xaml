@@ -838,10 +838,7 @@
                 <!-- 中: 曲目库 -->
                 <DockPanel x:Name="MidContent" Grid.Column="1" Margin="0,0,12,0">
                     <DockPanel.RenderTransform><TranslateTransform x:Name="MidSlide"/></DockPanel.RenderTransform>
-                    <DockPanel DockPanel.Dock="Top" Margin="2,0,0,6">
-                        <Button x:Name="NativeCodeButton" DockPanel.Dock="Right" Style="{StaticResource NeutralBtn}" Height="32" FontSize="12" Padding="8,0" Margin="8,0,0,0" Click="NativeCode_Click"/>
-                        <TextBlock x:Name="LibHeader" Text="本地曲库" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"/>
-                    </DockPanel>
+                    <TextBlock x:Name="LibHeader" DockPanel.Dock="Top" Text="本地曲库" FontWeight="Bold" FontSize="16" Margin="2,0,0,6"/>
                     <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Height="36" Margin="0,0,0,12" Style="{StaticResource RoundBox}" ToolTip="搜索曲名"/>
                     <Grid x:Name="LocalFilterRow" DockPanel.Dock="Top" Margin="0,0,0,12" Panel.ZIndex="20">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>

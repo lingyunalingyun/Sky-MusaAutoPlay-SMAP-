@@ -6,11 +6,6 @@ namespace SMAP_WPF;
 
 public partial class MainWindow
 {
-    void NativeCode_Click(object sender, RoutedEventArgs e)
-    {
-        var window = new NativeSharingWindow(this); window.ShowDialog();
-        if (window.Imported) RefreshLibrary(); UpdateLoginButton();
-    }
     async Task ShareNativeSong(SongInfo song)
     {
         try

@@ -31,7 +31,9 @@ static partial class Program
         try
         {
             Output = Path.GetFullPath(args[0]);
-            if (args.Contains("--share-menu")) { ResultFile = "unified-sharing/menu-results.json"; SharingMenuReview(); }
+            if (args.Contains("--import-ui")) { ResultFile = "import-unified/ui-results.json"; ImportReview(); }
+            else if (args.Contains("--import-network")) { ResultFile = "import-unified/network-results.json"; ImportNetworkReview(); }
+            else if (args.Contains("--share-menu")) { ResultFile = "unified-sharing/menu-results.json"; SharingMenuReview(); }
             else if (args.Contains("--unified-share")) { ResultFile = "unified-sharing/ui-results.json"; UnifiedSharingReview(); }
             else if (args.Contains("--login-render")) { ResultFile = "login-ui-results.json"; LoginReview(); }
             else if (args.Contains("--render")) { ResultFile = "gui-render-results.json"; Render(); }

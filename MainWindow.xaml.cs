@@ -164,7 +164,6 @@ public partial class MainWindow : Window
         LocalLibBtn.Content = Lang.S("nav.local");
         CloudLibBtn.Content = Lang.S("nav.cloud");
         SideImportBtn.Content = Lang.S("side.import");
-        NativeCodeButton.Content = Lang.Sharing("get");
         SideSettingsBtn.Content = Lang.S("side.settings");
         UpdateFoldersHeader();
         UpdateProfileCard();
@@ -2820,17 +2819,11 @@ public partial class MainWindow : Window
 
     void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "选择要导入的曲谱 (可多选)",
-            Multiselect = true,
-            Filter = "所有支持格式|*.json;*.txt;*.smap;*.mid;*.midi;*.png;*.svg|曲谱 (json/txt/smap)|*.json;*.txt;*.smap|" + Lang.S("score.imageFiles") + "|*.png;*.svg|MIDI|*.mid;*.midi|所有文件|*.*"
-        };
-        if (dlg.ShowDialog(this) != true) return;
-        ImportFiles(dlg.FileNames);
+        var dialog = new ImportDialog(this, ImportFiles); dialog.ShowDialog();
+        if (dialog.Imported) RefreshLibrary(); UpdateLoginButton();
     }
 
-    void ImportFiles(IEnumerable<string> files)
+    string ImportFiles(string[] files, Window owner)
     {
         System.IO.Directory.CreateDirectory(SongLibrary.SongsDir);
         int ok = 0, fail = 0;
@@ -2840,7 +2833,7 @@ public partial class MainWindow : Window
             var ext = System.IO.Path.GetExtension(src).ToLowerInvariant();
             try
             {
-                if (ext is ".mid" or ".midi") { if (ImportMidi(src)) ok++; else fail++; }
+                if (ext is ".mid" or ".midi") { if (ImportMidi(src, owner)) ok++; else fail++; }
                 else if (ext is ".png" or ".svg") { SongLibrary.WriteNative(ScoreImageData.Read(src)); ok++; }
                 else
                 {
@@ -2857,27 +2850,28 @@ public partial class MainWindow : Window
             }
         }
         RefreshLibrary();
-        StatusText.Text = fail == 0 ? $"状态: ✅ 已导入 {ok} 个曲谱" : $"状态: 导入 {ok} 个, 失败 {fail} 个";
-        if (imageErrors.Count > 0) MsgBox.Info(this, string.Join("\n", imageErrors), Lang.S("score.imageFiles"));
+        StatusText.Text = fail == 0 ? string.Format(Lang.Import("importedCount"), ok) : string.Format(Lang.Import("importedPartial"), ok, fail);
+        if (imageErrors.Count > 0) MsgBox.Info(owner, string.Join("\n", imageErrors), Lang.S("score.imageFiles"));
+        return StatusText.Text;
     }
 
     // 返回 true=已导入; false=用户取消或无音符
-    bool ImportMidi(string path)
+    bool ImportMidi(string path, Window owner)
     {
         try
         {
             var source = MidiImporter.ReadComplete(path);
-            if (source.Notes.Count == 0) { MsgBox.Info(this, Lang.S("midi.noresult"), System.IO.Path.GetFileName(path)); return false; }
+            if (source.Notes.Count == 0) { MsgBox.Info(owner, Lang.S("midi.noresult"), System.IO.Path.GetFileName(path)); return false; }
             if (_playing || _previewing) StopPlaying();
             if (_gamePracticeOn) GamePracticeSwitch.IsChecked = false;
-            var win = new MidiImportDialog(source, System.IO.Path.GetFileNameWithoutExtension(path)) { Owner = this };
+            var win = new MidiImportDialog(source, System.IO.Path.GetFileNameWithoutExtension(path)) { Owner = owner };
             if (win.ShowDialog() != true || win.ResultProject == null) return false;
             SongLibrary.WriteNative(win.ResultProject); return true;
         }
         catch (Exception error)
         {
             Logger.Exception("MIDI 导入失败", error);
-            MsgBox.Info(this, Lang.S("midi3.parseFailed") + "\n" + error.Message, System.IO.Path.GetFileName(path)); return false;
+            MsgBox.Info(owner, Lang.S("midi3.parseFailed") + "\n" + error.Message, System.IO.Path.GetFileName(path)); return false;
         }
     }
     // 按键映射两段式: 平时"编辑按键映射"(点键试听) → 点此进编辑态"保存按键映射"(点键重绑) → 再点保存退出
