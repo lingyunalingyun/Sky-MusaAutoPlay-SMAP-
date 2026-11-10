@@ -19,7 +19,7 @@ public static class Logger
         {
             Directory.CreateDirectory(Dir);
             lock (_lock)
-                File.AppendAllText(TodayFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {msg}{Environment.NewLine}");
+                File.AppendAllText(TodayFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {CloudSecrets.Redact(msg)}{Environment.NewLine}");
         }
         catch { /* 日志失败不影响主流程 */ }
     }

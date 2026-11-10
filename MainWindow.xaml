@@ -624,7 +624,7 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding HasCover}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
-                                                <Setter Property="Source" Value="{Binding CoverUrl}"/>
+                                                <Setter Property="Source" Value="{Binding Cover}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>

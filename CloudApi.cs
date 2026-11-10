@@ -1,17 +1,35 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 
 namespace SMAP_WPF;
 
 // 字段必须是属性(property): WPF DisplayMemberBinding 只能绑定属性, 绑不到字段。
-public class CloudSheet
+public class CloudSheet : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    BitmapImage? _cover;
+    bool _coverRequested;
+    public BitmapImage? Cover
+    {
+        get
+        {
+            if (!_coverRequested && HasCover) { _coverRequested = true; _ = LoadCoverAsync(); }
+            return _cover;
+        }
+    }
+    async Task LoadCoverAsync()
+    {
+        _cover = await CloudApi.DownloadCoverAsync(CoverUrl);
+        PropertyChanged?.Invoke(this, new(nameof(Cover)));
+    }
     public int Id { get; set; }
     public int Bpm { get; set; }
     public int Difficulty { get; set; }
@@ -36,71 +54,92 @@ public class CloudSheet
     public string DownloadsText => $"↓{Downloads}";
 }
 
-/// <summary>缪斯树屋在线曲库 API: 登录/列表/下载/上传, 登录态持久化到 %APPDATA%\SMAP\auth.json。</summary>
+/// <summary>缪斯树屋在线曲库 API。私密会话经当前 Windows 用户保护后保存。</summary>
 public static class CloudApi
 {
-    const string Base = "http://musetreehouse.com";
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
-
+    static readonly CloudTransport Transport = new(CloudTransport.ApiOrigin);
+    static CloudSession? Session;
     public static int UserId;
     public static string? Username;
-    public static string? Mid;   // 鉴权 token
+    public static string? Mid;   // Public account identifier; never an authorization credential.
     public static string? Avatar;
-    public static bool LoggedIn => !string.IsNullOrEmpty(Mid);
+    public static bool LoggedIn => Session != null && CloudSessionStore.IsUsable(Session);
+    internal static string? SharingToken => LoggedIn ? Session!.Token : null;
+    internal static void SharingAuthenticationFailed() => ForgetSession();
+    static readonly string AuthFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "session.dat");
 
-    // ---- 登录态持久化 ----
-    static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP");
-    static readonly string AuthFile = Path.Combine(Dir, "auth.json");
-
-    class Auth { public int UserId { get; set; } public string? Username { get; set; } public string? Mid { get; set; } public string? Avatar { get; set; } }
-
-    public static void LoadAuth()
+    static void Apply(CloudSession? session)
+    {
+        Session = session; UserId = session?.UserId ?? 0; Username = session?.Username;
+        Mid = session?.Mid; Avatar = session?.Avatar;
+    }
+    public static void LoadAuth() => Apply(CloudSessionStore.Load(AuthFile));
+    public static async Task<BitmapImage?> DownloadCoverAsync(string url)
     {
         try
         {
-            if (File.Exists(AuthFile) && JsonSerializer.Deserialize<Auth>(File.ReadAllText(AuthFile)) is { } a)
-            { UserId = a.UserId; Username = a.Username; Mid = a.Mid; Avatar = a.Avatar; }
+            var bytes = await Transport.GetPublicBytesAsync(url);
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = 160; image.StreamSource = stream;
+            image.EndInit(); image.Freeze();
+            return image;
         }
-        catch { /* 忽略 */ }
+        catch { return null; }
     }
-
     static void SaveAuth()
     {
-        Directory.CreateDirectory(Dir);
-        File.WriteAllText(AuthFile, JsonSerializer.Serialize(new Auth { UserId = UserId, Username = Username, Mid = Mid, Avatar = Avatar }));
+        if (Session == null) return;
+        var updated = Session with { Avatar = Avatar };
+        CloudSessionStore.Save(AuthFile, updated); Apply(updated);
     }
-
-    public static void Logout()
+    static bool ForgetSession()
     {
-        UserId = 0; Username = null; Mid = null; Avatar = null;
-        try { if (File.Exists(AuthFile)) File.Delete(AuthFile); } catch { }
+        Apply(null);
+        try { File.Delete(AuthFile); return true; } catch { return false; }
+    }
+    static async Task<bool> RevokeAsync(CloudSession session)
+    {
+        try
+        {
+            using var response = await Transport.SendSensitiveAsync("/api/auth/logout.php", new StringContent("{}", Encoding.UTF8, "application/json"), session.Token);
+            return await CloudTransport.RevocationConfirmedAsync(response);
+        }
+        catch { return false; }
+    }
+    public static async Task<string?> LogoutAsync()
+    {
+        var session = Session;
+        bool local = ForgetSession();
+        bool remote = session == null || await RevokeAsync(session);
+        return !local ? Lang.S("cloud.storageFailed") : !remote ? Lang.S("cloud.revokeUnconfirmed") : null;
+    }
+    static string RequestFailure(HttpResponseMessage response)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ForgetSession(); return Lang.S("cloud.loginRequired"); }
+        return Lang.S("cloud.requestFailed") + " HTTP " + (int)response.StatusCode;
     }
 
-    /// <summary>登录; 成功返回 null 并写入登录态, 失败返回错误信息。</summary>
     public static async Task<string?> LoginAsync(string user, string pass)
     {
         try
         {
             var body = JsonSerializer.Serialize(new { username = user, password = pass });
-            using var resp = await Http.PostAsync(Base + "/api/game_login.php", new StringContent(body, Encoding.UTF8, "application/json"));
-            var text = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return $"服务器错误 HTTP {(int)resp.StatusCode}";
-
-            using var doc = JsonDocument.Parse(text);
+            using var response = await Transport.SendSensitiveAsync("/api/game_login.php", new StringContent(body, Encoding.UTF8, "application/json"));
+            if (!response.IsSuccessStatusCode) return RequestFailure(response);
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = doc.RootElement;
-            if (root.TryGetProperty("success", out var s) && s.GetBoolean())
-            {
-                var u = root.GetProperty("user");
-                UserId = u.GetProperty("id").GetInt32();
-                Username = u.GetProperty("username").GetString();
-                Mid = u.GetProperty("mid").GetString();
-                Avatar = u.TryGetProperty("avatar", out var av) ? av.GetString() : null;
-                SaveAuth();
-                return null;
-            }
-            return root.TryGetProperty("error", out var e) ? e.GetString() : "登录失败";
+            if (!root.TryGetProperty("success", out var success) || !success.GetBoolean()) return Lang.S("cloud.loginFailed");
+            var u = root.GetProperty("user");
+            var session = new CloudSession(u.GetProperty("id").GetInt32(), GetStr(u, "username"), GetStr(u, "mid"), GetStr(u, "avatar"), GetStr(u, "device_token"), u.GetProperty("expires_at").GetInt64());
+            if (!CloudSessionStore.IsUsable(session)) return Lang.S("cloud.loginRequired");
+            try { CloudSessionStore.Save(AuthFile, session); }
+            catch { await RevokeAsync(session); return Lang.S("cloud.storageFailed"); }
+            Apply(session);
+            return null;
         }
-        catch (Exception ex) { return "网络错误: " + ex.Message; }
+        catch { return Lang.S("cloud.connectionFailed"); }
     }
 
     public static async Task<byte[]?> DownloadAvatarAsync()
@@ -108,10 +147,10 @@ public static class CloudApi
         if (!LoggedIn) return null;
         try
         {
-            // 旧版 auth.json 没存 avatar：从公开个人主页补齐，无需用户重新登录。
+            // Avatar recovery uses public resources without sending session credentials.
             if (string.IsNullOrWhiteSpace(Avatar) && UserId > 0)
             {
-                var html = await Http.GetStringAsync($"{Base}/pages/profile.php?id={UserId}");
+                var html = Encoding.UTF8.GetString(await Transport.GetPublicBytesAsync($"/pages/profile.php?id={UserId}"));
                 var match = Regex.Match(html, @"uploads/avatars/([^""'<>?]+)", RegexOptions.IgnoreCase);
                 if (match.Success)
                 {
@@ -120,7 +159,7 @@ public static class CloudApi
                 }
             }
             var file = Path.GetFileName(string.IsNullOrWhiteSpace(Avatar) ? "default.png" : Avatar);
-            return await Http.GetByteArrayAsync($"{Base}/api/avatar.php?f={Uri.EscapeDataString(file)}");
+            return await Transport.GetPublicBytesAsync($"/api/avatar.php?f={Uri.EscapeDataString(file)}");
         }
         catch { return null; }
     }
@@ -131,13 +170,11 @@ public static class CloudApi
     {
         try
         {
-            var url = $"{Base}/api/sheets/list.php?per_page={perPage}&page={page}&sort={sort}";
+            var url = $"/api/sheets/list.php?per_page={perPage}&page={page}&sort={Uri.EscapeDataString(sort)}";
             if (!string.IsNullOrWhiteSpace(q)) url += "&q=" + Uri.EscapeDataString(q.Trim());
             if (difficulty is >= 1 and <= 5) url += "&difficulty=" + difficulty;
 
-            using var resp = await Http.GetAsync(url);
-            var text = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return new(false, $"加载失败 HTTP {(int)resp.StatusCode}", 0, 0, new());
+            var text = Encoding.UTF8.GetString(await Transport.GetPublicBytesAsync(url));
 
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
@@ -163,12 +200,12 @@ public static class CloudApi
                         Uploader = GetStr(it, "uploader"),
                         Description = GetStr(it, "description"),
                         DownloadUrl = GetStr(it, "download_url"),
-                        CoverUrl = GetStr(it, "cover_url"),
+                        CoverUrl = Transport.PublicUri(GetStr(it, "cover_url"))?.AbsoluteUri ?? "",
                         UploadTime = GetStr(it, "created_at")
                     });
             return new(true, null, GetInt(root, "total"), Math.Max(1, GetInt(root, "pages")), items);
         }
-        catch (Exception ex) { return new(false, "网络错误: " + ex.Message, 0, 0, new()); }
+        catch { return new(false, Lang.S("cloud.connectionFailed"), 0, 0, new()); }
     }
 
     /// <summary>下载曲谱到 songsDir; 成功返回落盘路径, 失败返回 null(err 输出错误)。</summary>
@@ -176,10 +213,16 @@ public static class CloudApi
     {
         try
         {
-            var url = sheet.DownloadUrl.StartsWith("http") ? sheet.DownloadUrl : Base + sheet.DownloadUrl;
-            using var resp = await Http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode) { onErr($"下载失败 HTTP {(int)resp.StatusCode}"); return null; }
-            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var bytes = await Transport.GetPublicBytesAsync(sheet.DownloadUrl);
+            using (var stream = new MemoryStream(bytes))
+            using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            using (var doc = JsonDocument.Parse(await reader.ReadToEndAsync()))
+            {
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0) root = root[0];
+                if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("songNotes", out var notes)
+                    || notes.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Invalid cloud sheet.");
+            }
 
             Directory.CreateDirectory(songsDir);
             var safe = string.Concat(sheet.Title.Split(Path.GetInvalidFileNameChars())).Trim();
@@ -189,7 +232,7 @@ public static class CloudApi
             await File.WriteAllBytesAsync(target, bytes);
             return target;
         }
-        catch (Exception ex) { onErr("下载错误: " + ex.Message); return null; }
+        catch { onErr(Lang.S("cloud.connectionFailed")); return null; }
     }
 
     /// <summary>上传曲谱; 成功返回 null, 失败返回错误信息。cover 为已压缩的 JPEG 字节(可选)。</summary>
@@ -198,8 +241,8 @@ public static class CloudApi
         try
         {
             using var form = new MultipartFormDataContent();
-            form.Add(new StringContent(UserId.ToString()), "user_id");
-            form.Add(new StringContent(Mid ?? ""), "mid");
+            var session = Session;
+            if (session == null || !CloudSessionStore.IsUsable(session)) return Lang.S("cloud.loginRequired");
             form.Add(new StringContent(title), "title");
             form.Add(new StringContent(artist), "artist");
             form.Add(new StringContent(trans), "transcribed_by");
@@ -218,14 +261,15 @@ public static class CloudApi
                 form.Add(cc, "cover", "cover.jpg");
             }
 
-            using var resp = await Http.PostAsync(Base + "/api/sheets/upload.php", form);
+            using var resp = await Transport.SendSensitiveAsync("/api/sheets/upload.php", form, session.Token);
+            if (!resp.IsSuccessStatusCode) return RequestFailure(resp);
             var text = await resp.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
             if (root.TryGetProperty("status", out var st) && st.GetString() == "ok") return null;
-            return root.TryGetProperty("msg", out var m) ? m.GetString() : "上传失败";
+            return root.TryGetProperty("msg", out var m) ? SafeMessage(m.GetString()) : Lang.S("cloud.requestFailed");
         }
-        catch (Exception ex) { return "网络错误: " + ex.Message; }
+        catch { return Lang.S("cloud.connectionFailed"); }
     }
 
     /// <summary>上传客户端日志到缪斯树屋(存 game_logs 表); 成功返回 null, 失败返回错误信息。允许匿名。</summary>
@@ -233,16 +277,22 @@ public static class CloudApi
     {
         try
         {
-            var body = JsonSerializer.Serialize(new { mid = Mid ?? "", username = Username ?? "", version = UpdateChecker.AppVersion, log });
-            using var resp = await Http.PostAsync(Base + "/api/game_log.php", new StringContent(body, Encoding.UTF8, "application/json"));
+            var body = JsonSerializer.Serialize(new { version = UpdateChecker.AppVersion, log = CloudSecrets.Redact(log) });
+            using var resp = await Transport.SendSensitiveAsync("/api/game_log.php", new StringContent(body, Encoding.UTF8, "application/json"), LoggedIn ? Session!.Token : null);
+            if (!resp.IsSuccessStatusCode) return RequestFailure(resp);
             var text = await resp.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(text);
             if (doc.RootElement.TryGetProperty("status", out var st) && st.GetString() == "ok") return null;
-            return doc.RootElement.TryGetProperty("msg", out var m) ? m.GetString() : "上传失败";
+            return doc.RootElement.TryGetProperty("msg", out var m) ? SafeMessage(m.GetString()) : Lang.S("cloud.requestFailed");
         }
-        catch (Exception ex) { return "网络错误: " + ex.Message; }
+        catch { return Lang.S("cloud.connectionFailed"); }
     }
 
+    static string SafeMessage(string? value)
+    {
+        var text = CloudSecrets.Redact(value ?? "");
+        return text[..Math.Min(text.Length, 200)];
+    }
     static string GetStr(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
     static int GetInt(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
 }

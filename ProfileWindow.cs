@@ -44,9 +44,16 @@ public class ProfileWindow : ChromeWindow
         btns.ColumnDefinitions.Add(new ColumnDefinition());
         btns.ColumnDefinitions.Add(new ColumnDefinition());
         var home = Neutral("个人主页"); home.Margin = new Thickness(0, 0, 12, 0);
-        home.Click += (_, __) => Open("http://musetreehouse.com");
+        home.Click += (_, __) => Open(CloudTransport.ApiOrigin.AbsoluteUri);
         var logout = Neutral("退出账号"); logout.Margin = new Thickness(12, 0, 0, 0);
-        logout.Click += (_, __) => { CloudApi.Logout(); LoggedOut = true; Close(); };
+        logout.Click += async (_, __) =>
+        {
+            logout.IsEnabled = false;
+            var error = await CloudApi.LogoutAsync();
+            if (error != null) MsgBox.Info(this, error, Lang.S("cloud.logout"));
+            LoggedOut = true;
+            Close();
+        };
         Grid.SetColumn(logout, 1);
         btns.Children.Add(home);
         btns.Children.Add(logout);
