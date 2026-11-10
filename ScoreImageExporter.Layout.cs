@@ -97,7 +97,6 @@ public static partial class ScoreImageExporter
             instrument += " · " + string.Format(S("keys"), capability.PhysicalKeyCount);
         string pitch = p.Tracks.Count > 1 ? S("perTrack") : track.GameTarget?.ScoreId ?? S("positionOnly");
         string person = S("transcriber") + ": " + (string.IsNullOrWhiteSpace(p.Metadata.TranscribedBy) ? S("notSet") : p.Metadata.TranscribedBy);
-        string hash = "SHA-256 " + d.PerformanceHash[..12] + "…" + d.PerformanceHash[^8..];
         string number = $"{page.Index} / {d.Pages.Count}";
         if (d.Options.Orientation == ScoreOrientation.Landscape)
         {
@@ -107,7 +106,7 @@ public static partial class ScoreImageExporter
             c.Text(1120, t.Lines.Length > 1 ? 32 : 49, "SMAP", t.Lines.Length > 1 ? 22 : 27, 260, "middle", true, "#626873");
             for (int i = 0; i < t.Lines.Length; i++) c.Text(1120, (t.Lines.Length == 1 ? 135 : 78) + i * t.Size * 1.6, t.Lines[i], t.Size, 1441, "middle", true);
             c.Text(2200, 84, instrument, 38, 340, "end", true); c.Text(2200, 140, pitch, 30, 355, "end");
-            c.Text(40, 1213, hash, 30, 700, bold: true); c.Text(1120, 1213, number, 34, 180, "middle", true, "#626873");
+            c.Text(1120, 1213, number, 34, 180, "middle", true, "#626873");
             c.Text(2200, 1213, person, 30, 640, "end", true);
         }
         else
@@ -123,7 +122,6 @@ public static partial class ScoreImageExporter
             for (int i = 0; i < t.Lines.Length; i++) Vertical(c, t.Lines.Length == 1 ? 95 : i == 0 ? 124 : 70, 1120, t.Lines[i], t.Size, 1360, "middle", true, complete: true);
             Vertical(c, 1212, 45, person, 28, 740, bold: true);
             Vertical(c, 1212, 1120, number, 30, 180, "middle", true, "#626873");
-            Vertical(c, 1212, 2200, hash, 26, 750, "end", true);
         }
     }
     static string Rest(ScoreExportDocument d, ScoreCell cell)
