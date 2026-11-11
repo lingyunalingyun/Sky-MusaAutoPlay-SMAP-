@@ -72,6 +72,30 @@ public static class SongLibrary
     // 程序目录下的 songs 文件夹(便携; 首次导入/下载时自动创建)
     public static string SongsDir = Path.Combine(AppContext.BaseDirectory, "songs");
 
+    internal static string CopyImported(string source)
+    {
+        string extension = Path.GetExtension(source).ToLowerInvariant();
+        if (extension == ".smap") _ = SmapFile.Load(source);
+        else if (extension is ".txt" or ".json") _ = LegacyProjectAdapter.Load(source, 0);
+        else throw new InvalidDataException("不支持的曲谱文件格式。");
+        Directory.CreateDirectory(SongsDir);
+        string name = Path.GetFileNameWithoutExtension(source), destination = Path.Combine(SongsDir, Path.GetFileName(source));
+        for (int suffix = 2; File.Exists(destination); suffix++)
+        {
+            using var existing = File.OpenRead(destination); using var input = File.OpenRead(source);
+            if (System.Security.Cryptography.SHA256.HashData(existing).SequenceEqual(System.Security.Cryptography.SHA256.HashData(input))) return destination;
+            destination = Path.Combine(SongsDir, name + " (" + suffix + ")" + extension);
+        }
+        string temp = Path.Combine(SongsDir, ".import-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            using (var input = File.OpenRead(source))
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { input.CopyTo(output); output.Flush(true); }
+            File.Move(temp, destination, overwrite: false); return destination;
+        }
+        finally { if (File.Exists(temp)) File.Delete(temp); }
+    }
+
     /// <summary>扫描曲库目录, 解析每个曲谱的曲名/BPM。</summary>
     public static List<SongInfo> Scan()
     {

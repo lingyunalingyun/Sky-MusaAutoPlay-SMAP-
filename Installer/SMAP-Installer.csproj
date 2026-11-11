@@ -20,7 +20,10 @@
 
   <!-- 打包时把 SMAP 发布产物 zip 放到 Payload\app.zip, 会嵌进安装器; 无则安装器仍能编译(运行时报缺payload) -->
   <ItemGroup>
-    <EmbeddedResource Include="Payload\app.zip" Condition="Exists('Payload\app.zip')">
+    <EmbeddedResource Include="$(PayloadPath)" Condition="'$(PayloadPath)' != '' and Exists('$(PayloadPath)')">
+      <LogicalName>app.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Payload\app.zip" Condition="'$(PayloadPath)' == '' and Exists('Payload\app.zip')">
       <LogicalName>app.zip</LogicalName>
     </EmbeddedResource>
   </ItemGroup>

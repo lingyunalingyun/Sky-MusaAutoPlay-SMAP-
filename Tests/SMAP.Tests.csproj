@@ -9,6 +9,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Installer\InstallPayload.cs" Link="Installer\InstallPayload.cs" />
     <Compile Remove="EditorUiHost\**" />
     <Compile Remove="MappingUiHost\**" />
     <Compile Remove="VersionUiHost\**" />

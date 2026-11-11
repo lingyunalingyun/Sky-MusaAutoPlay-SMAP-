@@ -2837,9 +2837,7 @@ public partial class MainWindow : Window
                 else if (ext is ".png" or ".svg") { SongLibrary.WriteNative(ScoreImageData.Read(src)); ok++; }
                 else
                 {
-                    if (ext == ".smap") _ = SmapFile.Load(src);
-                    var dest = System.IO.Path.Combine(SongLibrary.SongsDir, System.IO.Path.GetFileName(src));
-                    System.IO.File.Copy(src, dest, overwrite: true);
+                    SongLibrary.CopyImported(src);
                     ok++;
                 }
             }

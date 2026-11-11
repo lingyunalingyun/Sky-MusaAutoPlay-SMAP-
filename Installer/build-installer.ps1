@@ -1,3 +1,4 @@
+param([string]$OutputRoot = "", [string]$Dotnet = "C:\Program Files\dotnet\dotnet.exe")
 # Build SMAP installer. Run from the Installer folder (script is pure ASCII to avoid PS5.1 GBK parse issues).
 $ErrorActionPreference = "Stop"
 $inst = $PSScriptRoot
@@ -5,13 +6,20 @@ if (-not $inst -and $PSCommandPath) { $inst = Split-Path -Parent $PSCommandPath 
 if (-not $inst) { $inst = (Get-Location).Path }
 $repo       = Split-Path $inst                    # SMAP-WPF repo root (parent of Installer)
 $smapCsproj = Join-Path $repo "SMAP-WPF.csproj"
-$pubDir     = Join-Path $inst "_smap_publish"
-$payload    = Join-Path $inst "Payload\app.zip"
-$outDir     = Join-Path $inst "_setup_out"
-$dotnet     = "C:\Program Files\dotnet\dotnet.exe"
+$buildRoot  = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { $inst }
+$pubDir     = Join-Path $buildRoot "_smap_publish"
+$payload    = Join-Path $buildRoot "Payload\app.zip"
+$outDir     = Join-Path $buildRoot "_setup_out"
+$dotnet     = $Dotnet
+function Clear-BuildDirectory([string]$path, [string]$leaf) {
+    $resolved = [IO.Path]::GetFullPath($path)
+    $expected = [IO.Path]::GetFullPath((Join-Path $buildRoot $leaf))
+    if ($resolved -ne $expected -or $resolved -eq [IO.Path]::GetPathRoot($resolved)) { throw "Unsafe build output path" }
+    if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+}
 
 Write-Host "[1/3] Publishing SMAP (self-contained win-x64)..." -ForegroundColor Cyan
-if (Test-Path $pubDir) { Remove-Item $pubDir -Recurse -Force }
+Clear-BuildDirectory $pubDir "_smap_publish"
 & $dotnet publish $smapCsproj -c Release -r win-x64 --self-contained true -o $pubDir /p:DebugType=none /p:DebugSymbols=false --nologo
 if ($LASTEXITCODE -ne 0) { throw "SMAP publish failed" }
 
@@ -31,9 +39,9 @@ Compress-Archive -Path (Join-Path $pubDir "*") -DestinationPath $payload -Compre
 "{0:N1} MB payload" -f ((Get-Item $payload).Length / 1MB) | Write-Host
 
 Write-Host "[3/3] Publishing installer (embed payload, single-file)..." -ForegroundColor Cyan
-if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
+Clear-BuildDirectory $outDir "_setup_out"
 # WPF single-file MUST include native libs for self-extract, else DllNotFoundException at startup.
-& $dotnet publish (Join-Path $inst "SMAP-Installer.csproj") -c Release -r win-x64 --self-contained true -o $outDir /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:DebugType=none /p:DebugSymbols=false --nologo
+& $dotnet publish (Join-Path $inst "SMAP-Installer.csproj") -c Release -r win-x64 --self-contained true -o $outDir /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:DebugType=none /p:DebugSymbols=false "/p:PayloadPath=$payload" --nologo
 if ($LASTEXITCODE -ne 0) { throw "Installer publish failed" }
 
 $setup = Join-Path $outDir "SMAP-Setup.exe"
