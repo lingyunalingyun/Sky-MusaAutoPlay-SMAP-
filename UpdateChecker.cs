@@ -13,7 +13,7 @@ public static class UpdateChecker
     public const string AppVersion = "3.0.0-rc.2";
     const string Repo = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
-    static readonly HttpClient DownloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+    static readonly HttpClient DownloadHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
 
     public readonly record struct Release(string Tag, string Name, string Url, string AssetUrl, long AssetSize);
 
@@ -69,17 +69,25 @@ public static class UpdateChecker
     public static bool IsMajorUpdate(string tag) => Num(tag.TrimStart('v', 'V').Split('.')[0]) > Num(AppVersion.Split('.')[0]);
 
     public static async Task<string> DownloadAsync(Release release, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        => await DownloadToAsync(release, DownloadHttp, Path.Combine(Path.GetTempPath(), "SMAP", "updates"), progress, cancellationToken);
+
+    internal static async Task<string> DownloadToAsync(Release release, HttpClient http, string dir, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "SMAP", "updates");
+        const long limit = 512L * 1024 * 1024;
+        if (string.IsNullOrEmpty(release.Tag) || release.Tag.Length > 80 || release.Tag.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-'))
+            || release.AssetSize is < 0 or > limit || !Uri.TryCreate(release.AssetUrl, UriKind.Absolute, out var source)
+            || source.Scheme != Uri.UriSchemeHttps || !source.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+            || !source.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.Ordinal))
+            throw new IOException("安装包地址或版本无效。");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"SMAP-Setup-v{release.Tag}.exe");
         var partial = path + ".download";
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, release.AssetUrl);
-            req.Headers.Add("User-Agent", "SMAP-Updater");
-            using var resp = await DownloadHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var resp = await DownloadResponse(http, source, cancellationToken);
             resp.EnsureSuccessStatusCode();
+            if (resp.Content.Headers.ContentType?.MediaType is "text/html" or "application/json" || resp.Content.Headers.ContentLength > limit)
+                throw new IOException("安装包响应格式或大小无效。");
             var total = release.AssetSize > 0 ? release.AssetSize : resp.Content.Headers.ContentLength ?? 0;
             await using var input = await resp.Content.ReadAsStreamAsync(cancellationToken);
             await using var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
@@ -90,11 +98,15 @@ public static class UpdateChecker
             {
                 await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 received += read;
+                if (received > limit) throw new IOException("安装包超过大小限制。");
                 if (total > 0) progress?.Report(received * 100.0 / total);
             }
             await output.FlushAsync(cancellationToken);
+            await output.DisposeAsync();
             if (release.AssetSize > 0 && received != release.AssetSize)
                 throw new IOException($"安装包大小不正确（应为 {release.AssetSize}，实际为 {received}）");
+            using (var check = File.OpenRead(partial))
+                if (check.ReadByte() != 'M' || check.ReadByte() != 'Z') throw new IOException("下载文件不是有效的 Windows 安装程序。");
             File.Move(partial, path, true);
             return path;
         }
@@ -103,6 +115,24 @@ public static class UpdateChecker
             try { if (File.Exists(partial)) File.Delete(partial); } catch { }
             throw;
         }
+    }
+
+    static async Task<HttpResponseMessage> DownloadResponse(HttpClient http, Uri source, CancellationToken cancellation)
+    {
+        for (int hop = 0; hop < 6; hop++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, source);
+            request.Headers.Add("User-Agent", "SMAP-Updater");
+            var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
+            if ((int)response.StatusCode is < 300 or >= 400) return response;
+            var location = response.Headers.Location; response.Dispose();
+            if (location == null) throw new IOException("安装包重定向无效。");
+            var next = location.IsAbsoluteUri ? location : new Uri(source, location);
+            if (next.Scheme != Uri.UriSchemeHttps || !new[] { "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com" }.Contains(next.Host, StringComparer.OrdinalIgnoreCase))
+                throw new IOException("安装包不能重定向到不受信任或明文地址。");
+            source = next;
+        }
+        throw new IOException("安装包重定向次数过多。");
     }
 
     // 数值化逐段比较版本号: >0 表示 a 更新。每段只取前导数字, 容忍 "1.1-wpf" 这类后缀
