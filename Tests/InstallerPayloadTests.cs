@@ -28,6 +28,20 @@ public sealed class InstallerPayloadTests
         Assert.Equal("user-settings", File.ReadAllText(Path.Combine(target, "settings.json")));
     }
     [Theory]
+    [InlineData("cs")][InlineData("de")][InlineData("es")][InlineData("fr")][InlineData("it")]
+    [InlineData("ja")][InlineData("ko")][InlineData("pl")][InlineData("pt-BR")][InlineData("ru")]
+    [InlineData("tr")][InlineData("zh-Hans")][InlineData("zh-Hant")]
+    public void FrameworkSatelliteResourcesAreInstalled(string culture)
+    {
+        using var dir = new TestProject(); string target = Path.Combine(dir.DirectoryPath, "app");
+        string relative = culture + "/PresentationFramework.resources.dll";
+        using var zip = Payload(("SMAP.exe", "code"), (relative, "localized-resource"));
+        InstallPayload.Extract(zip, target);
+        Assert.Equal("localized-resource", File.ReadAllText(Path.Combine(target, relative)));
+    }
+    [Theory]
+    [InlineData("zh-Hans/settings.json")][InlineData("ja/private.resources.dll/config.json")]
+    [InlineData("private/state.resources.dll")][InlineData("de/profile.smap")]
     [InlineData("../outside.txt")][InlineData("/outside.txt")][InlineData("songs/../../outside.txt")]
     [InlineData("C:/outside.txt")][InlineData("settings.json")][InlineData("session.dat")]
     public void InvalidPackagesFailBeforeReplacingAnyApplicationFile(string path)

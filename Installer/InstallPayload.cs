@@ -26,9 +26,11 @@ internal static class InstallPayload
             if (!destination.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("安装包路径越界。");
             bool song = parts[0].Equals("songs", StringComparison.OrdinalIgnoreCase);
             bool resource = parts[0] is "Assets" or "runtimes";
+            bool satellite = parts.Length == 2 && parts[0] is ("cs" or "de" or "es" or "fr" or "it" or "ja" or "ko" or "pl" or "pt-BR" or "ru" or "tr" or "zh-Hans" or "zh-Hant")
+                && parts[1].EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase);
             bool application = parts.Length == 1 && (Path.GetExtension(relative).ToLowerInvariant() is ".exe" or ".dll" or ".pdb"
                 || relative is "SMAP.deps.json" or "SMAP.runtimeconfig.json" or "LICENSE.txt" or "ThirdPartyNotices.txt");
-            if (!song && !resource && !application) throw new InvalidDataException("安装包不能修改用户设置或私人数据。");
+            if (!song && !resource && !satellite && !application) throw new InvalidDataException("安装包不能修改用户设置或私人数据。");
             bytes += entry.Length;
             if (bytes > MaxBytes || entries.Count >= 20000) throw new InvalidDataException("安装包超过大小限制。");
             CheckLinks(root, destination); entries.Add((entry, relative, destination, song));
