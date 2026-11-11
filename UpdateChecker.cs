@@ -10,7 +10,7 @@ namespace SMAP_WPF;
 /// <summary>启动时查 GitHub Releases, 有更高版本则返回信息。</summary>
 public static class UpdateChecker
 {
-    public const string AppVersion = "2.2";   // C# WPF 版
+    public const string AppVersion = "3.0.0-rc.2";
     const string Repo = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     static readonly HttpClient DownloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
@@ -108,8 +108,9 @@ public static class UpdateChecker
     // 数值化逐段比较版本号: >0 表示 a 更新。每段只取前导数字, 容忍 "1.1-wpf" 这类后缀
     static int Compare(string a, string b)
     {
-        var pa = a.Split('.');
-        var pb = b.Split('.');
+        var aa = a.Split('-', 2); var bb = b.Split('-', 2);
+        var pa = aa[0].Split('.');
+        var pb = bb[0].Split('.');
         int len = Math.Max(pa.Length, pb.Length);
         for (int i = 0; i < len; i++)
         {
@@ -117,7 +118,18 @@ public static class UpdateChecker
             int vb = i < pb.Length ? Num(pb[i]) : 0;
             if (va != vb) return va.CompareTo(vb);
         }
-        return 0;
+        bool Pre(string[] parts) => parts.Length > 1 && new[] { "alpha", "beta", "rc" }.Any(p => parts[1].StartsWith(p, StringComparison.OrdinalIgnoreCase));
+        bool preA = Pre(aa), preB = Pre(bb);
+        if (preA != preB) return preA ? -1 : 1;
+        if (!preA) return 0; // Preserve the existing stable meaning of legacy -wpf suffixes.
+        var sa = aa[1].Split('.'); var sb = bb[1].Split('.');
+        for (int i = 0; i < Math.Min(sa.Length, sb.Length); i++)
+        {
+            bool na = int.TryParse(sa[i], out int va), nb = int.TryParse(sb[i], out int vb);
+            int compare = na && nb ? va.CompareTo(vb) : na != nb ? (na ? -1 : 1) : StringComparer.OrdinalIgnoreCase.Compare(sa[i], sb[i]);
+            if (compare != 0) return compare;
+        }
+        return sa.Length.CompareTo(sb.Length);
     }
 
     // 取字符串前导数字(如 "1-wpf" -> 1, "2" -> 2)
