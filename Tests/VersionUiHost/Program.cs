@@ -440,8 +440,8 @@ static class Program
         string path=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".smap");SmapFile.Save(new(){Tracks=new(){first,other,harp}},path);
         var registrar=new Registrar();var observer=new Observer();var main=CreateMain(registrar,observer);
         Call(main,"OpenEditor",new SongInfo{File=path,Name="Reference and routing"});Pump();var editor=((HashSet<EditorWindow>)Field(main,"_editors")!).Single();
-        editor.Activate();Until(()=>editor.IsActive);Pump();var roll=editor.Viewport;editor.ToggleAdvanced();Pump();
-        IntPtr foreground=new WindowInteropHelper(editor).Handle;main.ShortcutForeground=()=>foreground;Call(main,"RefreshShortcutFocus");
+        main.Activate();editor.Viewport.Focus();Until(()=>main.IsActive&&editor.Viewport.IsKeyboardFocusWithin);Pump();var roll=editor.Viewport;editor.ToggleAdvanced();Pump();
+        IntPtr foreground=new WindowInteropHelper(main).Handle;main.ShortcutForeground=()=>foreground;Call(main,"RefreshShortcutFocus");
         IEnumerable<Drawing> Drawings(Drawing d){if(d is DrawingGroup g)foreach(var c in g.Children)foreach(var x in Drawings(c))yield return x;else yield return d;}
         int Ghosts()=>Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is RectangleGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
         Check(Ghosts()==2,"Ordinary piano/harp tracks did not render grey key-position references");
@@ -454,15 +454,15 @@ static class Program
         roll.PlayheadBeat=0;editor.HandleKey(Key.Left,0);Check(roll.PlayheadBeat==0,"Left arrow crossed beat zero");editor.HandleKey(Key.Right,0,true);Check(roll.PlayheadBeat==.25m,"Held arrow did not advance cursor");
         Check(PerformanceIdentity.ForProject(editor.Session.Project)==identity&&editor.Session.UndoCount==history,"Arrow cursor navigation mutated notes or history");
         var snap=(JoinedChoiceButton)Field(editor,"_snapChoice")!;snap.ReduceMotion=true;snap.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();decimal cursor=roll.PlayheadBeat;
-        editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(editor)!,Environment.TickCount,Key.Right){RoutedEvent=Keyboard.PreviewKeyDownEvent});Check(roll.PlayheadBeat==cursor,"Open selector routed arrow into roll");snap.Close(true);
+        main.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main)!,Environment.TickCount,Key.Right){RoutedEvent=Keyboard.PreviewKeyDownEvent});Check(roll.PlayheadBeat==cursor,"Open selector routed arrow into roll");snap.Close(true);
         Check(registrar.Active.Count==0,"Main global hotkeys still intercept editor keys");double speed=(double)Field(main,"_speed")!;
         Call(main,"ExecuteShortcut",ShortcutAction.Faster);Call(main,"RegisteredShortcut",1201);Check((double)Field(main,"_speed")! ==speed,"Main command ran while editor foreground");
         observer.Send(new(0x72,0,true,foreground,Stopwatch.GetTimestamp()));Check((double)Field(main,"_speed")! ==speed,"Observed key triggered main while editor foreground");
-        var child=new Window{Owner=editor,Width=200,Height=120,ShowActivated=false};child.Show();Pump();foreground=new WindowInteropHelper(child).Handle;Call(main,"RefreshShortcutFocus");Call(main,"ExecuteShortcut",ShortcutAction.Faster);Check(registrar.Active.Count==0&&(double)Field(main,"_speed")! ==speed,"Editor-owned native window did not retain shortcut priority");child.Close();foreground=new WindowInteropHelper(editor).Handle;
-        if(output!=null)Capture(editor,Path.Combine(output,"grey-reference.png"));
-        foreground=new WindowInteropHelper(main).Handle;main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Main shortcuts did not restore after leaving editor");Call(main,"RegisteredShortcut",registrar.Active.Single(p=>p.Value.Key==0x72).Key);Check(Math.Abs((double)Field(main,"_speed")!-(speed-.1))<.000001,"Main shortcut stopped working after editor focus");
-        foreground=new WindowInteropHelper(editor).Handle;editor.Activate();Until(()=>editor.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==0,"Returning to editor did not suspend hotkeys again");
-        foreground=new WindowInteropHelper(main).Handle;editor.Close();Pump();main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Closing editor did not restore registrations");main.Close();File.Delete(path);
+        var child=new Window{Owner=main,Width=200,Height=120,ShowActivated=false};child.Show();Pump();foreground=new WindowInteropHelper(child).Handle;Call(main,"RefreshShortcutFocus");Call(main,"ExecuteShortcut",ShortcutAction.Faster);Check(registrar.Active.Count==0&&(double)Field(main,"_speed")! ==speed,"Editor-owned native window did not retain shortcut priority");child.Close();foreground=new WindowInteropHelper(main).Handle;
+        if(output!=null)Capture(main,Path.Combine(output,"grey-reference.png"));
+        editor.Close();Pump();main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Main shortcuts did not restore after leaving editor");Call(main,"RegisteredShortcut",registrar.Active.Single(p=>p.Value.Key==0x72).Key);Check(Math.Abs((double)Field(main,"_speed")!-(speed-.1))<.000001,"Main shortcut stopped working after editor focus");
+        Call(main,"OpenEditor",new SongInfo{File=path,Name="Reference and routing"});Pump();editor=((HashSet<EditorWindow>)Field(main,"_editors")!).Single();editor.Viewport.Focus();Until(()=>editor.Viewport.IsKeyboardFocusWithin);Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==0,"Returning to editor did not suspend hotkeys again");
+        editor.Close();Pump();main.Activate();Until(()=>main.IsActive);Pump();Call(main,"RefreshShortcutFocus");Check(registrar.Active.Count==8,"Closing editor did not restore registrations");main.Close();File.Delete(path);
         Console.WriteLine("EDITOR_REFERENCE_KEYS grey=True;readonly=True;cursor=True;focus=True;restore=True");
     }
     static void OverviewRange(string? output)
@@ -508,7 +508,7 @@ static class Program
         if(output!=null)Directory.CreateDirectory(output);
         Theme.Apply(AppTheme.Dark,persist:false);var window=new EditorWindow(EditorSession.NewProject()){AudioEnabled=false};window.Show();Pump();
         var roll=window.Viewport;var session=window.Session;
-        Point At(decimal beat,int key)=>new(PianoRoll.LaneWidth+(double)beat*roll.BeatWidth+4,PianoRoll.RulerHeight+(14-key+.5)*roll.RowHeight);
+        Point At(decimal beat,int key)=>new(PianoRoll.LaneWidth+(double)beat*roll.BeatWidth+4,PianoRoll.RulerHeight+(14-key+.5)*roll.RowHeight-roll.VerticalOffset);
         IEnumerable<Drawing> Drawings(Drawing drawing)
         {
             if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var value in Drawings(child))yield return value;
@@ -533,7 +533,8 @@ static class Program
         Check(session.Find(first.Id)!.Action==NoteAction.Hold,"Right-edge resize no longer extends note");session.Undo();Pump();Check(session.Find(first.Id)==original,"Resize undo changed original tap");
         var a=At(0,14);var b=At(5,5);roll.PointerDown(a,MouseButton.Left,ModifierKeys.Control);roll.PointerMove(b,ModifierKeys.Control);roll.PointerUp(b,ModifierKeys.Control);roll.PointerMove(At(7,1),0);Pump();
         Check(session.Selected.Count==2&&OverlayNotes().Length==2&&Handles()==0,"Marquee selection lost persistent yellow or showed all resize bars");
-        roll.PointerDown(At(6,3),MouseButton.Left,0);roll.PointerMove(At(7,2),0);roll.CancelGesture();roll.PointerMove(At(8,1),0);Pump();Check(session.ActiveTrack.Notes.Count==2&&session.Find(first.Id)==original&&OverlayNotes().Length==0,"Cancelling a new creation left a ghost");
+        roll.SetView(roll.ViewBeat,double.MaxValue);Pump();Check(At(6,3).Y>=PianoRoll.RulerHeight&&At(6,3).Y<roll.ActualHeight,"Creation test pointer is outside the visible viewport");
+        roll.PointerDown(At(6,3),MouseButton.Left,0);roll.PointerMove(At(7,2),0);roll.CancelGesture();roll.PointerMove(At(8,1),0);Pump();Check(session.ActiveTrack.Notes.Count==2&&session.Find(first.Id)==original&&OverlayNotes().Length==0,$"Cancelling a new creation left a ghost; pointer={At(6,3)}; viewport={roll.ActualWidth}x{roll.ActualHeight}; vertical={roll.VerticalOffset}");
         session.MarkSaved();window.Close();Console.WriteLine("ROLL_NOTE_PREVIEW ghost=False;hover=True;edge_handle=True;marquee=True;history=True");
     }
     [System.Runtime.InteropServices.DllImport("user32.dll")]

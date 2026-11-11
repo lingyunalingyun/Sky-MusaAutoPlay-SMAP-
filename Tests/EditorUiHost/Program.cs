@@ -88,7 +88,9 @@ static class Program
         string identity = PerformanceIdentity.ForProject(dense.Session.Project);
         Check(dense.Viewport.DenseView && dense.Viewport.LastRenderedNotes < 1500, "Dense rendering did not group duplicate geometry");
         Check(dense.Session.ActiveTrack.Notes.Count == 3001, "Dense rendering changed note data");
+        dense.Viewport.SetView(dense.Viewport.ViewBeat,double.MaxValue);Pump();
         var bounds = dense.Viewport.Bounds(dense.Session.ActiveTrack.Notes.First(n => n.Key == 4));
+        Check(bounds.Top >= PianoRoll.RulerHeight && bounds.Top + 4 < dense.Viewport.ActualHeight,"Dense hit-test fixture is outside visible viewport");
         Check(dense.Viewport.HitNotes(new Point(bounds.Left + 3, bounds.Top + 4)).Length >= 3, "Dense overview lost overlapping hit targets");
         Capture(dense, "G-dense"); dense.Viewport.SetZoom(8, 1); Pump();
         Check(!dense.Viewport.DenseView, "Zoom did not restore individual notes");
@@ -101,7 +103,8 @@ static class Program
         int themedBuilds = roll.NoteLayerBuilds; Palette("Light"); Pump(); Palette("Dark"); Pump(); Check(roll.NoteLayerBuilds > themedBuilds, "Runtime theme change did not refresh roll");
         Point PointAt(decimal beat, int key) => new(PianoRoll.LaneWidth + (double)(beat - roll.ViewBeat) * roll.BeatWidth + 3, PianoRoll.RulerHeight + (14 - key) * roll.RowHeight + 10 - roll.VerticalOffset);
         void Click(Point p, ModifierKeys modifiers = ModifierKeys.None) { roll.PointerDown(p, MouseButton.Left, modifiers); roll.PointerUp(p, modifiers); Pump(); }
-        Click(PointAt(10, 4)); Check(session.ActiveTrack.Notes.Count == count + 1, "Click did not create note");
+        roll.SetView(roll.ViewBeat,double.MaxValue);Pump();Check(PointAt(10,4).Y>=PianoRoll.RulerHeight&&PointAt(10,4).Y<roll.ActualHeight,"Create test point is outside visible viewport");
+        Click(PointAt(10, 4)); Check(session.ActiveTrack.Notes.Count == count + 1, $"Click did not create note; pointer={PointAt(10,4)}; viewport={roll.ActualWidth}x{roll.ActualHeight}; vertical={roll.VerticalOffset}");
         var added = session.SelectedNotes().Single(); Check(added.Action == NoteAction.Tap && added.LengthBeats == 0, "Tap semantics changed");
         session.Undo(); Check(session.ActiveTrack.Notes.Count == count, "Undo create failed"); session.Redo();
         added = session.SelectedNotes().Single(); Rect bounds = roll.Bounds(added); Point edge = new(bounds.Right + 4, bounds.Top + 5); int undo = session.UndoCount;
@@ -132,7 +135,7 @@ static class Program
         Check(session.ActiveTrack.Notes.Count(n => n.Key == 12) >= paints + 7, "Paint stroke skipped grid cells"); Check(session.UndoCount == history + 1, "Paint stroke used multiple undo entries");
         history = session.UndoCount; roll.PointerDown(a, MouseButton.Right, ModifierKeys.None); roll.PointerMove(b, ModifierKeys.None); roll.PointerUp(b, ModifierKeys.None); Pump();
         Check(session.ActiveTrack.Notes.Count(n => n.Key == 12) == paints, "Erase stroke skipped notes"); Check(session.UndoCount == history + 1, "Erase stroke used multiple undo entries"); roll.Tool = RollTool.Draw;
-        a = PointAt(9, 6); b = PointAt(14, 2); roll.PointerDown(a, MouseButton.Left, ModifierKeys.Control); roll.PointerMove(b, ModifierKeys.Control); roll.PointerUp(b, ModifierKeys.Control); Pump();
+        roll.SetView(roll.ViewBeat,double.MaxValue);Pump();a = PointAt(9, 6); b = PointAt(14, 2); roll.PointerDown(a, MouseButton.Left, ModifierKeys.Control); roll.PointerMove(b, ModifierKeys.Control); roll.PointerUp(b, ModifierKeys.Control); Pump();
         Check(session.Selected.Count >= 2, "Ctrl marquee missed multiple holds");
         var work = (Grid)window.FindName("WorkArea"); var input = new TextBox { Text = "", Width = 120, Height = 30 }; Grid.SetColumn(input, 1); work.Children.Add(input); input.Focus(); Keyboard.Focus(input); Pump();
         before = session.ActiveTrack.Notes.Count;
