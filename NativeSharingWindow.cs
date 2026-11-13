@@ -33,9 +33,9 @@ public sealed partial class NativeSharingWindow : ChromeWindow
     static string S(string key) => Lang.Sharing(key);
 
     public NativeSharingWindow(Window owner, SmapProject? project = null, Guid activeTrack = default,
-        NativeSharingClient? client = null, NativeSharingStore? store = null, bool startWithHistory = false, SharingUserContext? user = null, Guid? initialVersion = null, string? importDirectory = null) : base(S("title"), 1000)
+        NativeSharingClient? client = null, NativeSharingStore? store = null, bool startWithHistory = false, SharingUserContext? user = null, Guid? initialVersion = null, string? importDirectory = null, SharingPresentation? presentation = null, SongMetadataTarget? metadataTarget = null) : base(S(metadataTarget == null ? "title" : "metadataEdit"), 1000)
     {
-        Owner = owner; _project = project; _activeTrack = activeTrack;
+        Owner = owner; _project = project; _activeTrack = activeTrack; _initialPresentation = presentation;
         _store = store ?? new NativeSharingStore(NativeSharingStore.DefaultDirectory);
         _importDirectory = importDirectory ?? SongLibrary.SongsDir;
         _user = user ?? new(() => CloudApi.LoggedIn, () => CloudApi.UserId, window => new LoginDialog(window).ShowDialog() == true);
@@ -49,6 +49,12 @@ public sealed partial class NativeSharingWindow : ChromeWindow
         foreach (var type in new[] { typeof(System.Windows.Controls.Primitives.ScrollBar), typeof(ContextMenu), typeof(MenuItem) })
             if (owner.TryFindResource(type) is Style style) Resources[type] = style;
         _status = Label("", 13); _status.MinHeight = 32; _status.Margin = new Thickness(0, 7, 0, 0);
+        if (metadataTarget != null)
+        {
+            InitializeMetadataLayout(); Reset(S("metadataEdit"));
+            Loaded += async (_, _) => await Run(async () => { if (!Login()) return; if (!await _client.MetadataSupportedAsync(_cancel.Token)) throw new SharingException("METADATA_UNAVAILABLE"); await ShowMetadataEditor(await _client.MetadataAsync(metadataTarget, _cancel.Token)); });
+            Closing += MetadataEditorClosing; return;
+        }
         InitializeSharingLayout();
         if (initialVersion != null) { Reset(S("history")); Loaded += async (_, _) => await Run(async () => { var version = await _client.VersionAsync(initialVersion.Value, _cancel.Token); if (!_closed) { _sourceVersion = version; if (startWithHistory) await ShowHistory(version.WorkId); else { ShowPublish(null); await RefreshCloudSelection(); } } }); }
         else if (startWithHistory) { Reset(S("history")); Loaded += async (_, _) => await Run(ShowMyWorks); }
@@ -58,7 +64,7 @@ public sealed partial class NativeSharingWindow : ChromeWindow
     TextBlock Label(string text, double size = 14) => new() { Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap, Foreground = B("TextFg"), Margin = new Thickness(0, 7, 0, 7) };
     void Reset(string heading)
     {
-        foreach (var choice in _body.Children.OfType<JoinedChoiceButton>()) choice.Close(true);
+        CloseOnlineChoices(_body);
         _body = new StackPanel { Margin = new Thickness(0, 12, 6, 0) }; _body.Children.Add(Label(heading, 21)); _scroll.Content = _body;
         _actions.Children.Clear();
     }
@@ -89,12 +95,23 @@ public sealed partial class NativeSharingWindow : ChromeWindow
     }
     public static string ErrorText(Exception error)
     {
+        if (error is LegacyConversionException legacy) return S("legacyInvalid") + " (" + legacy.Code + ", " + legacy.SongIndex + ":" + legacy.NoteIndex + ")";
         if (error is HttpRequestException or TaskCanceledException) return S("network");
         if (error is SharingException sharing)
         {
             if (sharing.Status == 401 || sharing.Code is "AUTH_REQUIRED" or "invalid_session") return S("login");
             if (sharing.Code == "SHARING_API_UNAVAILABLE") return S("apiUnavailable");
+            if (sharing.Code == "LEGACY_INDEX_INCOMPLETE") return S("legacyPending");
+            if (sharing.Code == "LEGACY_SOURCE_AMBIGUOUS") return S("legacyAmbiguous");
+            if (sharing.Code == "LEGACY_OWNER_CHANGED") return S("changed");
+            if (sharing.Code == "LEGACY_SOURCE_CHANGED") return S("changed");
             if (sharing.Code == "SERVICE_UNAVAILABLE") return S("unavailable");
+            if (sharing.Code == "PRESENTATION_UNAVAILABLE") return S("presentationUnavailable");
+            if (sharing.Code == "INVALID_COVER") return S("coverInvalid");
+            if (sharing.Code == "INVALID_PRESENTATION") return S("tagsInvalid");
+            if (sharing.Code == "METADATA_UNAVAILABLE") return S("metadataUnavailable");
+            if (sharing.Code == "METADATA_CONFLICT") return S("metadataConflict");
+            if (sharing.Code == "INVALID_METADATA") return S("metadataInvalid");
             if (sharing.Status == 403) return S("forbidden");
             if (sharing.Status == 404) return S("notFound");
             if (sharing.Status == 410) return S("withdrawn");
@@ -122,20 +139,21 @@ public sealed partial class NativeSharingWindow : ChromeWindow
         Reset(existing == null ? S("newWork") : (existing.Title ?? existing.WorkId.ToString()));
         Button? publishButton = null;
         void SelectionChanged() { if (publishButton != null) publishButton.IsEnabled = false; _status.Text = S("selectionChanged"); }
-        var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) }); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) }); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.45, GridUnitType.Star) }); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) }); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var left = new StackPanel(); var right = new StackPanel();
         foreach (var pair in new[] { (left, 0), (right, 2) }) { var card = new Border { Background = B("PanelBg"), CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Child = pair.Item1 }; Grid.SetColumn(card, pair.Item2); columns.Children.Add(card); }
         _body.Children.Add(columns);
-        right.Children.Add(Label(S("choose"))); var tracks = new Dictionary<Guid, CheckBox>(); var trackList = new StackPanel();
-        foreach (var track in _project.Tracks)
-        {
-            var box = new CheckBox { Content = new TextBlock { Text = track.Name, TextWrapping = TextWrapping.Wrap }, IsChecked = _activeTrack == Guid.Empty ? !track.Muted : track.Id == _activeTrack,
-                Foreground = B("TextFg"), Margin = new Thickness(0, 4, 0, 4) }; tracks.Add(track.Id, box); trackList.Children.Add(box);
-            box.Checked += (_, _) => SelectionChanged(); box.Unchecked += (_, _) => SelectionChanged();
-        }
-        right.Children.Add(new ScrollViewer { Content = trackList, MaxHeight = 140, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        var title = Input(S("name"), _project.Metadata.Name, target: left); var artist = Input(S("artist"), _project.Metadata.Author, 100, target: left);
-        var transcriber = Input(S("transcriber"), _project.Metadata.TranscribedBy, 100, target: left); var description = Input(S("description"), _project.Metadata.Description, 2000, true, left);
+        right.Children.Add(Label(S("choose")));
+        var duplicates = _project.Tracks.GroupBy(t => t.Name).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        var tracks = new TrackMultiChoiceButton(_project.Tracks.Select((track, i) => new TrackChoice(track.Id,
+            duplicates.Contains(track.Name) ? $"{i + 1}. {track.Name}" : track.Name, _activeTrack == Guid.Empty ? !track.Muted : track.Id == _activeTrack)));
+        right.Children.Add(tracks);
+        right.Children.Add(Label(S("performanceInfo"), 13));
+        var summary = Label("", 13); summary.Margin = new Thickness(0); right.Children.Add(new Border { Background = B("BoxBg"), CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Margin = new Thickness(0, 7, 0, 4), Child = summary });
+        tracks.SelectionChanged += async (_, _) => { SelectionChanged(); await UpdatePerformanceSummary(summary, tracks.SelectedIds); };
+        _ = UpdatePerformanceSummary(summary, tracks.SelectedIds);
+        var form = new PublicationForm(this, left, _project);
+        var title = form.Title; var artist = form.Artist; var transcriber = form.Transcriber; var description = form.Description;
         var midi = new CheckBox { Content = new TextBlock { Text = S("midi"), TextWrapping = TextWrapping.Wrap }, Foreground = B("TextFg"), IsChecked = false, Margin = new Thickness(0, 8, 0, 8), Visibility = _project.OriginalMidi == null ? Visibility.Collapsed : Visibility.Visible };
         right.Children.Add(midi);
         midi.Checked += (_, _) => SelectionChanged(); midi.Unchecked += (_, _) => SelectionChanged();
@@ -144,23 +162,31 @@ public sealed partial class NativeSharingWindow : ChromeWindow
         choice.SetBinding(ContentControl.ContentProperty, new System.Windows.Data.Binding("SelectedItem") { Source = visibility });
         choice.Click += (_, _) => { Panel.SetZIndex(choice, 20); choice.Toggle(visibility); }; right.Children.Add(choice);
         var sourceCodes = Input(S("sourceCodes"), existing == null && _sourceVersion?.Visibility == "public" ? _sourceVersion.FormattedCode : "", length: 1024, multiline: true, target: right);
-        right.Children.Add(Label(S("notice"), 13));
+        right.Children.Add(Label(S(_project.Tracks.Any(t => t.LegacyFields != null) ? "legacyNotice" : "notice"), 13));
         async Task<bool> CheckCloud()
         {
-            var ids = tracks.Where(t => t.Value.IsChecked == true).Select(t => t.Key).ToArray();
+            var ids = tracks.SelectedIds;
             if (ids.Length == 0) { _status.Text = S("tracksRequired"); return false; }
             var options = new ScoreExportOptions { TrackIds = ids, IncludeOriginalMidi = midi.IsChecked == true };
             using var lookup = CancellationTokenSource.CreateLinkedTokenSource(_cancel.Token); _lookupCancel = lookup;
             if (publishButton != null) publishButton.IsEnabled = false;_status.Text = S("checkingCloud");
             try
             {
-                var snapshot = await Task.Run(() => ScoreExport.ProjectSelection(_project, options), lookup.Token);
+                var snapshot = await Task.Run(() => NativeSharingClient.SharingSelection(_project, options), lookup.Token);
                 var matches = await _client.FindMatchesAsync(snapshot, lookup.Token);
                 lookup.Token.ThrowIfCancellationRequested();if (_closed) return false;
-                if (matches.Items.Count > 0 && existing == null) { ShowMatchingVersions(matches); return false; }
-                if (existing == null && !matches.LegacyCatalogReady && _project.Tracks.Any(t => t.LegacyFields != null))
+                var presentation = form.Presentation();
+                var identical = matches.Items.Where(v => v.Title == title.Text.Trim() && v.Artist == artist.Text.Trim() && v.TranscribedBy == transcriber.Text.Trim() && v.Description == description.Text.Trim()
+                    && NativeSharingClient.SamePresentation(v.Presentation, presentation)).ToList();
+                if (identical.Count > 0 && existing == null) { ShowMatchingVersions(matches with { Items = identical }); return false; }
+                if (existing == null)
+                {
+                    var known = matches.Items.FirstOrDefault(v => v.OwnerUserId == _user.ActorId() && (v.WorkId == _sourceVersion?.WorkId || matches.LegacyItems.Any(l => l.CanAssociate && l.VersionId == v.VersionId)));
+                    if (known != null) existing = await _client.GetWorkAsync(known.WorkId, lookup.Token);
+                }
+                if (existing == null && !matches.CanPublishLegacy && snapshot.Tracks.Any(t => t.LegacyFields != null))
                 { _status.Text = S("legacyPending"); return false; }
-                if (publishButton != null) publishButton.IsEnabled = true;_status.Text = S("cloudAbsent");return true;
+                if (publishButton != null) publishButton.IsEnabled = true;_status.Text = S(existing != null ? "metadataNewVersion" : matches.LegacyItems.Count > 0 ? "legacyFound" : "cloudAbsent");return true;
             }
             finally { if (ReferenceEquals(_lookupCancel, lookup)) _lookupCancel = null; }
         }
@@ -175,20 +201,22 @@ public sealed partial class NativeSharingWindow : ChromeWindow
             { _status.Text = S("textLimits"); return; }
             string chosenVisibility = visibility.SelectedIndex == 0 ? "public" : "private";
             int actorId = _user.ActorId();
-            var ids = tracks.Where(t => t.Value.IsChecked == true).Select(t => t.Key).ToArray();
+            var ids = tracks.SelectedIds;
             if (ids.Length == 0) { _status.Text = S("tracksRequired"); return; }
             if (_store.Pending(actorId) != null) throw new SharingException("PENDING_PUBLICATION");
             var sources = new List<SharingSource>();
             foreach (var code in sourceCodes.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
             { if (sources.Count >= 16) throw new SharingException("INVALID_SHARE_CODE"); var source = await _client.ResolveAsync(code.Trim(), _cancel.Token); sources.Add(new(source.VersionId)); }
             var options = new ScoreExportOptions { TrackIds = ids, IncludeOriginalMidi = midi.IsChecked == true };
+            var presentation = form.Presentation();
+            string? cover = form.Cover;
             var payload = await Task.Run(() =>
             {
-                var snapshot = ScoreExport.ProjectSelection(_project, options);
-                return SmapFile.ToBytes(snapshot with { Metadata = snapshot.Metadata with { Name = chosenTitle, Author = chosenArtist, TranscribedBy = chosenTranscriber, Description = chosenDescription } });
+                var snapshot = NativeSharingClient.SharingSelection(_project, options);
+                return SmapFile.ToBytes(snapshot with { Metadata = snapshot.Metadata with { Name = chosenTitle, Author = chosenArtist, TranscribedBy = chosenTranscriber, Description = chosenDescription, Cover = cover } });
             }, _cancel.Token);
             var draft = await Task.Run(() => _store.Stage(actorId, existing, payload, chosenTitle, chosenArtist, chosenTranscriber, chosenDescription,
-                chosenVisibility, sources), _cancel.Token);
+                chosenVisibility, sources, presentation), _cancel.Token);
             var version = await _store.PublishAsync(_client, draft, _cancel.Token); if (!_closed) { ShowResult(version); _status.Text = S("published"); }
         }, true, _actions);publishButton.IsEnabled = false;
         var more = Neutral(S("more"));more.Margin = new Thickness(6, 8, 0, 0);_actions.Children.Add(more);
@@ -202,8 +230,9 @@ public sealed partial class NativeSharingWindow : ChromeWindow
             {
                 var snapshot = await Task.Run(() => SmapFile.FromBytes(_store.Payload(draft)), _cancel.Token);
                 var matches = await _client.FindMatchesAsync(snapshot, _cancel.Token);
-                if (matches.Items.Count > 0) { if (!_closed) ShowMatchingVersions(matches); return; }
-                if (!matches.LegacyCatalogReady && _project?.Tracks.Any(t => t.LegacyFields != null) == true) { _status.Text = S("legacyPending"); return; }
+                var identical = matches.Items.Where(v => v.Title == draft.Title && v.Artist == draft.Artist && v.TranscribedBy == draft.TranscribedBy && v.Description == draft.Description && NativeSharingClient.SamePresentation(v.Presentation, draft.Presentation)).ToList();
+                if (identical.Count > 0) { if (!_closed) ShowMatchingVersions(matches with { Items = identical }); return; }
+                if (!matches.CanPublishLegacy && snapshot.Tracks.Any(t => t.LegacyFields != null)) { _status.Text = S("legacyPending"); return; }
             }
             var version = await _store.PublishAsync(_client, draft, _cancel.Token); if (!_closed) { ShowResult(version); _status.Text = S("published"); }
         });
@@ -218,8 +247,15 @@ public sealed partial class NativeSharingWindow : ChromeWindow
     {
         Reset(version.Title); _body.Children.Add(Label(string.Format(S("version"), version.VersionNumber), 17));
         var codeLabel = Label(version.FormattedCode, 36); codeLabel.Foreground = B("PracticeActionBg"); _body.Children.Add(codeLabel); _body.Children.Add(Label(version.Visibility == "private" ? S("private") : S("public")));
-        _body.Children.Add(Label(version.Artist + (string.IsNullOrEmpty(version.TranscribedBy) ? "" : " · " + version.TranscribedBy)));
-        if (!string.IsNullOrEmpty(version.Description)) _body.Children.Add(Label(version.Description));
+        var heading = (TextBlock)_body.Children[0];
+        var credits = Label(version.Artist + (string.IsNullOrEmpty(version.TranscribedBy) ? "" : " · " + version.TranscribedBy)); _body.Children.Add(credits);
+        var description = Label(version.Description); _body.Children.Add(description);
+        var presentationHost = new StackPanel(); _body.Children.Add(presentationHost);
+        if (version.Presentation is { } presentation)
+        {
+            if (presentation.Difficulty is { } difficulty) presentationHost.Children.Add(Label(S("difficulty") + ": " + S("difficulty" + difficulty), 13));
+            if (presentation.Tags.Length > 0) presentationHost.Children.Add(Label(string.Join(" · ", presentation.Tags), 13));
+        }
         _body.Children.Add(new Expander { Header = S("identity"), Foreground = B("SubTextFg"), Content = Label(version.WorkId + "\n" + version.VersionId, 11), Margin = new Thickness(0, 8, 0, 8) });
         var copy = new WrapPanel(); _body.Children.Add(copy);
         ActionButton(S("copyCode"), () => Copy(version.FormattedCode), target: copy);
@@ -255,16 +291,25 @@ public sealed partial class NativeSharingWindow : ChromeWindow
             if (version.Visibility == "public" && version.Lifecycle == "published") ActionButton(S("latest"), async () =>
             { var work = await _client.GetWorkAsync(version.WorkId, _cancel.Token); await _client.SetLatestAsync(work, version.VersionId, Guid.NewGuid(), _cancel.Token); if (!_closed) ShowResult(await _client.VersionAsync(version.VersionId, _cancel.Token)); });
         }
+        _ = LoadResultMetadata(version, _body, heading, credits, description, presentationHost);
     }
     Task Copy(string text) { Clipboard.SetText(text); _status.Text = S("copied"); return Task.CompletedTask; }
     async Task ShowMyWorks()
     {
         if (!Login()) return; var works = await _client.MyWorksAsync(_cancel.Token); if (_closed) return; Reset(S("myWorks"));
+        bool metadata = false;
+        try { metadata = await _client.MetadataSupportedAsync(_cancel.Token); }
+        catch (Exception e) when (e is SharingException or HttpRequestException or OperationCanceledException or System.Text.Json.JsonException) { _status.Text = S("metadataLoadFailed"); }
+        if (_closed) return;
         if (works.Count == 0) _body.Children.Add(Label(S("empty")));
         foreach (var work in works)
         {
             _body.Children.Add(Label(work.Title ?? work.WorkId.ToString(), 17));
             ActionButton(S("history"), () => ShowHistory(work.WorkId));
+            if (metadata)
+            {
+                var edit = Neutral(S("metadataEdit")); edit.Click += async (_, _) => { EditPublishedMetadata(new("work", work.WorkId.ToString()), () => { }); await Run(ShowMyWorks); }; _body.Children.Add(edit);
+            }
             if (_project != null) ActionButton(S("confirm"), async () => { var fresh = await _client.GetWorkAsync(work.WorkId, _cancel.Token); if (!_closed) ShowPublish(fresh with { Title = work.Title }); });
         }
     }

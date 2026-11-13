@@ -31,7 +31,11 @@ static partial class Program
         try
         {
             Output = Path.GetFullPath(args[0]);
-            if (args.Contains("--import-ui")) { ResultFile = "import-unified/ui-results.json"; ImportReview(); }
+            if (args.Contains("--metadata-edit-ui")) { ResultFile = "metadata-edit-ui-results.json"; MetadataEditingReview(); }
+            else if (args.Contains("--metadata-edit-network")) { ResultFile = "metadata-edit-network-results.json"; MetadataEditingNetwork().GetAwaiter().GetResult(); }
+            else if (args.Contains("--metadata-network")) { ResultFile = "metadata-network-results.json"; MetadataNetwork().GetAwaiter().GetResult(); }
+            else if (args.Contains("--metadata-ui")) { ResultFile = "metadata-ui-results.json"; MetadataReview(); }
+            else if (args.Contains("--import-ui")) { ResultFile = "import-unified/ui-results.json"; ImportReview(); }
             else if (args.Contains("--import-network")) { ResultFile = "import-unified/network-results.json"; ImportNetworkReview(); }
             else if (args.Contains("--share-menu")) { ResultFile = "unified-sharing/menu-results.json"; SharingMenuReview(); }
             else if (args.Contains("--unified-share")) { ResultFile = "unified-sharing/ui-results.json"; UnifiedSharingReview(); }
