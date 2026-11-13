@@ -37,6 +37,8 @@ public sealed record SharingVersion
     public string Artist { get; init; } = "";
     public string TranscribedBy { get; init; } = "";
     public string Description { get; init; } = "";
+    public SharingPresentation? Presentation { get; init; }
+    public SharePerformanceInfo? PerformanceInfo { get; init; }
     public string Visibility { get; init; } = "";
     public string Lifecycle { get; init; } = "";
     public string WorkState { get; init; } = "active";
@@ -88,6 +90,8 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
         return code;
     }
     static bool Hash(string? value) => value != null && value.Length == 64 && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    public static bool SamePresentation(SharingPresentation? a, SharingPresentation? b)
+        => a?.Difficulty == b?.Difficulty && a?.CoverSha256 == b?.CoverSha256 && (a?.Tags ?? []).SequenceEqual(b?.Tags ?? [], StringComparer.Ordinal);
     static void Unique(JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Object)
@@ -122,8 +126,19 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
             || m.GetProperty("versionNumber").GetInt32() != v.VersionNumber || m.GetProperty("title").GetString() != v.Title
             || m.GetProperty("artist").GetString() != v.Artist || m.GetProperty("transcribedBy").GetString() != v.TranscribedBy
             || m.GetProperty("description").GetString() != v.Description) throw new SharingException("INTEGRITY_MISMATCH");
+        if (v.Presentation != null)
+        {
+            try { v.Presentation.Validate(); } catch (InvalidDataException) { throw new SharingException("INVALID_RESPONSE"); }
+            if (!m.TryGetProperty("presentation", out var presentation) || JsonSerializer.Serialize(presentation.Deserialize<SharingPresentation>(Json), Json) != JsonSerializer.Serialize(v.Presentation, Json)) throw new SharingException("INTEGRITY_MISMATCH");
+        }
+        else if (m.TryGetProperty("presentation", out _)) throw new SharingException("INTEGRITY_MISMATCH");
+        if (v.PerformanceInfo != null && (!m.TryGetProperty("performanceInfo", out var info) || info.GetRawText() != JsonSerializer.SerializeToElement(v.PerformanceInfo, Json).GetRawText()))
+        {
+            if (!m.TryGetProperty("performanceInfo", out info) || JsonSerializer.Serialize(info.Deserialize<SharePerformanceInfo>(Json), Json) != JsonSerializer.Serialize(v.PerformanceInfo, Json)) throw new SharingException("INTEGRITY_MISMATCH");
+        }
+        if (v.PerformanceInfo == null && m.TryGetProperty("performanceInfo", out _)) throw new SharingException("INTEGRITY_MISMATCH");
     }
-    async Task<byte[]> Send(string endpoint, object? body, Guid? key, bool auth, int limit, CancellationToken cancellation, HttpContent? supplied = null)
+    async Task<byte[]> Send(string endpoint, object? body, Guid? key, bool auth, int limit, CancellationToken cancellation, HttpContent? supplied = null, bool image = false)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(90));
         string? token = credential(); if (auth && token == null) throw new SharingException("AUTH_REQUIRED", 401);
@@ -145,13 +160,52 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
             if ((int)response.StatusCode == 401) authenticationFailed?.Invoke();
             throw new SharingException(code, (int)response.StatusCode);
         }
-        if (limit != SmapFile.MaxArchiveBytes && response.Content.Headers.ContentType?.MediaType != "application/json") throw new SharingException("INVALID_RESPONSE");
+        if (image ? response.Content.Headers.ContentType?.MediaType is not ("image/jpeg" or "image/png")
+            : limit != SmapFile.MaxArchiveBytes && response.Content.Headers.ContentType?.MediaType != "application/json") throw new SharingException("INVALID_RESPONSE");
         return bytes;
     }
     static T Decode<T>(byte[] bytes)
     {
         try { using var doc = JsonDocument.Parse(bytes); Unique(doc.RootElement); return doc.Deserialize<T>(Json) ?? throw new SharingException("INVALID_RESPONSE"); }
         catch (JsonException) { throw new SharingException("INVALID_RESPONSE"); }
+    }
+    Task<bool>? _metadataSupported;
+    public async Task<bool> MetadataSupportedAsync(CancellationToken ct = default)
+    {
+        try { return await (_metadataSupported ??= ReadMetadataSupport(ct)); }
+        catch { _metadataSupported = null; throw; }
+    }
+    async Task<bool> ReadMetadataSupport(CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await Send("capabilities.php", null, null, false, 65536, ct)); Unique(doc.RootElement);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new SharingException("INVALID_RESPONSE");
+        return doc.RootElement.TryGetProperty("metadataEditingVersion", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) && n == 1;
+    }
+    static string MetadataQuery(SongMetadataTarget target) => "kind=" + Uri.EscapeDataString(target.Kind) + "&id=" + Uri.EscapeDataString(target.Id);
+    public async Task<SongMetadataProfile> MetadataAsync(SongMetadataTarget target, CancellationToken ct = default)
+    {
+        var value = Decode<SongMetadataProfile>(await Send("metadata.php?" + MetadataQuery(target), null, null, false, 65536, ct)); value.Validate(target); return value;
+    }
+    public async Task<SongMetadataProfile> SaveMetadataAsync(SongMetadataProfile profile, SongMetadataValues values, string coverAction, string? cover, Guid key, CancellationToken ct = default)
+    {
+        values.Validate(true, profile.DescriptionLimit);
+        if (coverAction is not ("keep" or "remove" or "replace") || coverAction == "replace" && cover == null) throw new SharingException("INVALID_COVER");
+        var body = new Dictionary<string, object?> { ["kind"] = profile.Kind, ["id"] = profile.Id, ["revision"] = profile.Revision, ["metadata"] = values.Editable(), ["coverAction"] = coverAction };
+        if (coverAction == "replace") { SharingPresentation.CoverHash(cover); body["cover"] = cover; }
+        var response = Decode<SongMetadataProfile>(await Send("metadata.php", body, key, true, 65536, ct)); response.Validate(new(profile.Kind, profile.Id)); return response;
+    }
+    public async Task<byte[]?> MetadataCoverAsync(SongMetadataProfile profile, CancellationToken ct = default)
+    {
+        if (profile.Metadata.CoverMode == "none" || profile.CoverUrl.Length == 0) return null;
+        try { return await Send("metadata_cover.php?" + MetadataQuery(new(profile.Kind, profile.Id)) + "&revision=" + profile.Revision, null, null, false, 131072, ct, image: true); }
+        catch (SharingException e) when (e.Status == 404) { return null; }
+    }
+    public async Task<SongMetadataHistory> MetadataHistoryAsync(SongMetadataTarget target, int? before = null, CancellationToken ct = default)
+    {
+        var history = Decode<SongMetadataHistory>(await Send("metadata.php?" + MetadataQuery(target) + "&history=1" + (before == null ? "" : "&before=" + before), null, null, true, 512 * 1024, ct));
+        if (history.Items == null || history.Items.Count > 20 || history.NextBefore is < 1 || history.Items.Any(r => r.Revision < 1 || r.CreatedAt is < 0 or > 253402300799 || r.ActorId < 1 || r.ActorName == null || r.ActorName.Length > 200 || r.Authority is not ("publisher" or "manager") || r.Before == null || r.After == null)) throw new SharingException("INVALID_RESPONSE");
+        foreach (var row in history.Items) { row.Before.Validate(false, target.Kind == "legacy" ? 500 : 2000); row.After.Validate(false, target.Kind == "legacy" ? 500 : 2000); }
+        return history;
     }
     public async Task<SharingWork> CreateWorkAsync(Guid key, CancellationToken ct = default)
         => Decode<SharingWork>(await Send("works.php", new { action = "create" }, key, true, 65536, ct));
@@ -197,7 +251,7 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
         return doc.RootElement.GetProperty("items").Deserialize<List<SharingSourceInfo>>(Json) ?? [];
     }
     public async Task<SharingVersion> PublishAsync(SharingWork work, byte[] payload, string title, string artist, string transcriber, string description,
-        string visibility, IReadOnlyList<SharingSource> sources, Guid key, CancellationToken ct = default)
+        string visibility, IReadOnlyList<SharingSource> sources, Guid key, CancellationToken ct = default, SharingPresentation? presentation = null)
     {
         var prepared = await Task.Run(() =>
         {
@@ -206,12 +260,24 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
             return (Project: p, CanonicalVersion: version, PerformanceHash: PerformanceIdentity.ForProject(p), PayloadHash: Convert.ToHexStringLower(SHA256.HashData(payload)));
         }, ct);
         var project = prepared.Project;
+        if (presentation != null)
+        {
+            presentation.Validate();
+            if (presentation.CoverSha256 != SharingPresentation.CoverHash(project.Metadata.Cover)) throw new SharingException("INTEGRITY_MISMATCH");
+        }
         var manifest = new { schemaVersion = 1, workId = work.WorkId, revision = work.Revision, baseVersionId = work.LatestVersionId,
             title, artist, transcribedBy = transcriber, description, visibility, projectId = project.ProjectId, payloadSize = payload.Length,
             payloadSha256 = prepared.PayloadHash, performanceHash = prepared.PerformanceHash, canonicalVersion = prepared.CanonicalVersion, sources };
-        using var multipart = new MultipartFormDataContent(); multipart.Add(new StringContent(JsonSerializer.Serialize(manifest, Json), Encoding.UTF8), "manifest");
+        var request = JsonSerializer.SerializeToNode(manifest, Json)!.AsObject();
+        if (presentation != null) request["presentation"] = JsonSerializer.SerializeToNode(presentation, Json);
+        using var multipart = new MultipartFormDataContent(); multipart.Add(new StringContent(request.ToJsonString(Json), Encoding.UTF8), "manifest");
         multipart.Add(new ByteArrayContent(payload), "project", "project.smap");
         var v = Decode<SharingVersion>(await Send("publish.php", null, key, true, 256 * 1024, ct, multipart)); ValidateVersion(v); return v;
+    }
+    public async Task RequirePresentationAsync(CancellationToken ct = default)
+    {
+        using var doc = JsonDocument.Parse(await Send("capabilities.php", null, null, false, 65536, ct)); Unique(doc.RootElement);
+        if (!doc.RootElement.TryGetProperty("presentationVersion", out var version) || !version.TryGetInt32(out int number) || number != 1) throw new SharingException("PRESENTATION_UNAVAILABLE");
     }
     public async Task<SharingDownload> DownloadAsync(SharingVersion version, CancellationToken ct = default)
     {
@@ -222,6 +288,7 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
         {
             var p = SmapFile.FromBytes(payload);
             if (p.ProjectId != version.ProjectId || PerformanceIdentity.ForProject(p) != version.PerformanceHash) throw new SharingException("INTEGRITY_MISMATCH");
+            if (version.Presentation != null && SharingPresentation.CoverHash(p.Metadata.Cover) != version.Presentation.CoverSha256) throw new SharingException("INTEGRITY_MISMATCH");
             return p;
         }, ct);
         return new(version, payload, project) { Origin = transport.Origin };

@@ -5,10 +5,10 @@ using System.Text.Json;
 
 namespace SMAP_WPF;
 
-public sealed record NativeCloudLink(string Origin, Guid WorkId, Guid VersionId, string PayloadSha256, string LocalFile);
+public sealed record NativeCloudLink(string Origin, Guid WorkId, Guid VersionId, string PayloadSha256, string LocalFile, Core.SharingPresentation? Presentation = null);
 public sealed record PendingPublication(Guid CreateKey, Guid PublishKey, int ActorUserId, SharingWork? Work,
     string Title, string Artist, string TranscribedBy, string Description, string Visibility,
-    List<SharingSource> Sources, string PayloadSha256);
+    List<SharingSource> Sources, string PayloadSha256, Core.SharingPresentation? Presentation = null);
 
 // Cloud relations stay outside project.json and SVG/PNG recovery envelopes.
 public sealed class NativeSharingStore(string directory)
@@ -17,6 +17,15 @@ public sealed class NativeSharingStore(string directory)
     string PendingPath(int actor) => Path.Combine(directory, $"pending-{actor}.json");
     string PayloadPath(Guid id) => Path.Combine(directory, "pending-" + id.ToString("N") + ".smap");
     string LinkPath(string file) => Path.Combine(directory, "link-" + Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(file).ToUpperInvariant()))) + ".json");
+    public Core.SharingPresentation? PresentationFor(string file, Uri origin)
+    {
+        // Display hints may survive an edit; this does not restore a trusted cloud link or ownership.
+        string path = LinkPath(file);
+        if (!File.Exists(path) || new FileInfo(path).Length > 16384) return null;
+        var link = JsonSerializer.Deserialize<NativeCloudLink>(File.ReadAllBytes(path), NativeSharingClient.Json);
+        if (link == null || link.Origin != origin.AbsoluteUri || !link.LocalFile.Equals(Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase)) return null;
+        link.Presentation?.Validate(); return link.Presentation;
+    }
     public NativeCloudLink? Find(string file, Uri origin)
     {
         string path = LinkPath(file); if (!File.Exists(path) || new FileInfo(path).Length > 16384 || !File.Exists(file) || new FileInfo(file).Length > Core.SmapFile.MaxArchiveBytes) return null;
@@ -44,12 +53,12 @@ public sealed class NativeSharingStore(string directory)
         return draft;
     }
     public PendingPublication Stage(int actor, SharingWork? work, byte[] payload, string title, string artist, string transcriber,
-        string description, string visibility, List<SharingSource> sources)
+        string description, string visibility, List<SharingSource> sources, Core.SharingPresentation? presentation = null)
     {
         if (actor <= 0) throw new SharingException("AUTH_REQUIRED", 401);
         if (Pending(actor) != null) throw new SharingException("PENDING_PUBLICATION");
         var draft = new PendingPublication(Guid.NewGuid(), Guid.NewGuid(), actor, work, title, artist, transcriber, description,
-            visibility, sources, Convert.ToHexStringLower(SHA256.HashData(payload)));
+            visibility, sources, Convert.ToHexStringLower(SHA256.HashData(payload)), presentation);
         Atomic(PayloadPath(draft.CreateKey), payload); Save(draft); return draft;
     }
     public void Save(PendingPublication draft) => Atomic(PendingPath(draft.ActorUserId), JsonSerializer.SerializeToUtf8Bytes(draft, NativeSharingClient.Json));
@@ -69,6 +78,7 @@ public sealed class NativeSharingStore(string directory)
     }
     public async Task<SharingVersion> PublishAsync(NativeSharingClient client, PendingPublication draft, CancellationToken cancellation)
     {
+        if (draft.Presentation != null) await client.RequirePresentationAsync(cancellation);
         if (draft.Work == null)
         {
             var work = await client.CreateWorkAsync(draft.CreateKey, cancellation);
@@ -76,7 +86,7 @@ public sealed class NativeSharingStore(string directory)
         }
         byte[] payload = await Task.Run(() => Payload(draft), cancellation);
         var version = await client.PublishAsync(draft.Work, payload, draft.Title, draft.Artist, draft.TranscribedBy, draft.Description,
-            draft.Visibility, draft.Sources, draft.PublishKey, cancellation);
+            draft.Visibility, draft.Sources, draft.PublishKey, cancellation, draft.Presentation);
         Complete(draft); return version;
     }
     public string Import(SharingDownload download, string songsDirectory)
@@ -100,7 +110,7 @@ public sealed class NativeSharingStore(string directory)
             }
             finally { if (File.Exists(temp)) File.Delete(temp); }
         }
-        var link = new NativeCloudLink(download.Origin.AbsoluteUri, download.Version.WorkId, download.Version.VersionId, download.Version.PayloadSha256, Path.GetFullPath(path));
+        var link = new NativeCloudLink(download.Origin.AbsoluteUri, download.Version.WorkId, download.Version.VersionId, download.Version.PayloadSha256, Path.GetFullPath(path), download.Version.Presentation);
         Atomic(LinkPath(path), JsonSerializer.SerializeToUtf8Bytes(link, NativeSharingClient.Json)); return path;
     }
 }
