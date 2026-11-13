@@ -114,6 +114,7 @@ public partial class MainWindow : Window
         UpdateLoginButton();
         SetLibTab(true);
         RefreshLibrary();
+        StartLibraryWatcher();
         PlaylistView.ItemsSource = _playlist;
         LoadPlaylist();
         RestoreNowPlaying();
@@ -694,7 +695,13 @@ public partial class MainWindow : Window
 
     void RefreshLibrary()
     {
-        _all = SongLibrary.Scan();
+        ++_libraryRefreshVersion;
+        ApplyLibrary(SongLibrary.Scan());
+    }
+
+    void ApplyLibrary(List<SongInfo> songs)
+    {
+        _all = songs;
         foreach (var s in _all) s.Fav = IsCollected(s);
         RebuildFilterOptions();
         ApplyFilter();
@@ -1837,6 +1844,7 @@ public partial class MainWindow : Window
         FolderList.SelectedItem = null;
         UpdateLibHeader();
         ApplyFilter();
+        _ = RefreshLibraryFromDisk();
     }
     void ShowCloud_Click(object sender, RoutedEventArgs e)
     {
@@ -3059,6 +3067,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopLibraryWatcher();
         FinishWorkspaceTransition(_workspaceTransitionGen);
         StopGamePractice();
         CloseInputRouting();

@@ -31,7 +31,8 @@ static partial class Program
         try
         {
             Output = Path.GetFullPath(args[0]);
-            if (args.Contains("--metadata-edit-ui")) { ResultFile = "metadata-edit-ui-results.json"; MetadataEditingReview(); }
+            if (args.Contains("--library-refresh")) { ResultFile = "library-refresh-results.json"; LibraryRefreshReview(); }
+            else if (args.Contains("--metadata-edit-ui")) { ResultFile = "metadata-edit-ui-results.json"; MetadataEditingReview(); }
             else if (args.Contains("--metadata-edit-network")) { ResultFile = "metadata-edit-network-results.json"; MetadataEditingNetwork().GetAwaiter().GetResult(); }
             else if (args.Contains("--metadata-network")) { ResultFile = "metadata-network-results.json"; MetadataNetwork().GetAwaiter().GetResult(); }
             else if (args.Contains("--metadata-ui")) { ResultFile = "metadata-ui-results.json"; MetadataReview(); }
