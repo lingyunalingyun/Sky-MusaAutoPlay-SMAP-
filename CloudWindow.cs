@@ -24,6 +24,7 @@ public class CloudWindow : Window
 
     int _sortMode = 1;          // 0=A-Z 1=上传时间 2=点赞 3=下载量
     int _page = 1, _pages = 1;
+    int _loadGeneration;
 
     Brush B(string k) => (Brush)Application.Current.Resources[k];
 
@@ -145,6 +146,17 @@ public class CloudWindow : Window
             _download.Foreground = sel ? Brushes.White : B("SubTextFg");
         };
         _list.MouseDoubleClick += (_, __) => DoDownload();
+        _list.PreviewMouseRightButtonUp += (_, e) =>
+        {
+            var row = ItemsControl.ContainerFromElement(_list, e.OriginalSource as DependencyObject) as ListViewItem;
+            if (row?.DataContext is not CloudSheet sheet || !CloudApi.LoggedIn) return;
+            var menu = new ContextMenu();
+            foreach (var type in new[] { typeof(ContextMenu), typeof(MenuItem) })
+                if (Owner.TryFindResource(type) is Style style) menu.Resources[type] = style;
+            var edit = new MenuItem { Header = Lang.Sharing("metadataEdit") }; menu.Items.Add(edit);
+            edit.Click += (_, _) => { var window = new NativeSharingWindow(this, metadataTarget: sheet.MetadataTarget); window.ShowDialog(); if (window.MetadataSaved) Load(); };
+            menu.PlacementTarget = row; menu.IsOpen = true; e.Handled = true;
+        };
 
         border.Child = _list;
         return border;
@@ -204,10 +216,12 @@ public class CloudWindow : Window
 
     async void Load()
     {
+        int generation = ++_loadGeneration;
         _totalLbl.Text = "/… 加载中";
         string sort = _sortMode switch { 2 => "hot", 3 => "downloads", _ => "newest" };  // A-Z/上传时间 都取 newest
         int diff = _diff.SelectedIndex;   // 0=全部, 1..5
         var r = await CloudApi.ListAsync(_search.Text, sort, diff, _page, PerPage);
+        if (generation != _loadGeneration) return;
         if (!r.Ok) { _totalLbl.Text = r.Err ?? "加载失败"; return; }
 
         var items = r.Items;
@@ -215,7 +229,7 @@ public class CloudWindow : Window
         _pages = r.Pages;
         _list.ItemsSource = items;
         _pageBox.Text = _page.ToString();
-        _totalLbl.Text = $"/{_pages}页";
+        _totalLbl.Text = $"/{_pages}页" + (r.IncludesNative ? "" : " · " + Lang.Sharing("catalogLegacyOnly"));
         _prev.IsEnabled = _page > 1;
         _next.IsEnabled = _page < _pages;
     }

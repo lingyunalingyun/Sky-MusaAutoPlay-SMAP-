@@ -41,7 +41,8 @@ public partial class MainWindow : Window
 
     // 云端曲库(内联, 无限滚动)
     readonly System.Collections.ObjectModel.ObservableCollection<CloudSheet> _cloud = new();
-    bool _cloudMode, _cloudLoading;
+    bool _cloudMode, _cloudLoading, _cloudReloadPending;
+    Func<string, string, int, int, int, Task<CloudApi.ListResult>> _cloudQuery = CloudApi.ListAsync;
     int _cloudPage = 1, _cloudPages = 1;
     static string PlaylistFile => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "playlist.txt");
@@ -1876,20 +1877,30 @@ public partial class MainWindow : Window
     // append=false: 换页/换筛选, 清空重载; append=true: 滚动到底加载下一页追加
     async System.Threading.Tasks.Task LoadCloud(bool append)
     {
-        if (_cloudLoading) return;
+        if (_cloudLoading) { if (!append) _cloudReloadPending = true; return; }
         _cloudLoading = true;
+        _cloudReloadPending = false;
+        int page = append ? _cloudPage + 1 : 1;
         try
         {
             string sort = CloudSortCombo.SelectedIndex switch { 1 => "hot", 2 => "downloads", _ => "newest" };
             int diff = CloudDiffCombo.SelectedIndex;   // 0=全部 1..5=难度
-            var r = await CloudApi.ListAsync(SearchBox.Text, sort, diff, _cloudPage, 20);
+            var r = await _cloudQuery(SearchBox.Text, sort, diff, page, 20);
+            if (_cloudReloadPending || !_cloudMode || _libraryWatchClosed) return;
             if (!r.Ok) { ShowToast(r.Err ?? "云端加载失败"); return; }
             if (!append) _cloud.Clear();
-            foreach (var it in r.Items) _cloud.Add(it);
+            foreach (var it in r.Items)
+                if (!_cloud.Any(s => s.CatalogKey == it.CatalogKey)) _cloud.Add(it);
+            _cloudPage = page;
             _cloudPages = r.Pages;
+            if (!append && !r.IncludesNative) ShowToast(Lang.Sharing("catalogLegacyOnly"));
             if (!append && _cloud.Count == 0) ShowToast(Lang.S("t.cloudEmpty"));
         }
-        finally { _cloudLoading = false; }
+        finally
+        {
+            _cloudLoading = false;
+            if (_cloudReloadPending && _cloudMode && !_libraryWatchClosed) { _cloudReloadPending = false; _ = LoadCloud(false); }
+        }
     }
 
     // 无限滚动: 接近底部 → 加载下一页
@@ -1898,7 +1909,6 @@ public partial class MainWindow : Window
         if (!_cloudMode || _cloudLoading || _cloudPage >= _cloudPages) return;
         if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 240 && e.ExtentHeight > 0)
         {
-            _cloudPage++;
             _ = LoadCloud(true);
         }
     }
@@ -1908,7 +1918,7 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not CloudSheet sheet) return;
         ShowToast(string.Format(Lang.S("t.downloading"), sheet.Title));
         var path = await CloudApi.DownloadAsync(sheet, SongLibrary.SongsDir, msg => Dispatcher.Invoke(() => ShowToast(msg)));
-        if (path != null) { RefreshLibrary(); ShowToast(string.Format(Lang.S("t.downloaded"), sheet.Title)); }
+        if (path != null) { if (sheet.StatisticsAvailable) sheet.Downloads++; RefreshLibrary(); ShowToast(string.Format(Lang.S("t.downloaded"), sheet.Title)); }
     }
 
     // ===== 设置界面(内联) =====

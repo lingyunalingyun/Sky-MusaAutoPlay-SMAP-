@@ -31,11 +31,18 @@ public class CloudSheet : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(Cover)));
     }
     public int Id { get; set; }
+    public Guid? WorkId { get; set; }
+    public Guid? VersionId { get; set; }
+    public bool IsNative => WorkId.HasValue && VersionId.HasValue;
+    public string CatalogKey => IsNative ? "work:" + WorkId : "legacy:" + Id;
+    public SongMetadataTarget MetadataTarget => IsNative ? new("work", WorkId!.Value.ToString()) : new("legacy", Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
     public int Bpm { get; set; }
     public int Difficulty { get; set; }
     public int NoteCount { get; set; }
-    public int Downloads { get; set; }
-    public int Likes { get; set; }
+    int _downloads, _likes;
+    public int Downloads { get => _downloads; set { _downloads = value; PropertyChanged?.Invoke(this, new(nameof(Downloads))); PropertyChanged?.Invoke(this, new(nameof(DownloadsText))); } }
+    public int Likes { get => _likes; set { _likes = value; PropertyChanged?.Invoke(this, new(nameof(Likes))); PropertyChanged?.Invoke(this, new(nameof(DownloadsText))); } }
+    public bool StatisticsAvailable { get; set; } = true;
     public string Title { get; set; } = "";
     public string Artist { get; set; } = "";
     public string TranscribedBy { get; set; } = "";
@@ -51,7 +58,7 @@ public class CloudSheet : INotifyPropertyChanged
     public string Stars => new string('★', Math.Clamp(Difficulty, 0, 5));
     public string ArtistText => string.IsNullOrWhiteSpace(Artist) ? Lang.S("song.noartist") : Artist;
     public string TranscriberText => string.IsNullOrWhiteSpace(TranscribedBy) ? Lang.S("song.notrans") : TranscribedBy;
-    public string DownloadsText => $"↓{Downloads}";
+    public string DownloadsText => StatisticsAvailable ? $"↓{Downloads}  ♥{Likes}" : "↓—  ♥—";
 }
 
 /// <summary>缪斯树屋在线曲库 API。私密会话经当前 Windows 用户保护后保存。</summary>
@@ -164,29 +171,50 @@ public static class CloudApi
         catch { return null; }
     }
 
-    public record ListResult(bool Ok, string? Err, int Total, int Pages, List<CloudSheet> Items);
+    public record ListResult(bool Ok, string? Err, int Total, int Pages, List<CloudSheet> Items, bool IncludesNative = false);
 
     public static async Task<ListResult> ListAsync(string q, string sort, int difficulty, int page, int perPage)
+        => await ListAsync(q, sort, difficulty, page, perPage, Transport);
+
+    internal static async Task<ListResult> ListAsync(string q, string sort, int difficulty, int page, int perPage, CloudTransport transport)
     {
         try
         {
-            var url = $"/api/sheets/list.php?per_page={perPage}&page={page}&sort={Uri.EscapeDataString(sort)}";
+            var url = $"/api/sheets/list.php?include_native=1&per_page={perPage}&page={page}&sort={Uri.EscapeDataString(sort)}";
             if (!string.IsNullOrWhiteSpace(q)) url += "&q=" + Uri.EscapeDataString(q.Trim());
             if (difficulty is >= 1 and <= 5) url += "&difficulty=" + difficulty;
 
-            var text = Encoding.UTF8.GetString(await Transport.GetPublicBytesAsync(url));
+            var text = Encoding.UTF8.GetString(await transport.GetPublicBytesAsync(url));
+            return ParseCatalog(text, transport);
+        }
+        catch { return new(false, Lang.S("cloud.connectionFailed"), 0, 0, new()); }
+    }
 
+    internal static ListResult ParseCatalog(string text, CloudTransport transport)
+    {
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
             if (root.GetProperty("status").GetString() != "ok")
                 return new(false, root.TryGetProperty("msg", out var m) ? m.GetString() : "服务端错误", 0, 0, new());
 
+            bool includesNative = GetInt(root, "catalog_version") == 1;
             var items = new List<CloudSheet>();
             if (root.TryGetProperty("items", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 foreach (var it in arr.EnumerateArray())
+                {
+                    bool native = GetStr(it, "kind") == "work";
+                    Guid? work = null, version = null;
+                    if (native)
+                    {
+                        if (!includesNative || !Guid.TryParse(GetStr(it, "work_id"), out var wid) || wid == Guid.Empty || !Guid.TryParse(GetStr(it, "version_id"), out var vid) || vid == Guid.Empty) throw new InvalidDataException("Invalid native catalog identity.");
+                        work = wid; version = vid;
+                    }
+                    else if (GetInt(it, "id") <= 0 || GetStr(it, "kind") is not ("" or "legacy")) throw new InvalidDataException("Invalid legacy catalog identity.");
                     items.Add(new CloudSheet
                     {
                         Id = GetInt(it, "id"),
+                        WorkId = work, VersionId = version,
+                        StatisticsAvailable = !native || it.TryGetProperty("statistics_available", out var stats) && stats.ValueKind == JsonValueKind.True,
                         Title = GetStr(it, "title"),
                         Artist = GetStr(it, "artist"),
                         TranscribedBy = GetStr(it, "transcribed_by"),
@@ -200,20 +228,30 @@ public static class CloudApi
                         Uploader = GetStr(it, "uploader"),
                         Description = GetStr(it, "description"),
                         DownloadUrl = GetStr(it, "download_url"),
-                        CoverUrl = Transport.PublicUri(GetStr(it, "cover_url"))?.AbsoluteUri ?? "",
+                        CoverUrl = transport.PublicUri(GetStr(it, "cover_url"))?.AbsoluteUri ?? "",
                         UploadTime = GetStr(it, "created_at")
                     });
-            return new(true, null, GetInt(root, "total"), Math.Max(1, GetInt(root, "pages")), items);
-        }
-        catch { return new(false, Lang.S("cloud.connectionFailed"), 0, 0, new()); }
+                }
+            return new(true, null, GetInt(root, "total"), Math.Max(1, GetInt(root, "pages")), items, includesNative);
     }
 
     /// <summary>下载曲谱到 songsDir; 成功返回落盘路径, 失败返回 null(err 输出错误)。</summary>
-    public static async Task<string?> DownloadAsync(CloudSheet sheet, string songsDir, Action<string> onErr)
+    public static Task<string?> DownloadAsync(CloudSheet sheet, string songsDir, Action<string> onErr)
+        => DownloadAsync(sheet, songsDir, onErr, Transport, new NativeSharingStore(NativeSharingStore.DefaultDirectory));
+
+    internal static async Task<string?> DownloadAsync(CloudSheet sheet, string songsDir, Action<string> onErr, CloudTransport transport, NativeSharingStore store)
     {
         try
         {
-            var bytes = await Transport.GetPublicBytesAsync(sheet.DownloadUrl);
+            if (sheet.IsNative)
+            {
+                var client = new NativeSharingClient(transport, () => null);
+                var version = await client.VersionAsync(sheet.VersionId!.Value);
+                if (version.WorkId != sheet.WorkId) throw new InvalidDataException("Catalog work/version mismatch.");
+                var download = await client.DownloadAsync(version);
+                return store.Import(download, songsDir);
+            }
+            var bytes = await transport.GetPublicBytesAsync(sheet.DownloadUrl);
             using (var stream = new MemoryStream(bytes))
             using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             using (var doc = JsonDocument.Parse(await reader.ReadToEndAsync()))
@@ -228,8 +266,18 @@ public static class CloudApi
             var safe = string.Concat(sheet.Title.Split(Path.GetInvalidFileNameChars())).Trim();
             if (safe.Length == 0) safe = "sheet_" + sheet.Id;
             var target = Path.Combine(songsDir, safe + ".txt");
-            if (File.Exists(target)) target = Path.Combine(songsDir, $"{safe}_{sheet.Id}.txt");
-            await File.WriteAllBytesAsync(target, bytes);
+            for (int suffix = 1; File.Exists(target); suffix++)
+            {
+                if ((await File.ReadAllBytesAsync(target)).SequenceEqual(bytes)) return target;
+                target = Path.Combine(songsDir, $"{safe}_{sheet.Id}_{suffix}.txt");
+            }
+            var temporary = Path.Combine(songsDir, ".download-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { await output.WriteAsync(bytes); output.Flush(true); }
+                File.Move(temporary, target, false);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
             return target;
         }
         catch { onErr(Lang.S("cloud.connectionFailed")); return null; }

@@ -863,7 +863,7 @@
                         <ListView x:Name="CloudList" Background="Transparent" Foreground="{DynamicResource TextFg}" BorderThickness="0" Visibility="Collapsed"
                                   Margin="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   ItemContainerStyle="{StaticResource PlaylistItemStyle}" ItemTemplate="{StaticResource CloudItemTpl}"
-                                  VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True"/>
+                                  VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.Enabled="True" PreviewMouseRightButtonUp="CloudMetadataMenu"/>
                     </Grid>
                 </DockPanel>
 

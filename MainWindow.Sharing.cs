@@ -22,4 +22,16 @@ public partial class MainWindow
     {
         var share = new MenuItem { Header = Lang.Sharing("publish") }; share.Click += async (_, _) => await ShareNativeSong(song); menu.Items.Add(share);
     }
+    void CloudMetadataMenu(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var item = ItemsControl.ContainerFromElement(CloudList, e.OriginalSource as DependencyObject) as ListViewItem;
+        if (item?.DataContext is not CloudSheet sheet || !CloudApi.LoggedIn) return;
+        var menu = new ContextMenu(); var edit = new MenuItem { Header = Lang.Sharing("metadataEdit") }; menu.Items.Add(edit);
+        edit.Click += async (_, _) =>
+        {
+            var window = new NativeSharingWindow(this, metadataTarget: sheet.MetadataTarget);
+            window.ShowDialog(); if (window.MetadataSaved) await LoadCloud(false); UpdateLoginButton();
+        };
+        OpenRowMenu(menu, item); e.Handled = true;
+    }
 }
