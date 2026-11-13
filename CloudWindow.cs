@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System;
 using System.Linq;
 using System.Windows;
@@ -251,10 +252,10 @@ public class CloudWindow : Window
         var st = new Style(typeof(GridViewColumnHeader));
         st.Setters.Add(new Setter(FrameworkElement.HeightProperty, 32.0));
         st.Setters.Add(new Setter(Control.TemplateProperty, (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-@"<ControlTemplate TargetType='GridViewColumnHeader' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
-  <Border x:Name='bd' Background='{DynamicResource PanelBg}' BorderBrush='{DynamicResource ListBorder}' BorderThickness='0,0,1,0'>
+@"<ControlTemplate TargetType='GridViewColumnHeader' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <g2:G2Border x:Name='bd' Background='{DynamicResource PanelBg}' BorderBrush='{DynamicResource ListBorder}' BorderThickness='0,0,1,0'>
     <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextElement.Foreground='{DynamicResource TextFg}'/>
-  </Border>
+  </g2:G2Border>
   <ControlTemplate.Triggers>
     <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Background' Value='#3a3a46'/></Trigger>
   </ControlTemplate.Triggers>
@@ -291,35 +292,35 @@ public class CloudWindow : Window
     void StyleCombo(ComboBox cb)
     {
         cb.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-@"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+@"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Grid>
     <ToggleButton Focusable='False' ClickMode='Press' Background='{DynamicResource ComboBg}' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
       <ToggleButton.Template>
         <ControlTemplate TargetType='ToggleButton'>
-          <Border Background='{TemplateBinding Background}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
+          <g2:G2Border Background='{TemplateBinding Background}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
             <Grid TextElement.Foreground='{DynamicResource TextFg}'>
               <ContentPresenter Margin='10,0,24,0' HorizontalAlignment='Left' VerticalAlignment='Center' Content='{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}'/>
               <Path Data='M0,0 L4,4 L8,0 Z' Fill='#999' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0'/>
             </Grid>
-          </Border>
+          </g2:G2Border>
         </ControlTemplate>
       </ToggleButton.Template>
     </ToggleButton>
     <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'>
-      <Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
+      <g2:G2Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
         <StackPanel IsItemsHost='True' Margin='2'/>
-      </Border>
+      </g2:G2Border>
     </Popup>
   </Grid>
 </ControlTemplate>");
         cb.ItemContainerStyle = (Style)System.Windows.Markup.XamlReader.Parse(
-@"<Style TargetType='ComboBoxItem' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+@"<Style TargetType='ComboBoxItem' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Setter Property='Foreground' Value='{DynamicResource TextFg}'/>
   <Setter Property='Padding' Value='10,6'/>
   <Setter Property='Template'>
     <Setter.Value>
       <ControlTemplate TargetType='ComboBoxItem'>
-        <Border x:Name='bd' Background='Transparent' CornerRadius='5' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border>
+        <g2:G2Border x:Name='bd' Background='Transparent' CornerRadius='5' Padding='{TemplateBinding Padding}'><ContentPresenter/></g2:G2Border>
         <ControlTemplate.Triggers>
           <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='bd' Property='Background' Value='#2d5a88'/><Setter Property='Foreground' Value='White'/></Trigger>
         </ControlTemplate.Triggers>
@@ -329,12 +330,12 @@ public class CloudWindow : Window
 </Style>");
     }
 
-    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
+    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
     static ControlTemplate BtnTpl() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8' Padding='{{TemplateBinding Padding}}'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8' Padding='{{TemplateBinding Padding}}'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 }

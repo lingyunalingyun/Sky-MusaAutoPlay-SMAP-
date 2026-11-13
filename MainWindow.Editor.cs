@@ -129,7 +129,7 @@ public partial class MainWindow
     {
         bool on = _workspaceEditor != null;
         EditorBackButton.ApplyTemplate();
-        var shape = (Rectangle)EditorBackButton.Template.FindName("MorphShape", EditorBackButton);
+        var shape = (G2Rectangle)EditorBackButton.Template.FindName("MorphShape", EditorBackButton);
         var label = (TextBlock)EditorBackButton.Template.FindName("BackLabel", EditorBackButton);
         var text = new TextBlock { Text = Lang.S("practice.back"), FontFamily = EditorBackButton.FontFamily, FontSize = EditorBackButton.FontSize };
         text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -145,7 +145,7 @@ public partial class MainWindow
         EditorBackButton.IsHitTestVisible = EditorBackButton.Focusable = on;
         Number(EditorBackButton, WidthProperty, width); Number(EditorBackButton, HeightProperty, on ? 28 : 14);
         Number(EditorBackButton, Canvas.LeftProperty, on ? 6 : 14); Number(EditorBackButton, Canvas.TopProperty, on ? 6 : 13);
-        Number(shape, Rectangle.RadiusXProperty, on ? 6 : 7); Number(shape, Rectangle.RadiusYProperty, on ? 6 : 7);
+        Number(shape, G2Rectangle.RadiusXProperty, on ? 6 : 7); Number(shape, G2Rectangle.RadiusYProperty, on ? 6 : 7);
         Number(shape, Shape.StrokeThicknessProperty, on ? 1 : 0);
         Number(label, OpacityProperty, on ? 1 : 0); Number(EditorCaption, OpacityProperty, on ? 1 : 0); Number(HomeCaption, OpacityProperty, on ? 0 : 1);
         var fromMargin = CaptionTitles.Margin; var targetMargin = new Thickness(on ? width + 18 : 36, 0, 140, 0);

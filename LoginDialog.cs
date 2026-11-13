@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -75,9 +76,9 @@ public class LoginDialog : ChromeWindow
     }
 
     static ControlTemplate InputTemplate(string target) => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-        "<ControlTemplate TargetType='" + target + "' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>" +
-        "<Border x:Name='field' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='8' Padding='12,0'>" +
-        "<ScrollViewer x:Name='PART_ContentHost' VerticalAlignment='Center'/></Border>" +
+        "<ControlTemplate TargetType='" + target + "' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>" +
+        "<g2:G2Border x:Name='field' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='8' Padding='12,0'>" +
+        "<ScrollViewer x:Name='PART_ContentHost' VerticalAlignment='Center'/></g2:G2Border>" +
         "<ControlTemplate.Triggers><Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='field' Property='BorderBrush' Value='{DynamicResource Accent}'/></Trigger>" +
         "<Trigger Property='IsEnabled' Value='False'><Setter TargetName='field' Property='Opacity' Value='0.65'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
 }

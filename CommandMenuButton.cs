@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -135,7 +136,7 @@ public sealed class CommandMenuButton : Button
     }
     void PositionChrome()
     {
-        _chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),_chrome.CornerRadius.TopLeft,_chrome.CornerRadius.TopLeft);
+        _chrome.Clip=G2Geometry.Create(new Rect(_chrome.RenderSize),_chrome.CornerRadius);
         if(!IsOpen)return;
         Canvas.SetLeft(_chrome,_left?_closedWidth-_chrome.ActualWidth:0);
         Canvas.SetTop(_chrome,_up?_closedHeight-_chrome.ActualHeight:0);

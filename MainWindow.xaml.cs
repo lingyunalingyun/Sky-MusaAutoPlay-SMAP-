@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System;
 using System.Collections.Generic;
 using System.Linq;

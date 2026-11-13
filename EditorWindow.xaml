@@ -1,5 +1,5 @@
 <Window x:Class="SMAP_WPF.EditorWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:g2="clr-namespace:SMAP_WPF"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SMAP_WPF"
         Width="1232" Height="740" MinWidth="900" MinHeight="520"
@@ -15,10 +15,10 @@
             <Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
                 <Grid>
-                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
+                    <g2:G2Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <Border x:Name="FocusRing" Margin="-3" CornerRadius="7" BorderBrush="{DynamicResource Accent}" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False"/>
+                    </g2:G2Border>
+                    <g2:G2Border x:Name="FocusRing" Margin="-3" CornerRadius="7" BorderBrush="{DynamicResource Accent}" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False"/>
                 </Grid>
                 <ControlTemplate.Triggers>
                     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource TextFg}"/></Trigger>
@@ -45,9 +45,9 @@
                     <ControlTemplate TargetType="ScrollBar">
                         <Grid Background="{TemplateBinding Background}">
                             <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True">
-                                <Track.DecreaseRepeatButton><RepeatButton x:Name="decrease" Command="ScrollBar.PageUpCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
-                                <Track.IncreaseRepeatButton><RepeatButton x:Name="increase" Command="ScrollBar.PageDownCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
-                                <Track.Thumb><Thumb MinWidth="12" MinHeight="12"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Margin="2" CornerRadius="4" Background="{DynamicResource ScrollThumbBrush}"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                                <Track.DecreaseRepeatButton><RepeatButton x:Name="decrease" Command="ScrollBar.PageUpCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><g2:G2Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton><RepeatButton x:Name="increase" Command="ScrollBar.PageDownCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><g2:G2Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                                <Track.Thumb><Thumb MinWidth="12" MinHeight="12"><Thumb.Template><ControlTemplate TargetType="Thumb"><g2:G2Border Margin="2" CornerRadius="4" Background="{DynamicResource ScrollThumbBrush}"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
                             </Track>
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -66,9 +66,9 @@
             <Setter Property="BorderBrush" Value="{DynamicResource BoxBorder}"/><Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontFamily" Value="Microsoft YaHei UI"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="6"/>
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
-                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                <g2:G2Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True"><ItemsPresenter/></ScrollViewer>
-                </Border>
+                </g2:G2Border>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
         <Style TargetType="MenuItem">
@@ -76,18 +76,18 @@
             <Setter Property="MinHeight" Value="31"/><Setter Property="FontSize" Value="12"/>
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
                 <Grid>
-                    <Border x:Name="row" Background="{TemplateBinding Background}" CornerRadius="4" Padding="7,5">
+                    <g2:G2Border x:Name="row" Background="{TemplateBinding Background}" CornerRadius="4" Padding="7,5">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/></Grid.ColumnDefinitions>
                             <ContentPresenter ContentSource="Icon" Width="15" Height="15" VerticalAlignment="Center"/>
                             <TextBlock x:Name="check" Text="✓" Visibility="Collapsed" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{TemplateBinding Header}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                             <TextBlock x:Name="arrow" Grid.Column="2" Text="›" Visibility="Collapsed" VerticalAlignment="Center"/>
                         </Grid>
-                    </Border>
+                    </g2:G2Border>
                     <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Right" AllowsTransparency="True" Focusable="False" PopupAnimation="None">
-                        <Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="6" Padding="6" MinWidth="150" MaxWidth="300">
+                        <g2:G2Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="6" Padding="6" MinWidth="150" MaxWidth="300">
                             <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer>
-                        </Border>
+                        </g2:G2Border>
                     </Popup>
                 </Grid>
                 <ControlTemplate.Triggers>
@@ -98,7 +98,7 @@
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
-        <Style TargetType="Separator"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Height="1" Margin="6,5" Background="{DynamicResource BoxBorder}"/></ControlTemplate></Setter.Value></Setter></Style>
+        <Style TargetType="Separator"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><g2:G2Border Height="1" Margin="6,5" Background="{DynamicResource BoxBorder}"/></ControlTemplate></Setter.Value></Setter></Style>
         <Style TargetType="Button">
             <Setter Property="MinHeight" Value="32"/>
             <Setter Property="MinWidth" Value="32"/>
@@ -111,9 +111,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <g2:G2Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
+                        </g2:G2Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
@@ -132,13 +132,13 @@
         </Style>
     </Window.Resources>
     <Grid>
-    <Border x:Name="WindowSurface" Background="{DynamicResource WindowBg}" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" CornerRadius="21" Margin="6" Padding="10">
+    <g2:G2Border x:Name="WindowSurface" Background="{DynamicResource WindowBg}" BorderBrush="{DynamicResource WindowBorder}" BorderThickness="1" CornerRadius="21" Margin="6" Padding="10">
         <Grid x:Name="EditorLayout">
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="40"/>
             </Grid.RowDefinitions>
-            <Border x:Name="TitleSurface" Background="{DynamicResource TitleGrad}" CornerRadius="10" MouseLeftButtonDown="Title_MouseDown">
+            <g2:G2Border x:Name="TitleSurface" Background="{DynamicResource TitleGrad}" CornerRadius="10" MouseLeftButtonDown="Title_MouseDown">
                 <DockPanel Margin="12,0">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="14" Height="14" Fill="#c9c9c9" Margin="5,0" MouseLeftButtonDown="Min_Click"/>
@@ -147,15 +147,15 @@
                     </StackPanel>
                     <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="{DynamicResource CaptionFg}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
-            </Border>
-            <Border x:Name="ToolbarSurface" Grid.Row="1" Panel.ZIndex="20" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="5">
+            </g2:G2Border>
+            <g2:G2Border x:Name="ToolbarSurface" Grid.Row="1" Panel.ZIndex="20" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="5">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                         <local:CommandMenuButton x:Name="MoreButton" Height="32"/><Button x:Name="ModeButton" Height="32"/><Button x:Name="SaveButton" Height="32"/>
                     </StackPanel>
                     <WrapPanel x:Name="ToolBar"/>
                 </DockPanel>
-            </Border>
+            </g2:G2Border>
             <DockPanel x:Name="TrackContext" Grid.Row="2" Panel.ZIndex="10" Margin="0,12,0,0">
                 <Button x:Name="PropertiesButton" DockPanel.Dock="Right" Margin="0" Height="32"/>
                 <Button x:Name="FollowButton" DockPanel.Dock="Right" Margin="0,0,6,0" Height="32"/>
@@ -167,13 +167,13 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="TrackColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
-                <Border x:Name="TrackSurface" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="0,0,12,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
+                <g2:G2Border x:Name="TrackSurface" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="0,0,12,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
                     <ContentControl x:Name="TrackHost"/>
-                </Border>
+                </g2:G2Border>
                 <Grid Grid.Column="1">
                     <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <local:PianoRollOverview x:Name="Overview"/>
-                    <Border x:Name="ViewportSurface" Grid.Row="1" Margin="0,12,0,0" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" SizeChanged="Surface_SizeChanged">
+                    <g2:G2Border x:Name="ViewportSurface" Grid.Row="1" Margin="0,12,0,0" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" SizeChanged="Surface_SizeChanged">
                         <Grid>
                             <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="14"/></Grid.RowDefinitions>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/></Grid.ColumnDefinitions>
@@ -181,19 +181,19 @@
                             <ScrollBar x:Name="VerticalScroll" Grid.Column="1" Orientation="Vertical" SmallChange="22"/>
                             <ScrollBar x:Name="HorizontalScroll" Grid.Row="1" Orientation="Horizontal"/>
                         </Grid>
-                    </Border>
+                    </g2:G2Border>
                 </Grid>
-                <Border x:Name="InspectorSurface" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="12,0,0,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
+                <g2:G2Border x:Name="InspectorSurface" Grid.Column="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Margin="12,0,0,0" Visibility="Collapsed" SizeChanged="Surface_SizeChanged">
                     <ContentControl x:Name="InspectorHost"/>
-                </Border>
+                </g2:G2Border>
                 <Grid x:Name="Drawer" Grid.ColumnSpan="3" Visibility="Collapsed">
                     <Button Background="#66000000" BorderThickness="0" Margin="0" Click="DismissDrawer_Click"/>
-                    <Border Width="256" HorizontalAlignment="Left" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Padding="6" SizeChanged="Surface_SizeChanged">
+                    <g2:G2Border Width="256" HorizontalAlignment="Left" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource BoxBorder}" BorderThickness="1" CornerRadius="10" Padding="6" SizeChanged="Surface_SizeChanged">
                         <ContentControl x:Name="DrawerHost"/>
-                    </Border>
+                    </g2:G2Border>
                 </Grid>
             </Grid>
-            <Border Grid.Row="4" x:Name="KeyboardHost" Background="{DynamicResource PanelBg}" CornerRadius="10" Padding="8" Margin="0,12,0,0">
+            <g2:G2Border Grid.Row="4" x:Name="KeyboardHost" Background="{DynamicResource PanelBg}" CornerRadius="10" Padding="8" Margin="0,12,0,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Left">
                         <Button x:Name="KeyboardButton" HorizontalAlignment="Left"/>
@@ -201,15 +201,15 @@
                     </StackPanel>
                     <TextBlock x:Name="HintText" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="22,4" FontSize="11"/>
                 </DockPanel>
-            </Border>
-            <Border x:Name="StatusSurface" Grid.Row="5" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="8,0">
+            </g2:G2Border>
+            <g2:G2Border x:Name="StatusSurface" Grid.Row="5" Background="{DynamicResource PanelBg}" CornerRadius="10" Margin="0,12,0,0" Padding="8,0">
                 <DockPanel>
                     <TextBlock x:Name="ZoomText" DockPanel.Dock="Right" Foreground="{DynamicResource SubTextFg}" FontSize="10" VerticalAlignment="Center"/>
                     <TextBlock x:Name="StatusText" Foreground="{DynamicResource SubTextFg}" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
-            </Border>
+            </g2:G2Border>
         </Grid>
-    </Border>
+    </g2:G2Border>
     <Canvas x:Name="EditorMenuLayer" Panel.ZIndex="100"/>
     </Grid>
 </Window>

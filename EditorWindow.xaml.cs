@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -302,7 +303,7 @@ public partial class EditorWindow : Window
     void Surface_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var surface = (Border)sender;
-        surface.Clip = new RectangleGeometry(new Rect(surface.RenderSize), surface.CornerRadius.TopLeft, surface.CornerRadius.TopLeft);
+        surface.Clip = G2Geometry.Create(new Rect(surface.RenderSize), surface.CornerRadius);
     }
     void Min_Click(object sender, MouseButtonEventArgs e) { WindowState = WindowState.Minimized; e.Handled = true; }
     void Max_Click(object sender, MouseButtonEventArgs e) { ToggleMaximize(); e.Handled = true; }

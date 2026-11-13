@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;

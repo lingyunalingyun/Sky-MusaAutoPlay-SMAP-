@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -6,12 +7,13 @@ using System.Windows.Media.Animation;
 
 namespace SMAP_WPF;
 
-public sealed class JoinedChoiceButton : Button
+public class JoinedChoiceButton : Button
 {
     ComboBox? _model;
     Border _chrome=null!,_header=null!,_separator=null!;
     StackPanel _content=null!;
     ListBox _options=null!;
+    ContentPresenter _custom=null!;
     Window? _owner;
     int _generation;
     bool _closing;
@@ -31,7 +33,8 @@ public sealed class JoinedChoiceButton : Button
         if(IsOpen)Close(true);base.OnApplyTemplate();
         _chrome=(Border)GetTemplateChild("PART_Chrome");_header=(Border)GetTemplateChild("PART_Header");
         _separator=(Border)GetTemplateChild("PART_Separator");_content=(StackPanel)GetTemplateChild("PART_Content");_options=(ListBox)GetTemplateChild("PART_Options");
-        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),_chrome.CornerRadius.TopLeft,_chrome.CornerRadius.TopLeft);
+        _custom=(ContentPresenter)GetTemplateChild("PART_CustomContent");
+        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=G2Geometry.Create(new Rect(_chrome.RenderSize),_chrome.CornerRadius);
         _options.PreviewMouseLeftButtonUp+=Commit;_header.Height=Math.Max(0,ActualHeight-2);_chrome.Height=ActualHeight;
     }
     public void Toggle(ComboBox model)
@@ -42,18 +45,39 @@ public sealed class JoinedChoiceButton : Button
         if(SmoothScroll.GetEnabled(_options))SmoothScroll.Stop(_options);
         _closing=false;_model=model;_options.Items.Clear();
         for(int i=0;i<model.Items.Count;i++)_options.Items.Add(new ListBoxItem{Content=model.Items[i],Tag=i});
-        _options.SelectedIndex=model.SelectedIndex;_options.Visibility=_separator.Visibility=Visibility.Visible;
+        _options.SelectedIndex=model.SelectedIndex;_options.Visibility=_separator.Visibility=Visibility.Visible;_custom.Visibility=Visibility.Collapsed;
         if(SmoothScroll.GetEnabled(_options))SmoothScroll.Attach(_options);
+        Open(start);
+    }
+    public void ToggleContent(UIElement content)
+    {
+        ApplyTemplate();
+        if(IsOpen&&!_closing){Close();return;}
+        double start=IsOpen?_chrome.ActualHeight:ActualHeight;
+        _closing=false;_model=null;_options.Visibility=Visibility.Collapsed;
+        _custom.Content=content;_custom.Visibility=_separator.Visibility=Visibility.Visible;
+        Open(start);
+    }
+    void Open(double start)
+    {
+        if (_custom.Visibility == Visibility.Visible)
+        {
+            if (_custom.Content is FrameworkElement child) child.InvalidateMeasure();
+            _custom.InvalidateMeasure();
+            _custom.Measure(new Size(Math.Max(1, ActualWidth - 2), double.PositiveInfinity));
+        }
+        _content.InvalidateMeasure();
         _content.Height=double.NaN;_content.Measure(new Size(Math.Max(1,ActualWidth-2),double.PositiveInfinity));
         double full=_content.DesiredSize.Height+2;_content.Height=full-2;_chrome.IsHitTestVisible=true;
         if(!IsOpen)
         {
             IsOpen=true;_owner=Window.GetWindow(this);
-            if(_owner!=null){_owner.Deactivated+=OwnerClosed;_owner.Closed+=OwnerClosed;_owner.PreviewMouseLeftButtonDown+=OutsidePress;}
+            if(_owner!=null){_owner.Deactivated+=OwnerClosed;_owner.Closed+=OwnerClosed;_owner.PreviewMouseLeftButtonDown+=OutsidePress;_owner.PreviewKeyDown+=OwnerKeyDown;}
         }
         AnimateHeight(start,full,false);
     }
     void OwnerClosed(object? sender,EventArgs e)=>Close(true);
+    void OwnerKeyDown(object sender,KeyEventArgs e) {if(e.Key==Key.Escape&&IsOpen){Close();e.Handled=true;}}
     void OutsidePress(object sender,MouseButtonEventArgs e)=>CloseOnOutsidePress(e);
     public void CloseOnOutsidePress(MouseButtonEventArgs e)
     {
@@ -62,9 +86,9 @@ public sealed class JoinedChoiceButton : Button
     }
     void FinishClose()
     {
-        IsOpen=false;_closing=false;_options.Visibility=_separator.Visibility=Visibility.Collapsed;
+        IsOpen=false;_closing=false;_options.Visibility=_separator.Visibility=_custom.Visibility=Visibility.Collapsed;
         _content.Height=double.NaN;_chrome.Height=ActualHeight;_chrome.IsHitTestVisible=true;
-        if(_owner!=null){_owner.Deactivated-=OwnerClosed;_owner.Closed-=OwnerClosed;_owner.PreviewMouseLeftButtonDown-=OutsidePress;_owner=null;}
+        if(_owner!=null){_owner.Deactivated-=OwnerClosed;_owner.Closed-=OwnerClosed;_owner.PreviewMouseLeftButtonDown-=OutsidePress;_owner.PreviewKeyDown-=OwnerKeyDown;_owner=null;}
     }
     public void Close(bool immediate=false)
     {

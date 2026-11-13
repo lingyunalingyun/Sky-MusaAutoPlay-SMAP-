@@ -443,9 +443,9 @@ static class Program
         main.Activate();editor.Viewport.Focus();Until(()=>main.IsActive&&editor.Viewport.IsKeyboardFocusWithin);Pump();var roll=editor.Viewport;editor.ToggleAdvanced();Pump();
         IntPtr foreground=new WindowInteropHelper(main).Handle;main.ShortcutForeground=()=>foreground;Call(main,"RefreshShortcutFocus");
         IEnumerable<Drawing> Drawings(Drawing d){if(d is DrawingGroup g)foreach(var c in g.Children)foreach(var x in Drawings(c))yield return x;else yield return d;}
-        int Ghosts()=>Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is RectangleGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
+        int Ghosts()=>Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is StreamGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
         Check(Ghosts()==2,"Ordinary piano/harp tracks did not render grey key-position references");
-        var gray=Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Geometry is RectangleGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
+        var gray=Drawings(((DrawingVisual)Field(roll,"_notes")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Geometry is StreamGeometry&&d.Brush is SolidColorBrush b&&Math.Abs(b.Opacity-.45)<.001);
         Check(gray.All(d=>((SolidColorBrush)d.Brush).Color==((SolidColorBrush)editor.FindResource("SubTextFg")).Color),"Reference retained colored track fill instead of grey");
         var bounds=roll.Bounds(other.Notes[0]);Check(roll.HitNotes(new Point(bounds.Left+5,bounds.Top+5)).Length==0,"Reference note became editable");
         roll.References=false;Pump();Check(Ghosts()==0,"Reference visibility switch did not hide grey notes");roll.References=true;Pump();
@@ -475,7 +475,7 @@ static class Program
         string identity=PerformanceIdentity.ForProject(window.Session.Project);double vertical=roll.VerticalOffset;
         IEnumerable<Drawing> Drawings(Drawing drawing)
         { if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var value in Drawings(child))yield return value;else yield return drawing; }
-        int Handles()=>Drawings(((DrawingVisual)Field(overview,"_view")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Brush!=null&&d.Geometry is RectangleGeometry g&&Math.Abs(g.Rect.Width-8)<.001&&Math.Abs(g.Rect.Height-overview.ActualHeight+4)<.001);
+        int Handles()=>Drawings(((DrawingVisual)Field(overview,"_view")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Brush!=null&&d.Geometry is StreamGeometry g&&Math.Abs(g.Bounds.Width-8)<.001&&Math.Abs(g.Bounds.Height-overview.ActualHeight+4)<.001);
         void Hover(bool enter)=>overview.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice,Environment.TickCount){RoutedEvent=enter?UIElement.MouseEnterEvent:UIElement.MouseLeaveEvent});
         Hover(false);Check(Handles()==0,"Overview grips remained visible away from pointer");Hover(true);Check(Handles()==2,"Hover did not show both grips");Hover(false);Check(Handles()==0,"Leaving overview did not hide grips");
         double X(decimal beat)=>(double)(beat/extent)*overview.ActualWidth;
@@ -514,8 +514,8 @@ static class Program
             if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var value in Drawings(child))yield return value;
             else yield return drawing;
         }
-        GeometryDrawing[] OverlayNotes()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Brush is SolidColorBrush b&&b.Color==Color.FromRgb(239,178,79)&&d.Geometry is RectangleGeometry).ToArray();
-        int Handles()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is RectangleGeometry g&&Math.Abs(g.Rect.Width-6)<.01&&Math.Abs(g.Rect.Height-roll.RowHeight+2)<.01);
+        GeometryDrawing[] OverlayNotes()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Where(d=>d.Brush is SolidColorBrush b&&b.Color==Color.FromRgb(239,178,79)&&d.Geometry is StreamGeometry).ToArray();
+        int Handles()=>Drawings(((DrawingVisual)Field(roll,"_overlay")!).Drawing).OfType<GeometryDrawing>().Count(d=>d.Geometry is StreamGeometry g&&Math.Abs(g.Bounds.Width-6)<.01&&Math.Abs(g.Bounds.Height-roll.RowHeight+2)<.01);
         void Click(Point p){roll.PointerDown(p,MouseButton.Left,0);roll.PointerUp(p,0);Pump();}
         Click(At(0,13));var first=session.ActiveTrack.Notes.Single();var original=first;
         roll.PointerMove(At(5,1),0);Pump();Check(OverlayNotes().Length==0&&Handles()==0,"Created note retained yellow highlight or resize bar away from pointer");
@@ -695,7 +695,7 @@ static class Program
         {
             var rect=button.Chrome.TransformToAncestor(window).TransformBounds(new Rect(button.Chrome.RenderSize));
             Check(rect.Left>=6&&rect.Top>=6&&rect.Right<=window.ActualWidth-6&&rect.Bottom<=window.ActualHeight-6,"Command shell escaped window");
-            Check(button.Chrome.CornerRadius.TopLeft==6&&button.Chrome.Clip is RectangleGeometry{RadiusX:6,RadiusY:6},"Editor shell lost its R6 corner and matching clip");
+            Check(button.Chrome.CornerRadius.TopLeft==6&&button.Chrome.Clip is StreamGeometry cornerClip&&Math.Abs(cornerClip.Bounds.Height-button.Chrome.ActualHeight)<.1&&!cornerClip.FillContains(new Point(0,0),.000001,ToleranceType.Absolute),"Editor shell lost its R6 corner and matching clip");
             Check(ReferenceEquals(PresentationSource.FromVisual(button.Chrome),PresentationSource.FromVisual(window)),"Command created a detached popup");
             var row=Descendants<Button>(button.Scroll).First(b=> { double y=b.TranslatePoint(new Point(0,b.ActualHeight/2),button.Scroll).Y; return b.IsVisible&&y>8&&y<button.Scroll.ActualHeight-8; });var p=row.TranslatePoint(new Point(20,row.ActualHeight/2),window);
             Check(window.InputHitTest(p) is DependencyObject hit&&row.IsAncestorOf(hit),"Command rows are covered by editor");
@@ -1052,7 +1052,7 @@ static class Program
                 Anchored();var h=header.TranslatePoint(new Point(),pill);var t=option.TranslatePoint(new Point(),pill);
                 Check(Math.Abs(h.X-head.X)<.1&&Math.Abs(h.Y-head.Y)<.1,"Pill title bounced with the shell");
                 Check(Math.Abs(t.X-label.X)<.1&&Math.Abs(t.Y-label.Y)<.1,"Pill option text bounced with the shell");
-                Check(pill.Chrome.Clip is RectangleGeometry clip&&Math.Abs(clip.Rect.Height-pill.Chrome.ActualHeight)<.1,"Pill animation lost clipping");frames++;
+                Check(pill.Chrome.Clip is StreamGeometry clip&&Math.Abs(clip.Bounds.Height-pill.Chrome.ActualHeight)<.1,"Pill animation lost clipping");frames++;
             };
             pill.Chrome.SizeChanged+=sample;var clock=Stopwatch.StartNew();Until(()=>clock.ElapsedMilliseconds>=390);pill.Chrome.SizeChanged-=sample;
             if(SystemParameters.ClientAreaAnimation)Check(frames>=3,"Pill reveal did not animate");
@@ -1215,14 +1215,14 @@ static class Program
         if(output!=null)Directory.CreateDirectory(output);
         foreach(var theme in Enum.GetValues<AppTheme>())
         {
-            Theme.Apply(theme,persist:false);var main=new MainWindow(true);main.Show();Pump();
+            Theme.Apply(theme,persist:false);var main=new MainWindow(true){ShowActivated=false,WindowStartupLocation=WindowStartupLocation.Manual,Left=-12000,Top=-12000};int deactivations=0;main.Deactivated+=(_,_)=>deactivations++;main.Show();Pump();
             var target=(Button)main.FindName("FilterChoiceBtn");var model=(ComboBox)main.FindName("FilterCombo");var popup=(AnimatedChoicePopup)main.FindName("LibraryChoicePopup");
             popup.Toggle(model,target);var time=Stopwatch.StartNew();Until(()=>time.ElapsedMilliseconds>=120);Pump();
-            var clip=popup.Chrome.Clip as RectangleGeometry;Check(clip!=null&&Math.Abs(clip.Rect.Height-popup.Chrome.ActualHeight)<.1&&clip.RadiusX==10,"Animation lost rounded clipping");
+            var clip=popup.Chrome.Clip as StreamGeometry;Check(clip!=null&&Math.Abs(clip.Bounds.Height-popup.Chrome.ActualHeight)<.1&&!clip.FillContains(new Point(0,0),.000001,ToleranceType.Absolute),"Animation lost continuous rounded clipping");
             var a=target.PointToScreen(new Point());var b=popup.Chrome.PointToScreen(new Point());Check(Math.Abs(a.X-b.X)<2&&Math.Abs(a.Y-b.Y)<2,"Joined popup separated from its anchor");
             if(output!=null)Capture(popup.Chrome,Path.Combine(output,$"joined-mid-{theme}.png"));
             popup.Close();popup.Toggle(model,target);time.Restart();Until(()=>time.ElapsedMilliseconds>=400);
-            Check(popup.IsOpen&&popup.Chrome.IsHitTestVisible,"Stale close hid a new joined popup");
+            Check(popup.IsOpen&&popup.Chrome.IsHitTestVisible,$"Stale close hid a new joined popup; deactivations={deactivations}");
             if(output!=null)Capture(popup.Chrome,Path.Combine(output,$"joined-open-{theme}.png"));
             popup.Close(true);popup.ReduceMotion=true;popup.Toggle(model,target);Pump();Check(!popup.Chrome.HasAnimatedProperties,"Reduced motion still animated");
             popup.Close();Check(!popup.IsOpen,"Reduced motion close was delayed");main.Close();

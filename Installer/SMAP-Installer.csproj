@@ -15,6 +15,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\G2Geometry.cs" Link="G2Geometry.cs" />
+    <Compile Include="..\G2Border.cs" Link="G2Border.cs" />
     <Resource Include="Assets\logo.png" />
   </ItemGroup>
 

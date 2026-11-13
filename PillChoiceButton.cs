@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,7 +31,7 @@ public sealed class PillChoiceButton : Button
         if(IsOpen)Close(true);base.OnApplyTemplate();
         _chrome=(Border)GetTemplateChild("PART_Chrome");_header=(Border)GetTemplateChild("PART_Header");
         _separator=(Border)GetTemplateChild("PART_Separator");_content=(StackPanel)GetTemplateChild("PART_Content");_options=(ListBox)GetTemplateChild("PART_Options");
-        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=new RectangleGeometry(new Rect(_chrome.RenderSize),13,13);
+        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=G2Geometry.Create(new Rect(_chrome.RenderSize),new CornerRadius(13));
         ResetSize();
     }
     void ResetSize()

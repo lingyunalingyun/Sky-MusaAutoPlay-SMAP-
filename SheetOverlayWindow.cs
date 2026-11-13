@@ -83,7 +83,7 @@ public sealed class SheetOverlayWindow : Window
             var occupied=keyRects.Values.Select(r=>{r.Inflate(5,5);return r;}).ToList();
             Rect hud=new(16,16,Math.Min(ActualWidth-32,610),36);
             if(hud.Width>100 && !occupied.Any(r=>r.IntersectsWith(hud)))
-            {dc.DrawRoundedRectangle(Panel,null,hud,7,7);Label(dc,"SMAP · "+Mode+" · "+Lang.S(h.Completed?"map.done":h.Paused?"map.pause":"map.readonly"),new(28,25),Text);occupied.Add(hud);}
+            {G2Geometry.Draw(dc,Panel,null,hud,7,7);Label(dc,"SMAP · "+Mode+" · "+Lang.S(h.Completed?"map.done":h.Paused?"map.pause":"map.readonly"),new(28,25),Text);occupied.Add(hud);}
             foreach(var pair in NoteKeys)
             {
                 if(!keyRects.TryGetValue(pair.Value,out var rect))continue;
@@ -92,7 +92,7 @@ public sealed class SheetOverlayWindow : Window
                 bool completed=h.LastJudgment is {Kind:PracticeJudgmentKind.Completed} done&&done.Key==pair.Key;
                 if(!current&&!next&&hold==null&&!error&&!completed)continue;
                 var color=error?Red:hold!=null?hold.Release?Amber:Green:completed?Green:current?Blue:Purple;
-                var outline=rect;outline.Inflate(4,4);var pen=new Pen(color,2){DashStyle=!current&&hold==null&&!error?DashStyles.Dash:DashStyles.Solid};dc.DrawRoundedRectangle(null,pen,outline,10,10);
+                var outline=rect;outline.Inflate(4,4);var pen=new Pen(color,2){DashStyle=!current&&hold==null&&!error?DashStyles.Dash:DashStyles.Solid};G2Geometry.Draw(dc,null,pen,outline,10,10);
                 if(hold is {TotalMs:>0,RemainingMs:>0})
                 {
                     double fraction=Math.Clamp(hold.RemainingMs/hold.TotalMs,0,1),radius=Math.Max(rect.Width,rect.Height)/2+9;
@@ -106,13 +106,13 @@ public sealed class SheetOverlayWindow : Window
                         arc.Freeze();dc.DrawGeometry(null,new Pen(Green,2),arc);
                     }
                 }
-                if(current&&next){var outer=outline;outer.Inflate(5,5);dc.DrawRoundedRectangle(null,new Pen(Purple,1.5){DashStyle=DashStyles.Dash},outer,12,12);}
+                if(current&&next){var outer=outline;outer.Inflate(5,5);G2Geometry.Draw(dc,null,new Pen(Purple,1.5){DashStyle=DashStyles.Dash},outer,12,12);}
                 string text=error?Lang.S("map.error"):hold!=null?hold.AwaitingPress?Lang.S("map.now"):hold.Release?Lang.S("map.release"):$"{Lang.S("map.hold")} {hold.RemainingMs/1000:0.0}s":completed?"✓":Lang.S(current?"map.now":"map.next");
                 double labelWidth=Math.Min(160,Math.Max(70,text.Length*12)),height=23;
                 var candidates=new[]{new Rect(rect.X+rect.Width/2-labelWidth/2,rect.Bottom+12,labelWidth,height),new Rect(rect.X+rect.Width/2-labelWidth/2,rect.Top-35,labelWidth,height)};
                 foreach(var label in candidates)
                     if(label.Left>=2&&label.Right<ActualWidth-2&&label.Top>=2&&label.Bottom<ActualHeight-2&&!occupied.Any(r=>r.IntersectsWith(label)))
-                    {dc.DrawRoundedRectangle(Panel,new Pen(color,1),label,4,4);Label(dc,text,new(label.X+6,label.Y+3),color,11);occupied.Add(label);break;}
+                    {G2Geometry.Draw(dc,Panel,new Pen(color,1),label,4,4);Label(dc,text,new(label.X+6,label.Y+3),color,11);occupied.Add(label);break;}
             }
         }
     }

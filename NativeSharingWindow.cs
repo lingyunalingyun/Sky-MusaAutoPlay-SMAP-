@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -66,7 +67,7 @@ public sealed partial class NativeSharingWindow : ChromeWindow
         target ??= _body; target.Children.Add(Label(label, 13));
         var box = new TextBox { Text = text, MaxLength = length, MinHeight = multiline ? 70 : 38, AcceptsReturn = multiline, TextWrapping = TextWrapping.Wrap,
             Background = B("BoxBg"), Foreground = B("TextFg"), BorderBrush = B("BoxBorder"), BorderThickness = new Thickness(1), Padding = new Thickness(9), Margin = new Thickness(0, 0, 0, 6) };
-        box.Template = multiline ? (ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate TargetType='TextBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='8'><ScrollViewer x:Name='PART_ContentHost' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Margin='10,8'/></Border></ControlTemplate>") : TextBoxTpl();
+        box.Template = multiline ? (ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate TargetType='TextBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP'><g2:G2Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='8'><ScrollViewer x:Name='PART_ContentHost' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Margin='10,8'/></g2:G2Border></ControlTemplate>") : TextBoxTpl();
         target.Children.Add(box); return box;
     }
     void AddNavigation(string label, Action action)

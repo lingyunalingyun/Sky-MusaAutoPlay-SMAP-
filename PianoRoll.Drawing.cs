@@ -70,7 +70,7 @@ public partial class PianoRoll
                 decimal beat = _session.Project.MidiConversion!.Source.Beat(source.StartTick);
                 double x = LaneWidth + (double)(beat - _viewBeat) * BeatWidth;
                 if (x < LaneWidth || x > ActualWidth - 30) continue;
-                dc.DrawRoundedRectangle(null, Stroke(Amber), new Rect(x, bottom + 4, 48, 20), 3, 3);
+                G2Geometry.Draw(dc,null, Stroke(Amber), new Rect(x, bottom + 4, 48, 20), 3, 3);
                 Text(dc, "! " + MidiImportDialog.Pitch(source.Pitch), new Point(x + 3, bottom + 7), Amber, 9);
             }
         }
@@ -84,7 +84,7 @@ public partial class PianoRoll
             {
                 if(++drawn>2000)break;double x=LaneWidth+(double)(note.Beat-_viewBeat)*BeatWidth;if(x<LaneWidth||x>ActualWidth-12)continue;
                 var key=InstrumentCapabilities.ForTrack(track)?.Resolve(note.Key,track.KeyDomain);
-                dc.DrawRoundedRectangle(null,Stroke(Amber),new Rect(x,top+5,Math.Min(48,ActualWidth-x),18),3,3);
+                G2Geometry.Draw(dc,null,Stroke(Amber),new Rect(x,top+5,Math.Min(48,ActualWidth-x),18),3,3);
                 Text(dc,key?.SoundId??"♪",new(x+3,top+7),sub,9);
             }
         }
@@ -167,7 +167,7 @@ public partial class PianoRoll
             }
             foreach (var region in regions)
             {
-                dc.DrawRoundedRectangle(laneFill, Stroke(region.approximate ? Amber : laneFill), new Rect(region.left, y, region.right - region.left, RowHeight - 6), 3, 3);
+                G2Geometry.Draw(dc,laneFill, Stroke(region.approximate ? Amber : laneFill), new Rect(region.left, y, region.right - region.left, RowHeight - 6), 3, 3);
                 LastRenderedNotes++;
             }
             var onsets = new StreamGeometry();
@@ -191,7 +191,7 @@ public partial class PianoRoll
         var clipped = new Rect(left, rect.Y, right - left, rect.Height);
         var pen = Stroke(selected ? Resource("TextFg", "#ffffff") : fill);
         if (ghost) pen = new Pen(fill, 1) { DashStyle = DashStyles.Dash };
-        dc.DrawRoundedRectangle(fill, pen, clipped, 3, 3);
+        G2Geometry.Draw(dc,fill, pen, clipped, 3, 3);
         if (compatibility?.Availability == KeyAvailability.Unavailable)
         {
             for (double x = left; x < Math.Min(right, left + 200); x += 8)
@@ -203,11 +203,11 @@ public partial class PianoRoll
         else if (rect.Right <= ActualWidth) dc.DrawLine(Stroke(Brush("#23384d"), 1.5), new Point(rect.Right - 4, rect.Top + 2), new Point(rect.Right - 4, rect.Bottom - 2));
         if (!ghost && (compatibility?.Approximate == true || note.SourceMidiNoteId is { } id && _mapping.GetValueOrDefault(id) == PitchMappingKind.Approximate))
         {
-            dc.DrawRoundedRectangle(null, new Pen(Amber, 1) { DashStyle = DashStyles.Dash }, clipped, 3, 3);
+            G2Geometry.Draw(dc,null, new Pen(Amber, 1) { DashStyle = DashStyles.Dash }, clipped, 3, 3);
             if (clipped.Width >= 16) Text(dc, "≈", new Point(left + 2, rect.Y - 1), Brush("#163251"), 10);
         }
         if (resizeHandle && rect.Right >= LaneWidth && rect.Right <= ActualWidth)
-            dc.DrawRoundedRectangle(Resource("TextFg", "#ffffff"), Stroke(Amber), new Rect(rect.Right - 3, rect.Y - 2, 6, rect.Height + 4), 2, 2);
+            G2Geometry.Draw(dc,Resource("TextFg", "#ffffff"), Stroke(Amber), new Rect(rect.Right - 3, rect.Y - 2, 6, rect.Height + 4), 2, 2);
     }
     void DrawOverlay()
     {
@@ -239,7 +239,7 @@ public partial class PianoRoll
             var n = PreviewNote(_originals[0]); string value = n.Action == NoteAction.Tap ? Lang.S("ed.tap18")
                 : string.Format(CultureInfo.CurrentCulture, Lang.S("ed.lengthValue"), n.LengthBeats);
             double x = Math.Clamp(_last.X + 12, LaneWidth, Math.Max(LaneWidth, ActualWidth - 180)); double y = Math.Clamp(_last.Y - 35, RulerHeight, Math.Max(RulerHeight, ActualHeight - 32));
-            dc.DrawRoundedRectangle(Resource("PanelBg", "#1c1c1c"), Stroke(Amber), new Rect(x, y, 174, 28), 4, 4);
+            G2Geometry.Draw(dc,Resource("PanelBg", "#1c1c1c"), Stroke(Amber), new Rect(x, y, 174, 28), 4, 4);
             Text(dc, value, new Point(x + 8, y + 6), Resource("TextFg", "#e0e0e0"), 11);
         }
     }

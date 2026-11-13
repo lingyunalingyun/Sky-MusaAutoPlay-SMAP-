@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System;
 using System.IO;
 using System.Windows;
@@ -179,21 +180,21 @@ public class AboutWindow : Window
         Template = NeutralTemplate()
     };
 
-    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
+    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
 
     static ControlTemplate NeutralTemplate() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 
     static ControlTemplate CaptionTemplate() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' CornerRadius='6'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' CornerRadius='6'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Background' Value='#40000000'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 }
