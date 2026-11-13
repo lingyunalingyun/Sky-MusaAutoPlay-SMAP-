@@ -11,7 +11,7 @@ namespace SMAP_WPF;
 public static class UpdateChecker
 {
     public const string AppVersion = "2.2";   // C# WPF 版
-    const string Repo = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
+    const string Repo = "LangHingA/Sky-MusaAutoPlay-SMAP-";
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     static readonly HttpClient DownloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
 
