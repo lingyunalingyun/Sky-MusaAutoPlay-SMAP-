@@ -199,7 +199,7 @@ public partial class MainWindow : Window
         "3. 请遵守《光·遇》官方用户协议，切勿用于商业用途或影响他人游戏体验。\n\n" +
         "开源说明\n\n" +
         "本软件为开源项目，源代码托管于 GitHub：\n" +
-        "https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-\n\n" +
+        "https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-\n\n" +
         "本软件免费，若你是付费获得的，说明你被骗了。\n" +
         "点击「我同意所有协议，下一步」即表示你已阅读并接受以上条款。";
 }
