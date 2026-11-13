@@ -6,7 +6,7 @@
 
 An auto-play (auto-piano) helper for **Sky: Children of the Light** — reimagined as a music player, in C# WPF.
 
-[简体中文](README.md) · [Download Releases](https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases) · [Old JavaFX build](JAVA%20version/)
+[简体中文](README.md) · [Download Releases](https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-/releases) · [Old JavaFX build](JAVA%20version/)
 
 </div>
 
@@ -96,7 +96,7 @@ The latest release is a **full C# WPF rewrite** with a **music-player UI** — a
 
 ## Install / Use
 
-1. Download the latest **SMAP-Setup.exe** from [Releases](https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases).
+1. Download the latest **SMAP-Setup.exe** from [Releases](https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-/releases).
 2. Run it (it requests admin rights), pick an install path in the wizard; desktop / Start-menu shortcuts are created automatically.
 3. Take out an instrument in-game → double-click a song in SMAP to enqueue → press the bottom ▶ or `F1` in-game.
 
