@@ -96,12 +96,42 @@ public static class SongLibrary
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
+    // Collections are materialized as separate native files; the original container is never rewritten.
+    internal static IReadOnlyList<string> ImportLegacyCollection(string source)
+    {
+        if (new FileInfo(source).Length > SmapFile.MaxManifestBytes) throw new LegacyConversionException("LEGACY_SIZE_LIMIT");
+        byte[] bytes = File.ReadAllBytes(source);
+        string digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        string marker = Path.Combine(SongsDir, ".legacy-" + digest + ".collection");
+        if (File.Exists(marker)) return Directory.EnumerateFiles(SongsDir, ".legacy-" + digest + "-*.smap").OrderBy(f => f, StringComparer.Ordinal).ToArray();
+        var entries = LegacyConversion.Read(bytes); var result = new List<string>();
+        var invalid = entries.FirstOrDefault(e => e.Project == null);
+        if (invalid != null) throw new LegacyConversionException(invalid.Error!, invalid.SongIndex, invalid.NoteIndex);
+        Directory.CreateDirectory(SongsDir);
+        foreach (var entry in entries)
+        {
+            if (entry.Project == null) throw new LegacyConversionException(entry.Error!, entry.SongIndex, entry.NoteIndex);
+            string stem = ".legacy-" + digest + "-" + entry.SongIndex;
+            string destination = Path.Combine(SongsDir, stem + ".smap");
+            if (!File.Exists(destination))
+            {
+                string temp = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try { SmapFile.Save(entry.Project, temp); File.Move(temp, destination, false); }
+                catch (IOException) when (File.Exists(destination)) { }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            }
+            _ = SmapFile.Load(destination); result.Add(destination);
+        }
+        using (var completed = new FileStream(marker, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read)) completed.Flush(true);
+        return result;
+    }
+
     /// <summary>扫描曲库目录, 解析每个曲谱的曲名/BPM。</summary>
     public static List<SongInfo> Scan()
     {
         var list = new List<SongInfo>();
         if (!Directory.Exists(SongsDir)) return list;
-        foreach (var f in Directory.EnumerateFiles(SongsDir))
+        foreach (var f in Directory.EnumerateFiles(SongsDir).ToArray())
         {
             var ext = Path.GetExtension(f).ToLowerInvariant();
             if (ext != ".txt" && ext != ".json" && ext != ".smap") continue;
@@ -111,13 +141,26 @@ public static class SongLibrary
                 {
                     var project = SmapFile.Load(f);
                     var sequence = PlaybackSequence.FromProject(project);
-                    list.Add(new SongInfo { File = f, Name = project.Metadata.Name,
+                    if (!list.Any(s => s.File == f)) list.Add(new SongInfo { File = f, Name = project.Metadata.Name,
                         Author = project.Metadata.Author, TranscribedBy = project.Metadata.TranscribedBy,
                         Bpm = (double)(60_000_000m / project.Tempos.OrderBy(t => t.Beat).First().MicrosecondsPerBeat),
                         NoteCount = sequence.Notes.Count, DurationMs = sequence.DurationMs });
                     continue;
                 }
-                var root = ParseRoot(ReadText(f));
+                string legacyText = ReadText(f);
+                using var container = JsonDocument.Parse(legacyText);
+                if (container.RootElement.ValueKind == JsonValueKind.Array && container.RootElement.GetArrayLength() > 1)
+                {
+                    foreach (string native in ImportLegacyCollection(f))
+                    {
+                        var project = SmapFile.Load(native); var playback = PlaybackSequence.FromProject(project);
+                        if (!list.Any(s => s.File == native)) list.Add(new SongInfo { File = native, Name = project.Metadata.Name,
+                            Author = project.Metadata.Author, TranscribedBy = project.Metadata.TranscribedBy,
+                            Bpm = (double)(60_000_000m / project.Tempos[0].MicrosecondsPerBeat), NoteCount = playback.Notes.Count, DurationMs = playback.DurationMs });
+                    }
+                    continue;
+                }
+                var root = container.RootElement.ValueKind == JsonValueKind.Array && container.RootElement.GetArrayLength() > 0 ? container.RootElement[0] : container.RootElement;
                 string name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
                     ? n.GetString() ?? Path.GetFileNameWithoutExtension(f)
                     : Path.GetFileNameWithoutExtension(f);

@@ -10,7 +10,7 @@ public partial class MainWindow
     {
         try
         {
-            var project = await Task.Run(() => IsNative(song) ? SmapFile.Load(song.File) : LegacyProjectAdapter.FromDocument(SongLibrary.LoadDocument(song)));
+            var project = await Task.Run(() => IsNative(song) ? SmapFile.Load(song.File) : LegacyProjectAdapter.Load(song.File, 0));
             var link = await Task.Run(() => new NativeSharingStore(NativeSharingStore.DefaultDirectory).Find(song.File, CloudTransport.ApiOrigin));
             var window = new NativeSharingWindow(this, project, initialVersion: link?.VersionId); window.ShowDialog();
             if (window.Imported) RefreshLibrary(); UpdateLoginButton();

@@ -5,26 +5,7 @@ namespace SMAP_WPF.Core;
 
 public static class LegacyProjectAdapter
 {
-    public static SmapProject Load(string path, int? songIndex = null)
-    {
-        if (new FileInfo(path).Length > SmapFile.MaxManifestBytes) throw new InvalidDataException("旧曲谱文件过大。");
-        var node = JsonNode.Parse(SongLibrary.ReadText(path));
-        JsonObject root;
-        if (node is JsonArray array)
-        {
-            if (array.Count != 1 && songIndex == null)
-                throw new InvalidOperationException("文件包含多个曲谱，请明确选择曲谱索引。");
-            int index = songIndex ?? 0;
-            if (index < 0 || index >= array.Count) throw new ArgumentOutOfRangeException(nameof(songIndex));
-            root = array[index] as JsonObject ?? throw new InvalidDataException("旧曲谱对象无效。");
-        }
-        else
-        {
-            if (songIndex is not (null or 0)) throw new ArgumentOutOfRangeException(nameof(songIndex));
-            root = node as JsonObject ?? throw new InvalidDataException("旧曲谱对象无效。");
-        }
-        return FromDocument(SongLibrary.LoadDocument(root, path));
-    }
+    public static SmapProject Load(string path, int? songIndex = null) => LegacyConversion.Load(path, songIndex);
 
     public static SmapProject FromDocument(SongDocument document)
     {

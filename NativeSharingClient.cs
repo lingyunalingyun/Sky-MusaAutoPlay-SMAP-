@@ -44,7 +44,14 @@ public sealed record SharingVersion
     public string FormattedCode => string.Join('-', Enumerable.Range(0, 3).Select(i => ShareCode.Length == 12 ? ShareCode.Substring(i * 4, 4) : ""));
 }
 public sealed record SharingHistory(List<SharingVersion> Items, int Revision, Guid? LatestVersionId, int? NextBefore);
-public sealed record SharingMatches(List<SharingVersion> Items, string PerformanceHash, int CanonicalVersion, bool More, bool LegacyCatalogReady);
+public sealed record LegacyCatalogCoverage(string Status, int ConverterVersion, string Scope, int TotalRecords, int CoveredRecords, int UnresolvedRecords);
+public sealed record LegacyCloudMatch(int SheetId, int SongIndex, string SourceSha256, string Title, int OwnerUserId, bool CanAssociate, string Relation, Guid? VersionId);
+public sealed record SharingMatches(List<SharingVersion> Items, string PerformanceHash, int CanonicalVersion, bool More, bool LegacyCatalogReady)
+{
+    public LegacyCatalogCoverage? LegacyCatalog { get; init; }
+    public List<LegacyCloudMatch> LegacyItems { get; init; } = new();
+    public bool CanPublishLegacy => LegacyItems.Count > 0 || LegacyCatalog is { Status: "complete", ConverterVersion: LegacyConversion.Version, Scope: "published-song-sheets", UnresolvedRecords: 0 } c && c.TotalRecords == c.CoveredRecords;
+}
 public sealed record SharingDownload(SharingVersion Version, byte[] Payload, SmapProject Project)
 {
     public Uri Origin { get; init; } = CloudTransport.ApiOrigin;
@@ -55,6 +62,23 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
     public Uri Origin => transport.Origin;
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, MaxDepth = 32 };
     const string Prefix = "/api/smap/v1/";
+    public static SmapProject SharingSelection(SmapProject project, ScoreExportOptions options)
+    {
+        var snapshot = ScoreExport.ProjectSelection(project, options);
+        var tracks = snapshot.Tracks.Select(t => t with { LegacyFields = SharingProvenance(project.Tracks.Single(p => p.Id == t.Id)) }).ToList();
+        return SmapFile.FromBytes(SmapFile.ToBytes(snapshot with { Tracks = tracks }));
+    }
+    static System.Text.Json.Nodes.JsonObject? SharingProvenance(ProjectTrack track)
+    {
+        if (track.LegacyFields == null) return null;
+        var source = track.LegacyFields["smapLegacySource"] as System.Text.Json.Nodes.JsonObject;
+        var identity = new System.Text.Json.Nodes.JsonObject { ["converterVersion"] = LegacyConversion.Version };
+        // Opaque old metadata can contain notes removed by editing or belonging to an unselected track.
+        // It stays in the original/local project; public snapshots carry only the source identity.
+        foreach (var key in new[] { "fileSha256", "songIndex" })
+            if (source?[key] is System.Text.Json.Nodes.JsonValue value) identity[key] = value.DeepClone();
+        return new() { ["smapLegacySource"] = identity };
+    }
     public static string NormalizeCode(string value)
     {
         if (value == null || value.Length > 64 || value.Any(c => c > 127)) throw new SharingException("INVALID_SHARE_CODE");
@@ -156,6 +180,8 @@ public sealed class NativeSharingClient(CloudTransport transport, Func<string?> 
         }, ct);
         var result = Decode<SharingMatches>(await Send($"matches.php?canonicalVersion={fingerprint.Canonical}&performanceHash={fingerprint.Hash}", null, null, false, 2 * 1024 * 1024, ct));
         if (result.PerformanceHash != fingerprint.Hash || result.CanonicalVersion != fingerprint.Canonical || result.Items == null || result.Items.Count > 20) throw new SharingException("INVALID_RESPONSE");
+        if (result.LegacyItems == null || result.LegacyItems.Count > 21 || result.LegacyItems.Any(l => l.SheetId <= 0 || l.SongIndex < 0 || !Hash(l.SourceSha256) || l.OwnerUserId <= 0 || l.Relation is not ("owned_legacy" or "public_legacy"))) throw new SharingException("INVALID_RESPONSE");
+        if (result.LegacyCatalog is { } coverage && (coverage.ConverterVersion != LegacyConversion.Version || coverage.Scope != "published-song-sheets" || coverage.TotalRecords < 0 || coverage.CoveredRecords < 0 || coverage.UnresolvedRecords < 0 || coverage.CoveredRecords + coverage.UnresolvedRecords != coverage.TotalRecords || coverage.Status is not ("complete" or "incomplete" or "unavailable"))) throw new SharingException("INVALID_RESPONSE");
         foreach (var version in result.Items)
         {
             ValidateVersion(version);

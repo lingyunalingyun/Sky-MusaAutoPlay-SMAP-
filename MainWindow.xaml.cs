@@ -2837,14 +2837,22 @@ public partial class MainWindow : Window
                 else if (ext is ".png" or ".svg") { SongLibrary.WriteNative(ScoreImageData.Read(src)); ok++; }
                 else
                 {
-                    SongLibrary.CopyImported(src);
-                    ok++;
+                    if (ext is ".txt" or ".json")
+                    {
+                        var entries = LegacyConversion.Read(System.IO.File.ReadAllBytes(src));
+                        var invalid = entries.FirstOrDefault(e => e.Project == null);
+                        if (invalid != null) throw new LegacyConversionException(invalid.Error!, invalid.SongIndex, invalid.NoteIndex);
+                        if (entries.Count > 1) { ok += SongLibrary.ImportLegacyCollection(src).Count; }
+                        else { SongLibrary.CopyImported(src); ok++; }
+                    }
+                    else { SongLibrary.CopyImported(src); ok++; }
                 }
             }
             catch (Exception error)
             {
                 fail++;
-                if (ext is ".png" or ".svg") imageErrors.Add(System.IO.Path.GetFileName(src) + ": " + ScoreExportDialog.ErrorText(error.Message));
+                if (error is LegacyConversionException) imageErrors.Add(System.IO.Path.GetFileName(src) + ": " + NativeSharingWindow.ErrorText(error));
+                else if (ext is ".png" or ".svg") imageErrors.Add(System.IO.Path.GetFileName(src) + ": " + ScoreExportDialog.ErrorText(error.Message));
             }
         }
         RefreshLibrary();
