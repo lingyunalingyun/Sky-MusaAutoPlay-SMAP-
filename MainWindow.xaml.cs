@@ -2074,7 +2074,12 @@ public partial class MainWindow : Window
 
     internal async System.Threading.Tasks.Task CheckUpdateManual()
     {
-        if (_deltaUpdates?.Supported == true) { await _deltaUpdates.Start(manual: true); return; }
+        if (_deltaUpdates?.Supported == true)
+        {
+            await _deltaUpdates.Start(manual: true);
+            if (_deltaUpdates.State == DeltaUpdateState.Current) ShowToast(Lang.Update("current"));
+            return;
+        }
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) { ShowToast(Lang.S("t.latest")); return; }
         OfferUpdate(rel);

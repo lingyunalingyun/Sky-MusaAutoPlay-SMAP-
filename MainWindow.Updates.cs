@@ -22,12 +22,14 @@ public partial class MainWindow
     }
     void InitializeDeltaUpdates()
     {
-        _deltaUpdates = new(); UpdatePane.Visibility = _deltaUpdates.Supported ? Visibility.Visible : Visibility.Collapsed;
+        _deltaUpdates = new(); UpdatePane.Refresh(_deltaUpdates);
+        UpdateActionHost.Content = UpdatePane.ActionButton;
+        UpdateActionHost.Visibility = _deltaUpdates.Supported ? Visibility.Visible : Visibility.Collapsed;
         SetUpdateRow.Visibility = _deltaUpdates.Supported ? Visibility.Collapsed : Visibility.Visible;
         UpdatePane.ActionRequested += async () =>
         {
             if (_deltaUpdates.State is DeltaUpdateState.Downloading or DeltaUpdateState.Reconstructing) _deltaUpdates.Pause();
-            else await _deltaUpdates.Start(manual: true);
+            else await CheckUpdateManual();
         };
         UpdatePane.RestartRequested += async () => await RestartForDeltaUpdate();
         _deltaUpdates.Changed += () => UpdatePane.Refresh(_deltaUpdates);

@@ -1,5 +1,7 @@
 using System.IO;
 using System.Reflection;
+using System.Net;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -32,22 +34,48 @@ static partial class Program
             var settings = (Grid)main.FindName("SettingsPanel");
             var shortcuts = (Button)main.FindName("SetShortcutsBtn");
             var fallback = (Grid)main.FindName("SetUpdateRow");
-            var column = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(pane));
-            Check("UPDATE-ONE-SETTINGS-ENTRY-" + id, pane.IsVisible == service.Supported && fallback.IsVisible != service.Supported);
+            var actionHost = (ContentControl)main.FindName("UpdateActionHost");
+            var checkButton = (Button)actionHost.Content;
+            var column = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(actionHost));
+            var detailsColumn = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(pane));
+            Check("UPDATE-ONE-SETTINGS-ENTRY-" + id, actionHost.IsVisible == service.Supported && fallback.IsVisible != service.Supported);
             Check("UPDATE-ACTIONS-LEFT-COLUMN-" + id, Grid.GetColumn(column) == 0 && column.IsAncestorOf(shortcuts)
                 && Equals(shortcuts.Content, Lang.S("map.shortcuts")));
-            fallback.Visibility = Visibility.Collapsed; pane.Visibility = Visibility.Visible; Pump();
+            Check("UPDATE-DETAILS-RIGHT-COLUMN-" + id, Grid.GetColumn(detailsColumn) == 1 && !detailsColumn.IsAncestorOf(checkButton));
+            fallback.Visibility = Visibility.Collapsed; actionHost.Visibility = Visibility.Visible; Pump();
             Check("UPDATE-EMBEDDED-IN-SETTINGS-" + id, settings.IsAncestorOf(pane) && Window.GetWindow(pane) == main && app.Windows.Count == 1);
+            if (service.Supported)
+            {
+                var response = new UpdateStatusReply();
+                ((GitHubUpdates)typeof(DeltaUpdateService).GetField("_remote", flags)!.GetValue(service)!).Dispose();
+                typeof(DeltaUpdateService).GetField("_remote", flags)!.SetValue(service, new GitHubUpdates(response));
+                void Await(Task task)
+                {
+                    var wait = System.Diagnostics.Stopwatch.StartNew();
+                    while (!task.IsCompleted && wait.ElapsedMilliseconds < 5000) Pump();
+                    if (!task.IsCompleted) throw new TimeoutException("Updater check did not finish.");
+                    task.GetAwaiter().GetResult(); Pump();
+                }
+                var toastText = (TextBlock)main.FindName("ToastText");
+                toastText.Text = "before-automatic-check";
+                Await(service.Start());
+                Check("UPDATE-AUTOMATIC-CURRENT-SILENT-" + id, service.State == DeltaUpdateState.Current && response.Requests == 1 && toastText.Text == "before-automatic-check");
+                Await((Task)typeof(MainWindow).GetMethod("CheckUpdateManual", flags)!.Invoke(main, null)!);
+                Check("UPDATE-MANUAL-CURRENT-NOTICE-" + id, service.State == DeltaUpdateState.Current && response.Requests == 2 && toastText.Text == Lang.Update("current"));
+                var noticeClock = System.Diagnostics.Stopwatch.StartNew(); while (noticeClock.ElapsedMilliseconds < 220) Pump();
+                CaptureMetadata(main, Path.Combine(images, id + "-current-notice.png"));
+                response.Fail = true; toastText.Text = "before-failed-check";
+                Await((Task)typeof(MainWindow).GetMethod("CheckUpdateManual", flags)!.Invoke(main, null)!);
+                Check("UPDATE-FAILED-CHECK-NOT-CURRENT-" + id, service.State == DeltaUpdateState.Error && response.Requests == 3 && toastText.Text == "before-failed-check" && pane.IsVisible);
+            }
             foreach (var idle in new[] { DeltaUpdateState.Idle, DeltaUpdateState.Current })
             {
                 State(idle);
-                var actions = Descendants<Button>(pane).Where(b => b.IsVisible).ToArray();
+                var actions = Descendants<Button>(actionHost).Where(b => b.IsVisible).ToArray();
                 Check("UPDATE-ONLY-CHECK-BUTTON-" + idle + "-" + id,
                     actions.Length == 1 && actions[0].IsEnabled && Equals(actions[0].Content, Lang.Update("check"))
-                    && !Descendants<TextBlock>(pane).Any(t => t.IsVisible && !actions[0].IsAncestorOf(t))
-                    && pane.ActualHeight <= 40 && pane.Padding == default);
+                    && !pane.IsVisible && actionHost.ActualHeight <= 40);
             }
-            var checkButton = Descendants<Button>(pane).Single(b => b.IsVisible);
             var pitch = (Button)main.FindName("SetPitchResetBtn");
             Point Position(FrameworkElement control) => control.TranslatePoint(new Point(), settings);
             Check("UPDATE-ACTIONS-ORDER-AND-ALIGNMENT-" + id,
@@ -58,7 +86,7 @@ static partial class Program
             State(DeltaUpdateState.Downloading);
             pane.BringIntoView(); Pump();
             Check("UPDATE-DETAILS-RESTORED-" + id, pane.ActualHeight > 100 && Descendants<TextBlock>(pane).Any(t => t.IsVisible && t.Text == Lang.Update("title")));
-            Check("UPDATE-CONTINUE-USING-MAIN-" + id, main.IsEnabled && pane.IsVisible && Descendants<Button>(pane).Any(b => Equals(b.Content, Lang.Update("pause"))));
+            Check("UPDATE-CONTINUE-USING-MAIN-" + id, main.IsEnabled && pane.IsVisible && checkButton.IsVisible && Equals(checkButton.Content, Lang.Update("pause")) && !Descendants<Button>(pane).Any());
             Check("UPDATE-LOCALIZATION-" + id, new[] { "title", "ready", "restart", "found", "continueUse", "preserved" }.All(k => Lang.Update(k) != k));
             Check("UPDATE-G2-" + id, Descendants<System.Windows.Controls.Border>(pane).Where(b => b.CornerRadius != default).All(b => b is G2Border));
             typeof(MainWindow).GetMethod("ShowToast", flags)!.Invoke(main, [Lang.Update("found")]); Pump();
@@ -66,7 +94,7 @@ static partial class Program
             var capsule = (G2Border)main.FindName("Toast");
             Check("UPDATE-CAPSULE-" + id, ((TextBlock)main.FindName("ToastText")).Text == Lang.Update("found") && capsule.IsVisible && capsule.Opacity > .9 && capsule.ActualWidth > 100);
             CaptureMetadata(main, Path.Combine(images, id + "-downloading.png"));
-            State(DeltaUpdateState.Paused); Check("UPDATE-RESUME-ACTION-" + id, Descendants<Button>(pane).Any(b => Equals(b.Content, Lang.Update("resume"))));
+            State(DeltaUpdateState.Paused); Check("UPDATE-RESUME-ACTION-" + id, Equals(checkButton.Content, Lang.Update("resume")));
             State(DeltaUpdateState.Error); CaptureMetadata(main, Path.Combine(images, id + "-retry.png"));
             State(DeltaUpdateState.Ready); typeof(MainWindow).GetMethod("ShowUpdateReady", flags)!.Invoke(main, null); Pump();
             var ready = (ChromeWindow)typeof(MainWindow).GetField("_updateReadyNotice", flags)!.GetValue(main)!;
@@ -78,5 +106,15 @@ static partial class Program
         }
         Check("UPDATE-VERIFICATION-USER-STATE-UNCHANGED", protectedFiles.All(f => Digest(f) == before[f]));
         app.Shutdown();
+    }
+    sealed class UpdateStatusReply : HttpMessageHandler
+    {
+        public int Requests;
+        public bool Fail;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            return Task.FromResult(new HttpResponseMessage(Fail ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new StringContent("[]") });
+        }
     }
 }
