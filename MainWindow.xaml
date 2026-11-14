@@ -771,12 +771,6 @@
                     <!-- 本地 / 云端 切换 -->
                     <Button x:Name="LocalLibBtn" DockPanel.Dock="Top" Content="本地曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,12,0,0" Click="ShowLocal_Click"/>
                     <Button x:Name="CloudLibBtn" DockPanel.Dock="Top" Content="云端曲库" Foreground="{DynamicResource ActionFg}" FontWeight="Bold" Margin="0,12,0,0" Click="ShowCloud_Click"/>
-                    <Button x:Name="AnnouncementsBtn" DockPanel.Dock="Top" Style="{StaticResource NeutralBtn}" Margin="0,12,0,0" Click="Announcements_Click">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="AnnouncementsLabel" Text="公告" VerticalAlignment="Center"/>
-                            <g2:G2Border x:Name="AnnouncementUnreadDot" Width="8" Height="8" CornerRadius="4" Background="{DynamicResource Accent}" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
-                        </StackPanel>
-                    </Button>
 
                     <!-- 底部: 导入 / 设置 -->
                     <Button x:Name="SideSettingsBtn" DockPanel.Dock="Bottom" Content="设置" Style="{StaticResource NeutralBtn}" Background="{DynamicResource SideActionBg}" Click="Settings_Click"/>
@@ -938,6 +932,14 @@
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetPitchLbl" Grid.Column="0" Text="音调:" VerticalAlignment="Center" FontSize="15"/>
                             <Button Grid.Column="1" x:Name="SetPitchResetBtn" Content="恢复默认音调" Style="{StaticResource NeutralBtn}" Click="SetPitchReset_Click"/></Grid>
+                        <Grid Margin="82,0,0,10">
+                            <Button x:Name="AnnouncementsBtn" Height="40" Style="{StaticResource NeutralBtn}" Click="Announcements_Click">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="AnnouncementsLabel" Text="公告" VerticalAlignment="Center"/>
+                                    <g2:G2Border x:Name="AnnouncementUnreadDot" Width="8" Height="8" CornerRadius="4" Background="{DynamicResource Accent}" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Button Grid.Column="1" x:Name="SetShortcutsBtn" Content="功能快捷键" Style="{StaticResource NeutralBtn}" Click="SetShortcuts_Click"/></Grid>
                         <Grid Margin="82,0,0,10" Panel.ZIndex="5">
