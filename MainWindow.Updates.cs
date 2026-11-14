@@ -11,6 +11,7 @@ public partial class MainWindow
     ChromeWindow? _updateReadyNotice;
     bool _updateReadyOffered;
     bool _deltaRestartPreparing;
+    bool _refreshingUpdateControls, _installerChecking;
     internal bool BackgroundUpdatesEnabled => _deltaUpdates?.Supported == true;
     void ConfirmDeltaUpdateLaunch()
     {
@@ -22,20 +23,68 @@ public partial class MainWindow
     }
     void InitializeDeltaUpdates()
     {
-        _deltaUpdates = new(); UpdatePane.Refresh(_deltaUpdates);
+        _deltaUpdates = new(_verificationMode ? Updates.UpdateChannelSettings.DefaultFor(UpdateChecker.AppVersion) : null);
+        UpdatePane.Refresh(_deltaUpdates);
         UpdateActionHost.Content = UpdatePane.ActionButton;
-        UpdateActionHost.Visibility = _deltaUpdates.Supported ? Visibility.Visible : Visibility.Collapsed;
-        SetUpdateRow.Visibility = _deltaUpdates.Supported ? Visibility.Collapsed : Visibility.Visible;
+        RefreshUpdateControls();
         UpdatePane.ActionRequested += async () =>
         {
             if (_deltaUpdates.State is DeltaUpdateState.Downloading or DeltaUpdateState.Reconstructing) _deltaUpdates.Pause();
             else await CheckUpdateManual();
         };
         UpdatePane.RestartRequested += async () => await RestartForDeltaUpdate();
-        _deltaUpdates.Changed += () => UpdatePane.Refresh(_deltaUpdates);
+        _deltaUpdates.Changed += () => { UpdatePane.Refresh(_deltaUpdates); RefreshUpdateControls(); };
         _deltaUpdates.Found += () => ShowToast(Lang.Update("found"));
         _deltaUpdates.Ready += ShowUpdateReady;
         Activated += (_, _) => { if (_deltaUpdates.State == DeltaUpdateState.Ready) ShowUpdateReady(); };
+    }
+    void RefreshUpdateControls()
+    {
+        if (_deltaUpdates == null) return;
+        _refreshingUpdateControls = true;
+        try
+        {
+            string stable = Lang.Update("stableChannel"), testing = Lang.Update("testingChannel");
+            if (SetUpdateChannelCombo.Items.Count != 2 || !Equals(SetUpdateChannelCombo.Items[0], stable))
+                SetUpdateChannelCombo.ItemsSource = new[] { stable, testing };
+            SetUpdateChannelCombo.SelectedIndex = _deltaUpdates.Channel == "stable" ? 0 : 1;
+            SetUpdateChannelChoice.ToolTip = Lang.Update("channelHint");
+            SetUpdateChannelChoice.IsEnabled = _deltaUpdates.CanChangeChannel && !_deltaRestartPreparing && !_installerChecking;
+            UpdateActionHost.Visibility = _deltaUpdates.Supported ? Visibility.Visible : Visibility.Collapsed;
+            SetUpdateRow.Visibility = _deltaUpdates.Supported ? Visibility.Collapsed : Visibility.Visible;
+            SetUpdateBtn.IsEnabled = !_installerChecking;
+        }
+        finally { _refreshingUpdateControls = false; }
+    }
+    void SetUpdateChannel_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_refreshingUpdateControls || _deltaUpdates == null || SetUpdateChannelCombo.SelectedIndex < 0) return;
+        string channel = SetUpdateChannelCombo.SelectedIndex == 0 ? "stable" : "alpha";
+        if (channel == _deltaUpdates.Channel) return;
+        if (!_deltaUpdates.CanChangeChannel || _deltaRestartPreparing || _installerChecking)
+        { RefreshUpdateControls(); ShowToast(Lang.Update("channelBusy")); return; }
+        try
+        {
+            if (!_verificationMode) Updates.UpdateChannelSettings.Save(Updates.UpdateChannelSettings.FilePath, channel);
+            _updateReadyNotice?.Close(); _updateReadyOffered = false;
+            _deltaUpdates.ChangeChannel(channel);
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        { RefreshUpdateControls(); ShowToast(Lang.Update("channelSaveError")); }
+    }
+    async Task CheckInstallerUpdate(bool manual)
+    {
+        if (_installerChecking) return;
+        _installerChecking = true; RefreshUpdateControls();
+        try
+        {
+            var release = await UpdateChecker.CheckAsync(reportErrors: true);
+            if (release is { } available) OfferUpdate(available);
+            else if (manual) ShowToast(Lang.Update("current"));
+        }
+        catch (Exception error) when (error is System.Net.Http.HttpRequestException or TaskCanceledException or System.IO.IOException or System.Text.Json.JsonException or InvalidOperationException)
+        { Logger.Info("Installer update check failed: " + error.GetType().Name); if (manual) ShowToast(Lang.Update("error")); }
+        finally { _installerChecking = false; RefreshUpdateControls(); }
     }
     void ShowUpdateReady()
     {
@@ -59,6 +108,7 @@ public partial class MainWindow
         if (_deltaUpdates?.State != DeltaUpdateState.Ready) return;
         if (_deltaRestartPreparing) return;
         _deltaRestartPreparing = true;
+        RefreshUpdateControls();
         Process? worker = null;
         try
         {
@@ -75,6 +125,6 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is System.IO.IOException or System.IO.InvalidDataException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { if (worker != null && !worker.HasExited) worker.Kill(); ShowToast(Lang.Update("handoffError")); }
-        finally { worker?.Dispose(); _deltaRestartPreparing = false; }
+        finally { worker?.Dispose(); _deltaRestartPreparing = false; RefreshUpdateControls(); }
     }
 }

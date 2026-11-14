@@ -135,6 +135,7 @@ public partial class MainWindow : Window
     public void ApplyLanguage()
     {
         UpdatePane.Refresh(_deltaUpdates);
+        RefreshUpdateControls();
         AppTitleText.Text = Lang.S("app.title");
         CountdownLabel.Text = Lang.S("countdown");
         RefreshShortcutHints();
@@ -673,10 +674,9 @@ public partial class MainWindow : Window
 
     async System.Threading.Tasks.Task CheckUpdateAsync()
     {
-        if (_deltaUpdates?.Supported == true) { await Task.Delay(3000); await _deltaUpdates.Start(); return; }
-        var r = await UpdateChecker.CheckAsync();
-        if (r is not { } rel) return;
-        OfferUpdate(rel);
+        await Task.Delay(3000);
+        if (_deltaUpdates?.Supported == true) { await _deltaUpdates.Start(); return; }
+        await CheckInstallerUpdate(manual: false);
     }
 
     internal void OfferUpdate(UpdateChecker.Release rel, Window? promptOwner = null)
@@ -2080,9 +2080,7 @@ public partial class MainWindow : Window
             if (_deltaUpdates.State == DeltaUpdateState.Current) ShowToast(Lang.Update("current"));
             return;
         }
-        var r = await UpdateChecker.CheckAsync();
-        if (r is not { } rel) { ShowToast(Lang.S("t.latest")); return; }
-        OfferUpdate(rel);
+        await CheckInstallerUpdate(manual: true);
     }
 
     async System.Threading.Tasks.Task UploadLogAsync()

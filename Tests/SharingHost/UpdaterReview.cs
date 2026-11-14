@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using SMAP_WPF;
 using SMAP_WPF.Updates;
@@ -15,7 +16,7 @@ static partial class Program
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP");
-        string[] protectedFiles = ["theme.txt", "lang.txt", "nowplaying.txt", "prefs.txt", "playlist.txt", "playmode.txt"];
+        string[] protectedFiles = ["theme.txt", "lang.txt", "nowplaying.txt", "prefs.txt", "playlist.txt", "playmode.txt", "update-channel.txt"];
         string Digest(string name) => File.Exists(Path.Combine(profile, name)) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(profile, name)))) : "absent";
         var before = protectedFiles.ToDictionary(f => f, Digest);
         string images = Path.Combine(Output, "updater-ui"); Directory.CreateDirectory(images);
@@ -35,6 +36,8 @@ static partial class Program
             var shortcuts = (Button)main.FindName("SetShortcutsBtn");
             var fallback = (Grid)main.FindName("SetUpdateRow");
             var actionHost = (ContentControl)main.FindName("UpdateActionHost");
+            var channelCombo = (ComboBox)main.FindName("SetUpdateChannelCombo");
+            var channelChoice = (JoinedChoiceButton)main.FindName("SetUpdateChannelChoice");
             var checkButton = (Button)actionHost.Content;
             var column = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(actionHost));
             var detailsColumn = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(pane));
@@ -42,6 +45,41 @@ static partial class Program
             Check("UPDATE-ACTIONS-LEFT-COLUMN-" + id, Grid.GetColumn(column) == 0 && column.IsAncestorOf(shortcuts)
                 && Equals(shortcuts.Content, Lang.S("map.shortcuts")));
             Check("UPDATE-DETAILS-RIGHT-COLUMN-" + id, Grid.GetColumn(detailsColumn) == 1 && !detailsColumn.IsAncestorOf(checkButton));
+            Check("UPDATE-CHANNEL-LOCALIZATION-" + id, channelCombo.Items.Count == 2
+                && Equals(channelCombo.Items[0], Lang.Update("stableChannel")) && Equals(channelCombo.Items[1], Lang.Update("testingChannel")));
+            channelCombo.SelectedIndex = 0; Pump();
+            Check("UPDATE-STABLE-SELECTION-" + id, service.Channel == "stable" && fallback.IsVisible == !service.Supported
+                && actionHost.IsVisible == service.Supported && service.State == DeltaUpdateState.Idle);
+            channelCombo.SelectedIndex = 1; Pump();
+            Check("UPDATE-TESTING-SELECTION-" + id, service.Channel == "alpha" && actionHost.IsVisible && !fallback.IsVisible
+                && service.State == DeltaUpdateState.Idle);
+            ((AnimatedChoicePopup)main.FindName("LibraryChoicePopup")).ReduceMotion = true;
+            channelChoice.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, channelChoice)); Pump(); main.UpdateLayout();
+            CaptureMetadata(main, Path.Combine(images, id + "-channel-menu.png"));
+            var optionsTop = channelChoice.Options.TranslatePoint(new Point(), column);
+            File.WriteAllText(Path.Combine(images, id + "-channel-menu-layout.json"), System.Text.Json.JsonSerializer.Serialize(new
+            { channelChoice.OpenAbove, channelChoice.IsOpen, channelChoice.ActualHeight, chromeHeight = channelChoice.Chrome.ActualHeight,
+                requestedHeight = channelChoice.Chrome.Height, transformY = channelChoice.Chrome.RenderTransform.Value.OffsetY,
+                optionsY = optionsTop.Y, optionsHeight = channelChoice.Options.ActualHeight, viewportHeight = column.ActualHeight }));
+            Check("UPDATE-CHANNEL-MENU-NOT-CLIPPED-" + id, channelChoice.IsOpen && channelChoice.Options.Items.Count == 2
+                && optionsTop.Y >= 0 && optionsTop.Y + channelChoice.Options.ActualHeight <= column.ActualHeight);
+            Check("UPDATE-CHANNEL-MENU-HIT-TEST-" + id, channelChoice.Options.Items.Cast<ListBoxItem>().All(option =>
+            {
+                var point = option.TranslatePoint(new Point(option.ActualWidth / 2, option.ActualHeight / 2), main);
+                var hit = main.InputHitTest(point) as DependencyObject;
+                return hit != null && (ReferenceEquals(hit, option) || option.IsAncestorOf(hit));
+            }));
+            var stableOption = (ListBoxItem)channelChoice.Options.Items[0];
+            channelChoice.Options.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent, Source = stableOption }); Pump();
+            Check("UPDATE-CHANNEL-MENU-COMMITS-SELECTION-" + id, service.Channel == "stable" && !channelChoice.IsOpen);
+            channelCombo.SelectedIndex = 1; Pump();
+            var choicePopup = (AnimatedChoicePopup)main.FindName("LibraryChoicePopup"); choicePopup.ReduceMotion = false;
+            channelChoice.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, channelChoice));
+            var motionClock = System.Diagnostics.Stopwatch.StartNew(); while (motionClock.ElapsedMilliseconds < 120) Pump();
+            var header = (G2Border)typeof(JoinedChoiceButton).GetField("_header", flags)!.GetValue(channelChoice)!;
+            Check("UPDATE-CHANNEL-MOTION-ANCHOR-" + id, Math.Abs(header.TranslatePoint(new Point(), main).Y - channelChoice.TranslatePoint(new Point(), main).Y) < 2);
+            choicePopup.Close(true); choicePopup.ReduceMotion = true; Pump();
             fallback.Visibility = Visibility.Collapsed; actionHost.Visibility = Visibility.Visible; Pump();
             Check("UPDATE-EMBEDDED-IN-SETTINGS-" + id, settings.IsAncestorOf(pane) && Window.GetWindow(pane) == main && app.Windows.Count == 1);
             if (service.Supported)
@@ -67,6 +105,13 @@ static partial class Program
                 response.Fail = true; toastText.Text = "before-failed-check";
                 Await((Task)typeof(MainWindow).GetMethod("CheckUpdateManual", flags)!.Invoke(main, null)!);
                 Check("UPDATE-FAILED-CHECK-NOT-CURRENT-" + id, service.State == DeltaUpdateState.Error && response.Requests == 3 && toastText.Text == "before-failed-check" && pane.IsVisible);
+                response.Fail = false; response.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Task checking = service.Start();
+                Check("UPDATE-CHANNEL-DISABLED-DURING-CHECK-" + id, !channelChoice.IsEnabled && !service.CanChangeChannel);
+                channelCombo.SelectedIndex = 0; Pump();
+                Check("UPDATE-BUSY-SWITCH-RETAINED-" + id, channelCombo.SelectedIndex == 1 && service.Channel == "alpha");
+                response.Gate.SetResult(true); Await(checking);
+                Check("UPDATE-CHANNEL-REENABLED-AFTER-CHECK-" + id, channelChoice.IsEnabled && service.CanChangeChannel);
             }
             foreach (var idle in new[] { DeltaUpdateState.Idle, DeltaUpdateState.Current })
             {
@@ -78,10 +123,11 @@ static partial class Program
             }
             var pitch = (Button)main.FindName("SetPitchResetBtn");
             Point Position(FrameworkElement control) => control.TranslatePoint(new Point(), settings);
-            Check("UPDATE-ACTIONS-ORDER-AND-ALIGNMENT-" + id,
+            Check("UPDATE-CONTROLS-ORDER-AND-ALIGNMENT-" + id,
                 Position(pitch).Y < Position(shortcuts).Y && Position(shortcuts).Y < Position(checkButton).Y
                 && Math.Abs(Position(pitch).X - Position(checkButton).X) < 1
-                && Math.Abs(pitch.ActualWidth - checkButton.ActualWidth) < 1);
+                && Math.Abs(Position(channelChoice).Y - Position(actionHost).Y) < 3
+                && Math.Abs(Position(pitch).X + pitch.ActualWidth - Position(channelChoice).X - channelChoice.ActualWidth) < 1);
             CaptureMetadata(main, Path.Combine(images, id + "-current.png"));
             State(DeltaUpdateState.Downloading);
             pane.BringIntoView(); Pump();
@@ -111,10 +157,12 @@ static partial class Program
     {
         public int Requests;
         public bool Fail;
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public TaskCompletionSource<bool>? Gate;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
-            return Task.FromResult(new HttpResponseMessage(Fail ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new StringContent("[]") });
+            if (Gate != null) await Gate.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(Fail ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new StringContent("[]") };
         }
     }
 }

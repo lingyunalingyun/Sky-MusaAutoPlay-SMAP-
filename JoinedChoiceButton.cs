@@ -19,6 +19,7 @@ public class JoinedChoiceButton : Button
     bool _closing;
     public bool IsOpen {get;private set;}
     public bool ReduceMotion {get;set;}
+    public bool OpenAbove {get;set;}
     public Border Chrome {get{ApplyTemplate();return _chrome;}}
     public ListBox Options {get{ApplyTemplate();return _options;}}
     public JoinedChoiceButton()
@@ -34,7 +35,17 @@ public class JoinedChoiceButton : Button
         _chrome=(Border)GetTemplateChild("PART_Chrome");_header=(Border)GetTemplateChild("PART_Header");
         _separator=(Border)GetTemplateChild("PART_Separator");_content=(StackPanel)GetTemplateChild("PART_Content");_options=(ListBox)GetTemplateChild("PART_Options");
         _custom=(ContentPresenter)GetTemplateChild("PART_CustomContent");
-        _chrome.SizeChanged+=(_,_)=>_chrome.Clip=G2Geometry.Create(new Rect(_chrome.RenderSize),_chrome.CornerRadius);
+        if(OpenAbove)
+        {
+            _content.VerticalAlignment=VerticalAlignment.Bottom;
+            _content.Children.Remove(_separator);_content.Children.Remove(_header);
+            _content.Children.Add(_separator);_content.Children.Add(_header);
+        }
+        _chrome.SizeChanged+=(_,_)=>
+        {
+            _chrome.Clip=G2Geometry.Create(new Rect(_chrome.RenderSize),_chrome.CornerRadius);
+            if(OpenAbove)_chrome.RenderTransform=new TranslateTransform(0,ActualHeight-_chrome.ActualHeight);
+        };
         _options.PreviewMouseLeftButtonUp+=Commit;_header.Height=Math.Max(0,ActualHeight-2);_chrome.Height=ActualHeight;
     }
     public void Toggle(ComboBox model)

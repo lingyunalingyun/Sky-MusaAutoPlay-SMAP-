@@ -934,10 +934,16 @@
                             <Button Grid.Column="1" x:Name="SetPitchResetBtn" Content="恢复默认音调" Style="{StaticResource NeutralBtn}" Click="SetPitchReset_Click"/></Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Button Grid.Column="1" x:Name="SetShortcutsBtn" Content="功能快捷键" Style="{StaticResource NeutralBtn}" Click="SetShortcuts_Click"/></Grid>
-                        <Grid x:Name="SetUpdateRow" Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="SetUpdateLbl" Grid.Column="0" Text="更新:" VerticalAlignment="Center" FontSize="15"/>
-                            <Button x:Name="SetUpdateBtn" Grid.Column="1" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/></Grid>
-                        <ContentControl x:Name="UpdateActionHost" Margin="82,0,0,10" HorizontalContentAlignment="Stretch"/>
+                        <Grid Margin="82,0,0,10" Panel.ZIndex="5">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="132"/></Grid.ColumnDefinitions>
+                            <Grid x:Name="SetUpdateRow">
+                                <TextBlock x:Name="SetUpdateLbl" Text="更新:" Visibility="Collapsed"/>
+                                <Button x:Name="SetUpdateBtn" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/>
+                            </Grid>
+                            <ContentControl x:Name="UpdateActionHost" VerticalAlignment="Center" HorizontalContentAlignment="Stretch"/>
+                            <ComboBox x:Name="SetUpdateChannelCombo" Visibility="Collapsed" SelectionChanged="SetUpdateChannel_Changed"/>
+                            <local:JoinedChoiceButton Grid.Column="2" x:Name="SetUpdateChannelChoice" Height="40" OpenAbove="True" Content="{Binding SelectedItem,ElementName=SetUpdateChannelCombo}" Tag="{Binding ElementName=SetUpdateChannelCombo}" Click="SettingsChoice_Click"/>
+                        </Grid>
                     </StackPanel>
                     </ScrollViewer>
 
