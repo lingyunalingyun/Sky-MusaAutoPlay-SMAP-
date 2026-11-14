@@ -131,6 +131,12 @@ public sealed class DeltaUpdateTests
     [InlineData("C:/SMAP.exe")]
     public void UpdatesCannotTargetPrivateDataOrAmbiguousPaths(string path) => Assert.Throws<InvalidDataException>(() => UpdateFormat.ManagedPath(path));
     [Fact]
+    public void PublishedDotNetDiagnosticsAreAllowedWithoutAcceptingArbitraryExecutables()
+    {
+        UpdateFormat.ManagedPath("createdump.exe");
+        Assert.Throws<InvalidDataException>(() => UpdateFormat.ManagedPath("unrelated.exe"));
+    }
+    [Fact]
     public void DuplicateOrOverlappingManifestContentIsRejected()
     {
         using var f = new Fixture(); var m = f.Build();
