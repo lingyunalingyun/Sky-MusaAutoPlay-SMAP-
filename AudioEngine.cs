@@ -132,6 +132,7 @@ sealed class LoopProvider : ISampleProvider
     public WaveFormat WaveFormat => _s.WaveFormat;
     public int Read(float[] buffer, int offset, int count)
     {
+        if (_s.LoopData.Length == 0 || (Stop && _fade == 0)) return 0;
         if (Stop && _fade < 0) _fade = FadeFrames;
         int written = 0;
         while (written < count)
@@ -203,7 +204,7 @@ sealed class MetronomeProvider : ISampleProvider
 }
 
 /// <summary>光遇 15 键音频引擎: 复用 Sky Studio 提取的乐器 wav, NAudio 混音复音播放。</summary>
-public static class AudioEngine
+public static partial class AudioEngine
 {
     static MetronomeProvider? _metro;
 
@@ -243,8 +244,10 @@ public static class AudioEngine
     static MixingSampleProvider? _dryMixer;   // 终混: 混响输出 + 干信号(节拍器走这里, 不吃混响)
     static Reverb? _reverb;
     static bool _cave;
-    static readonly Dictionary<string, CachedSound?[]> _cache = new();
-    static readonly Dictionary<int, LoopProvider> _activeVoices = new();   // 持续音: 正在长按的键 -> 循环voice
+    static readonly Dictionary<(string name, int offset), CachedSound?[]> _cache = new();
+    static AudioVoiceMixer? _voices;
+    static readonly Guid ManualOwner = Guid.NewGuid();
+    static readonly Guid[] ManualVoices = Enumerable.Range(0, Keys).Select(_ => Guid.NewGuid()).ToArray();
     static readonly HashSet<string> SustainInstruments = new()             // 可长音的乐器(管乐/弓弦), 长按持续
     { "Flute", "Ocarina", "AP18Ocarina", "Saxophone", "Harmonica", "Horn", "Quena", "Bugle", "GoldBugle", "AP29Piccolo", "Bassoon", "Violin", "Cello", "Contrabass" };
     static string _instrument = "Piano";
@@ -263,6 +266,7 @@ public static class AudioEngine
             if (_out != null) return;
             var fmt = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
             _mixer = new MixingSampleProvider(fmt) { ReadFully = true };
+            _voices = new AudioVoiceMixer(_mixer);
             _reverb = new Reverb(_mixer) { Enabled = _cave };   // 洞穴混响接在乐器混音器后
             _dryMixer = new MixingSampleProvider(fmt) { ReadFully = true };   // 终混: 混响后的乐器 + 干信号(节拍器不吃混响)
             _dryMixer.AddMixerInput(_reverb);
@@ -273,16 +277,17 @@ public static class AudioEngine
         }
     }
 
-    static void Load(string name)
+    static void Load(string name, int? semitone = null)
     {
-        if (_cache.ContainsKey(name)) return;
+        int offset = semitone ?? PitchConfig.Get(name);
+        if (_cache.ContainsKey((name, offset))) return;
         var arr = new CachedSound?[Keys];
         for (int i = 0; i < Keys; i++)
         {
             var f = Path.Combine(Dir, name, i + ".wav");
-            try { if (File.Exists(f)) arr[i] = new CachedSound(f, PitchConfig.Get(name)); } catch { }
+            try { if (File.Exists(f)) arr[i] = new CachedSound(f, offset); } catch { }
         }
-        _cache[name] = arr;
+        _cache[(name, offset)] = arr;
     }
 
     public static void SetInstrument(string name)
@@ -292,47 +297,58 @@ public static class AudioEngine
 
     public static void Play(int key)
     {
-        if (key < 0 || key >= Keys) return;
-        lock (_lock)
-        {
-            if (_out == null) Init();
-            if (_cache.TryGetValue(_instrument, out var arr) && arr[key] is { } s)
-                _mixer!.AddMixerInput(new CachedSoundProvider(s));
-        }
+        StartVoice(ManualOwner, Guid.NewGuid(), key, false);
     }
 
     /// <summary>按下琴键: 可长音乐器起循环长音(松开才停), 其余乐器短音一次。</summary>
     public static void NoteOn(int key)
     {
         if (key < 0 || key >= Keys) return;
-        if (!SustainInstruments.Contains(_instrument)) { Play(key); return; }   // 短音乐器
         lock (_lock)
         {
-            if (_out == null) Init();
-            if (_activeVoices.TryGetValue(key, out var old)) { old.Stop = true; _activeVoices.Remove(key); }
-            if (_cache.TryGetValue(_instrument, out var arr) && arr[key] is { } s)
-            {
-                var v = new LoopProvider(s);
-                _activeVoices[key] = v;
-                _mixer!.AddMixerInput(v);
-            }
+            if (SustainInstruments.Contains(_instrument)) StartVoice(ManualOwner, ManualVoices[key], key, true);
+            else Play(key);
         }
     }
 
     /// <summary>松开琴键: 停该键的持续长音(短音乐器无操作)。</summary>
     public static void NoteOff(int key)
     {
-        lock (_lock)
-        {
-            if (_activeVoices.TryGetValue(key, out var v)) { v.Stop = true; _activeVoices.Remove(key); }
-        }
+        if (key >= 0 && key < Keys) ReleaseVoice(ManualVoices[key]);
     }
 
     /// <summary>立即静音: 移除所有正在播放的音符。</summary>
     public static void StopAll()
     {
-        lock (_lock) { _mixer?.RemoveAllMixerInputs(); }
+        lock (_lock) { _voices?.StopAll(); }
     }
+
+    public static int ActiveVoiceCount { get { lock (_lock) return _voices?.Count ?? 0; } }
+    public static void Prepare(string instrument, int? semitone = null)
+    {
+        lock (_lock) { if (_out == null) Init(); Load(instrument, semitone); }
+    }
+    public static void StartVoice(Guid owner, Guid voice, int key, bool sustain, string? instrument = null, int? semitone = null)
+    {
+        if (key < 0 || key >= Keys) return;
+        lock (_lock)
+        {
+            if (_out == null) Init();
+            string name = instrument ?? _instrument;
+            int offset = semitone ?? PitchConfig.Get(name);
+            Load(name, offset);
+            if (_cache[(name, offset)][key] is not { } sound) return;
+            if (sustain && SustainInstruments.Contains(name))
+            {
+                var loop = new LoopProvider(sound);
+                _voices!.Start(voice, owner, loop, () => loop.Stop = true);
+            }
+            else _voices!.Start(voice, owner, new CachedSoundProvider(sound));
+        }
+    }
+    public static void ReleaseVoice(Guid voice) { lock (_lock) _voices?.Release(voice); }
+    public static void StopOwner(Guid owner) { lock (_lock) _voices?.StopOwner(owner); }
+    public static void StopManual() { lock (_lock) _voices?.StopOwner(ManualOwner); }
 
     /// <summary>当前选中的乐器名。</summary>
     public static string CurrentInstrument => _instrument;
@@ -348,7 +364,7 @@ public static class AudioEngine
         {
             lock (_lock)
             {
-                _cache.Remove(name);
+                foreach (var key in _cache.Keys.Where(k => k.name == name).ToArray()) _cache.Remove(key);
                 if (_out != null) Load(name);
             }
         });

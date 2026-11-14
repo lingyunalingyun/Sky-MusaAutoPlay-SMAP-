@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.IO.Compression;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
@@ -126,23 +125,7 @@ public partial class MainWindow : Window
         var asm = Assembly.GetExecutingAssembly();
         using var s = asm.GetManifestResourceStream("app.zip")
             ?? throw new Exception("安装包内未找到 SMAP 数据 (payload 未打入)。请用 build-installer 脚本重新打包。");
-        using var zip = new ZipArchive(s, ZipArchiveMode.Read);
-        Directory.CreateDirectory(target);
-
-        int total = zip.Entries.Count, done = 0;
-        foreach (var entry in zip.Entries)
-        {
-            // Compress-Archive(PS5.1) 用反斜杠, 统一成 /
-            var rel = entry.FullName.Replace('\\', '/');
-            var dest = Path.GetFullPath(Path.Combine(target, rel));
-            // 目录条目: entry.Name 为空(不依赖分隔符判断, 最稳)
-            if (string.IsNullOrEmpty(entry.Name)) { Directory.CreateDirectory(dest); continue; }
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            entry.ExtractToFile(dest, overwrite: true);
-            done++;
-            int pct = (int)(done * 100.0 / Math.Max(1, total));
-            Dispatcher.Invoke(() => { SetProgress(pct); Log("解压: " + rel); });
-        }
+        InstallPayload.Extract(s, target, (pct, message) => Dispatcher.Invoke(() => { SetProgress(pct); Log(message); }));
         Dispatcher.Invoke(() => SetProgress(100));
     }
 
@@ -199,7 +182,7 @@ public partial class MainWindow : Window
         "3. 请遵守《光·遇》官方用户协议，切勿用于商业用途或影响他人游戏体验。\n\n" +
         "开源说明\n\n" +
         "本软件为开源项目，源代码托管于 GitHub：\n" +
-        "https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-\n\n" +
+        "https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-\n\n" +
         "本软件免费，若你是付费获得的，说明你被骗了。\n" +
         "点击「我同意所有协议，下一步」即表示你已阅读并接受以上条款。";
 }

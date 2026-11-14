@@ -67,7 +67,7 @@ import java.util.TreeSet;
 public class HelloController {
 
     static final String APP_VERSION = "1.3";
-    private static final String GITHUB_REPO = "LangHingA/Sky-MusaAutoPlay-SMAP-";
+    private static final String GITHUB_REPO = "langhinga/Sky-MusaAutoPlay-SMAP-";
 
     @FXML private TextField filePathField;
     @FXML private Label statusLabel;

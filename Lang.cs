@@ -7,8 +7,9 @@ namespace SMAP_WPF;
 public enum AppLang { ZhCN, ZhTW, En, Ja }
 
 /// <summary>多语言: 简体/繁体/英文/日文。key→4语言, 运行时切+持久化。动态状态消息暂未纳入(阶段二)。</summary>
-public static class Lang
+public static partial class Lang
 {
+    static Lang() { AddMidiTranslations(); AddEditorTranslations(); AddMappingTranslations(); AddScoreTranslations(); }
     public static AppLang Current { get; private set; } = AppLang.ZhCN;
 
     /// <summary>菜单里显示的语言原生名。</summary>
@@ -20,6 +21,19 @@ public static class Lang
     // key → [简, 繁, En, 日]
     static readonly Dictionary<string, string[]> T = new()
     {
+        ["cloud.loginRequired"] = new[] { "会话无效或已过期，请重新登录。", "工作階段無效或已過期，請重新登入。", "Your session is invalid or expired. Sign in again.", "セッションが無効または期限切れです。再ログインしてください。" },
+        ["cloud.loginFailed"] = new[] { "登录失败，请核对账号和密码。", "登入失敗，請檢查帳號和密碼。", "Sign-in failed. Check your account and password.", "ログインできません。アカウントとパスワードを確認してください。" },
+        ["cloud.connectionFailed"] = new[] { "安全连接失败或请求超时，请检查网络后重试。", "安全連線失敗或請求逾時，請檢查網路後重試。", "Secure connection failed or timed out. Check your network and retry.", "安全な接続に失敗したかタイムアウトしました。ネットワークを確認してください。" },
+        ["cloud.requestFailed"] = new[] { "云端请求失败。", "雲端請求失敗。", "Cloud request failed.", "クラウドへの要求に失敗しました。" },
+        ["cloud.storageFailed"] = new[] { "无法安全保存或清除本机凭据，请检查存储权限。", "無法安全儲存或清除本機憑證，請檢查儲存權限。", "Could not securely save or clear local credentials. Check storage permissions.", "資格情報を安全に保存または削除できません。保存先の権限を確認してください。" },
+        ["cloud.revokeUnconfirmed"] = new[] { "已退出本机，但服务器撤销未确认。该会话将在有效期结束后失效。", "已登出本機，但伺服器撤銷尚未確認。該工作階段將於有效期結束後失效。", "Signed out locally, but server revocation is unconfirmed. The session expires at its fixed deadline.", "この端末からログアウトしましたが、サーバーでの失効を確認できません。有効期限に失効します。" },
+        ["cloud.logout"] = new[] { "退出账号", "登出帳號", "Sign out", "ログアウト" },
+        ["native.playOnly"] = new[] { ".smap 目前支持演奏与练习，编辑和云端上传将在后续阶段开放。", ".smap 目前支援演奏與練習，編輯和雲端上傳將於後續階段開放。", ".smap playback and practice are available. Editing and cloud upload will follow in later stages.", ".smap の演奏と練習に対応しています。編集とクラウドへのアップロードは後の段階で対応予定です。" },
+        ["playback.failed"] = new[] { "演奏输出失败，已尝试释放所有按键。请查看日志。", "演奏輸出失敗，已嘗試釋放所有按鍵。請查看日誌。", "Playback output failed. All key releases were attempted. Please check the log.", "演奏の出力に失敗しました。すべてのキーの解放を試みました。ログを確認してください。" },
+        ["practice.holding"] = new[] { "练习：保持长音，按时松开。", "練習：保持長音，按時鬆開。", "Practice: hold the note and release on time.", "練習：音を保持し、指定のタイミングで離してください。" },
+        ["practice.earlyRelease"] = new[] { "练习：提前松开，请重试当前步骤。", "練習：提前鬆開，請重試目前步驟。", "Practice: released too early. Retry the step.", "練習：離すのが早すぎました。このステップをやり直してください。" },
+        ["practice.lateRelease"] = new[] { "练习：未按时松开。", "練習：未按時鬆開。", "Practice: released too late.", "練習：キーを離すタイミングを過ぎました。" },
+        ["practice.missed"] = new[] { "练习：错过音符。", "練習：錯過音符。", "Practice: missed note.", "練習：音符を逃しました。" },
         ["app.title"]    = new[] { "光遇-Musa 自动演奏", "光遇-Musa 自動演奏", "Sky-Musa Auto Play", "Sky-Musa 自動演奏" },
         ["nosong"]       = new[] { "当前未选定曲目", "當前未選定曲目", "No song selected", "曲が未選択" },
         ["countdown"]    = new[] { "倒计时:", "倒數計時:", "Countdown:", "カウントダウン:" },
@@ -254,6 +268,7 @@ public static class Lang
         ["Contrabass"]      = new[] { "低音提琴", "低音提琴", "Contrabass", "コントラバス" },
         ["4thAnnivBass"]    = new[] { "四周年·贝斯", "四週年·貝斯", "4th Anniv Bass", "4周年ベース" },
         ["GoldDundun"]      = new[] { "金邓杜鼓", "金鄧杜鼓", "Gold Dundun", "ゴールドドゥンドゥン" },
+        ["Custom4"]         = new[] { "自定义4键", "自訂4鍵", "Custom 4 keys", "カスタム4キー" },
     };
 
     public static string S(string key) => T.TryGetValue(key, out var a) ? a[(int)Current] : key;
@@ -269,9 +284,11 @@ public static class Lang
         catch { }
     }
 
-    public static void Set(AppLang l)
+    public static void Set(AppLang l) => Set(l,true);
+    internal static void Set(AppLang l,bool persist)
     {
         Current = l;
+        if(!persist)return;
         try { Directory.CreateDirectory(Path.GetDirectoryName(File)!); System.IO.File.WriteAllText(File, l.ToString()); } catch { }
     }
 }

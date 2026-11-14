@@ -39,6 +39,8 @@ public static class PitchConfig
     public static int Get(string name) =>
         _user.TryGetValue(name, out var v) ? v : (Default.TryGetValue(name, out var d) ? d : 0);
 
+    internal static int DefaultOffset(string name) => Default.TryGetValue(name, out var value) ? value : 0;
+
     public static void Set(string name, int semitone)
     {
         _user[name] = semitone;

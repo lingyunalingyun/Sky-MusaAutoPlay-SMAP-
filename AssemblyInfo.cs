@@ -1,4 +1,10 @@
 using System.Windows;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("SMAP.Tests")]
+[assembly: InternalsVisibleTo("SMAP.EditorTests")]
+[assembly: InternalsVisibleTo("SMAP.MappingTests")]
+[assembly: InternalsVisibleTo("SMAP.VersionTests")]
 
 [assembly:ThemeInfo(
     ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located

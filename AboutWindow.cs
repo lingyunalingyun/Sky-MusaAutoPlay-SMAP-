@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System;
 using System.IO;
 using System.Windows;
@@ -11,7 +12,7 @@ namespace SMAP_WPF;
 /// <summary>软件信息窗口: 自定义圆角标题栏 + 名称/版本/作者/仓库 + 检查更新/语言/上传日志。跟随主题与语言。</summary>
 public class AboutWindow : Window
 {
-    const string Repo = "https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-";
+    const string Repo = "https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-";
     static readonly string LastCheckFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "lastcheck.txt");
 
@@ -112,7 +113,7 @@ public class AboutWindow : Window
         _titleText.Text = Lang.S("about");
         _nameLine.Text = Lang.S("about.name");
         _verLine.Text = $"{Lang.S("about.version")}: v{UpdateChecker.AppVersion}-WPF";
-        _authorLine.Text = $"{Lang.S("about.author")}: LANGHINGA";
+        _authorLine.Text = $"{Lang.S("about.author")}: langhinga";
         _repoPrefix.Text = $"{Lang.S("about.repo")}: ";
         _checkMain.Text = Lang.S("about.check");
         _checkSub.Text = $"  ({Lang.S("about.lastcheck")}: {LoadLastCheck()})";
@@ -140,6 +141,8 @@ public class AboutWindow : Window
 
     async void CheckUpdate(Button btn)
     {
+        if (Owner is MainWindow backgroundOwner && backgroundOwner.BackgroundUpdatesEnabled)
+        { Close(); await backgroundOwner.CheckUpdateManual(); return; }
         btn.IsEnabled = false;
         var r = await UpdateChecker.CheckAsync();
         var now = DateTime.Now.ToString("yyyy-MM-dd");
@@ -179,21 +182,21 @@ public class AboutWindow : Window
         Template = NeutralTemplate()
     };
 
-    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
+    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
 
     static ControlTemplate NeutralTemplate() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 
     static ControlTemplate CaptionTemplate() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' CornerRadius='6'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' CornerRadius='6'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Background' Value='#40000000'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 }

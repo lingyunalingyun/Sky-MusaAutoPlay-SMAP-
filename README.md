@@ -6,7 +6,7 @@
 
 **Sky-MusaAutoPlay** — 《光·遇》(Sky: Children of the Light) 自动弹琴助手 · 音乐软件式 C# WPF 版
 
-[English](README_EN.md) · [下载 Releases](https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-/releases) · [旧 JavaFX 版](JAVA%20version/)
+[English](README_EN.md) · [下载 Releases](https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-/releases) · [旧 JavaFX 版](JAVA%20version/)
 
 </div>
 
@@ -96,7 +96,7 @@ SMAP 是一款《光·遇》自动弹琴助手：导入或制作曲谱，即可�
 
 ## 安装 / 使用
 
-1. 从 [Releases](https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-/releases) 下载最新的 **SMAP-Setup.exe**。
+1. 从 [Releases](https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-/releases) 下载最新的 **SMAP-Setup.exe**。
 2. 双击运行（会请求管理员权限），按向导选择安装路径；装完自动创建桌面 / 开始菜单快捷方式。
 3. 进游戏拿出乐器 → 在 SMAP 里双击歌曲加入播放列表 → 点底部 ▶ 或在游戏里按 `F1`。
 

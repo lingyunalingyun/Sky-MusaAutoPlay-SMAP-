@@ -19,7 +19,7 @@ public static class SmoothScroll
     // 驱动 ScrollToVerticalOffset 的可动画附加属性(WPF 的 VerticalOffset 只读不能直接动画)
     static readonly DependencyProperty OffsetProperty =
         DependencyProperty.RegisterAttached("Offset", typeof(double), typeof(SmoothScroll),
-            new PropertyMetadata(0.0, (d, e) => { if (d is ScrollViewer sv) sv.ScrollToVerticalOffset((double)e.NewValue); }));
+            new PropertyMetadata(0.0, (d, e) => { if (d is ScrollViewer sv && (bool)sv.GetValue(AnimatingProperty)) sv.ScrollToVerticalOffset((double)e.NewValue); }));
 
     // 每个 ScrollViewer 记住动画目标(累加用)
     static readonly DependencyProperty TargetProperty =
@@ -27,6 +27,27 @@ public static class SmoothScroll
     // 是否正在滚轮动画中(真实标志, 用来区分动画滚动 vs 用户拖动/键盘滚动)
     static readonly DependencyProperty AnimatingProperty =
         DependencyProperty.RegisterAttached("Animating", typeof(bool), typeof(SmoothScroll), new PropertyMetadata(false));
+    static readonly DependencyProperty HookedProperty =
+        DependencyProperty.RegisterAttached("Hooked", typeof(bool), typeof(SmoothScroll), new PropertyMetadata(false));
+    static readonly DependencyProperty GenerationProperty =
+        DependencyProperty.RegisterAttached("Generation", typeof(int), typeof(SmoothScroll), new PropertyMetadata(0));
+
+    internal static void Attach(Control control)
+    {
+        control.ApplyTemplate();
+        if (FindScrollViewer(control) is { } viewer) Hook(viewer);
+    }
+
+    internal static void Stop(Control control)
+    {
+        if (FindScrollViewer(control) is not { } viewer) return;
+        viewer.SetValue(GenerationProperty, (int)viewer.GetValue(GenerationProperty) + 1);
+        double offset = viewer.VerticalOffset;
+        viewer.SetValue(AnimatingProperty, false);
+        viewer.SetCurrentValue(OffsetProperty, offset);
+        viewer.BeginAnimation(OffsetProperty, null);
+        viewer.SetValue(TargetProperty, offset);
+    }
 
     static void OnEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -39,6 +60,8 @@ public static class SmoothScroll
 
     static void Hook(ScrollViewer sv)
     {
+        if ((bool)sv.GetValue(HookedProperty)) return;
+        sv.SetValue(HookedProperty, true);
         sv.SetValue(TargetProperty, sv.VerticalOffset);
         sv.PreviewMouseWheel += (_, e) =>
         {
@@ -46,8 +69,10 @@ public static class SmoothScroll
             double target = Math.Clamp((double)sv.GetValue(TargetProperty) - e.Delta, 0, sv.ScrollableHeight);
             sv.SetValue(TargetProperty, target);
             sv.SetValue(AnimatingProperty, true);
+            int generation = (int)sv.GetValue(GenerationProperty) + 1;
+            sv.SetValue(GenerationProperty, generation);
             var anim = new DoubleAnimation(sv.VerticalOffset, target, TimeSpan.FromMilliseconds(180)) { FillBehavior = FillBehavior.Stop };
-            anim.Completed += (_, __) => { sv.ScrollToVerticalOffset(target); sv.SetValue(AnimatingProperty, false); };
+            anim.Completed += (_, __) => { if ((int)sv.GetValue(GenerationProperty) != generation) return; sv.ScrollToVerticalOffset(target); sv.SetValue(AnimatingProperty, false); };
             sv.BeginAnimation(OffsetProperty, anim);
         };
         // 拖滚动条/键盘等非滚轮方式滚动时, 同步目标(免得下次滚轮跳回旧位置)

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>SMAP_Installer</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -10,15 +10,22 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>SMAP-Setup</AssemblyName>
+    <Version>3.0.0-rc.2</Version>
+    <AssemblyVersion>3.0.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\G2Geometry.cs" Link="G2Geometry.cs" />
+    <Compile Include="..\G2Border.cs" Link="G2Border.cs" />
     <Resource Include="Assets\logo.png" />
   </ItemGroup>
 
   <!-- 打包时把 SMAP 发布产物 zip 放到 Payload\app.zip, 会嵌进安装器; 无则安装器仍能编译(运行时报缺payload) -->
   <ItemGroup>
-    <EmbeddedResource Include="Payload\app.zip" Condition="Exists('Payload\app.zip')">
+    <EmbeddedResource Include="$(PayloadPath)" Condition="'$(PayloadPath)' != '' and Exists('$(PayloadPath)')">
+      <LogicalName>app.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Payload\app.zip" Condition="'$(PayloadPath)' == '' and Exists('Payload\app.zip')">
       <LogicalName>app.zip</LogicalName>
     </EmbeddedResource>
   </ItemGroup>

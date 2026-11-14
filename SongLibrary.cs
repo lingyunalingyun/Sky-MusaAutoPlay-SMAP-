@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using SMAP_WPF.Core;
 
 namespace SMAP_WPF;
 
@@ -71,18 +72,95 @@ public static class SongLibrary
     // 程序目录下的 songs 文件夹(便携; 首次导入/下载时自动创建)
     public static string SongsDir = Path.Combine(AppContext.BaseDirectory, "songs");
 
+    internal static string CopyImported(string source)
+    {
+        string extension = Path.GetExtension(source).ToLowerInvariant();
+        if (extension == ".smap") _ = SmapFile.Load(source);
+        else if (extension is ".txt" or ".json") _ = LegacyProjectAdapter.Load(source, 0);
+        else throw new InvalidDataException("不支持的曲谱文件格式。");
+        Directory.CreateDirectory(SongsDir);
+        string name = Path.GetFileNameWithoutExtension(source), destination = Path.Combine(SongsDir, Path.GetFileName(source));
+        for (int suffix = 2; File.Exists(destination); suffix++)
+        {
+            using var existing = File.OpenRead(destination); using var input = File.OpenRead(source);
+            if (System.Security.Cryptography.SHA256.HashData(existing).SequenceEqual(System.Security.Cryptography.SHA256.HashData(input))) return destination;
+            destination = Path.Combine(SongsDir, name + " (" + suffix + ")" + extension);
+        }
+        string temp = Path.Combine(SongsDir, ".import-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            using (var input = File.OpenRead(source))
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { input.CopyTo(output); output.Flush(true); }
+            File.Move(temp, destination, overwrite: false); return destination;
+        }
+        finally { if (File.Exists(temp)) File.Delete(temp); }
+    }
+
+    // Collections are materialized as separate native files; the original container is never rewritten.
+    internal static IReadOnlyList<string> ImportLegacyCollection(string source)
+    {
+        if (new FileInfo(source).Length > SmapFile.MaxManifestBytes) throw new LegacyConversionException("LEGACY_SIZE_LIMIT");
+        byte[] bytes = File.ReadAllBytes(source);
+        string digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        string marker = Path.Combine(SongsDir, ".legacy-" + digest + ".collection");
+        if (File.Exists(marker)) return Directory.EnumerateFiles(SongsDir, ".legacy-" + digest + "-*.smap").OrderBy(f => f, StringComparer.Ordinal).ToArray();
+        var entries = LegacyConversion.Read(bytes); var result = new List<string>();
+        var invalid = entries.FirstOrDefault(e => e.Project == null);
+        if (invalid != null) throw new LegacyConversionException(invalid.Error!, invalid.SongIndex, invalid.NoteIndex);
+        Directory.CreateDirectory(SongsDir);
+        foreach (var entry in entries)
+        {
+            if (entry.Project == null) throw new LegacyConversionException(entry.Error!, entry.SongIndex, entry.NoteIndex);
+            string stem = ".legacy-" + digest + "-" + entry.SongIndex;
+            string destination = Path.Combine(SongsDir, stem + ".smap");
+            if (!File.Exists(destination))
+            {
+                string temp = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try { SmapFile.Save(entry.Project, temp); File.Move(temp, destination, false); }
+                catch (IOException) when (File.Exists(destination)) { }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            }
+            _ = SmapFile.Load(destination); result.Add(destination);
+        }
+        using (var completed = new FileStream(marker, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read)) completed.Flush(true);
+        return result;
+    }
+
     /// <summary>扫描曲库目录, 解析每个曲谱的曲名/BPM。</summary>
     public static List<SongInfo> Scan()
     {
         var list = new List<SongInfo>();
         if (!Directory.Exists(SongsDir)) return list;
-        foreach (var f in Directory.EnumerateFiles(SongsDir))
+        foreach (var f in Directory.EnumerateFiles(SongsDir).ToArray())
         {
             var ext = Path.GetExtension(f).ToLowerInvariant();
-            if (ext != ".txt" && ext != ".json") continue;
+            if (ext != ".txt" && ext != ".json" && ext != ".smap") continue;
             try
             {
-                var root = ParseRoot(ReadText(f));
+                if (ext == ".smap")
+                {
+                    var project = SmapFile.Load(f);
+                    var sequence = PlaybackSequence.FromProject(project);
+                    if (!list.Any(s => s.File == f)) list.Add(new SongInfo { File = f, Name = project.Metadata.Name,
+                        Author = project.Metadata.Author, TranscribedBy = project.Metadata.TranscribedBy,
+                        Bpm = (double)(60_000_000m / project.Tempos.OrderBy(t => t.Beat).First().MicrosecondsPerBeat),
+                        NoteCount = sequence.Notes.Count, DurationMs = sequence.DurationMs });
+                    continue;
+                }
+                string legacyText = ReadText(f);
+                using var container = JsonDocument.Parse(legacyText);
+                if (container.RootElement.ValueKind == JsonValueKind.Array && container.RootElement.GetArrayLength() > 1)
+                {
+                    foreach (string native in ImportLegacyCollection(f))
+                    {
+                        var project = SmapFile.Load(native); var playback = PlaybackSequence.FromProject(project);
+                        if (!list.Any(s => s.File == native)) list.Add(new SongInfo { File = native, Name = project.Metadata.Name,
+                            Author = project.Metadata.Author, TranscribedBy = project.Metadata.TranscribedBy,
+                            Bpm = (double)(60_000_000m / project.Tempos[0].MicrosecondsPerBeat), NoteCount = playback.Notes.Count, DurationMs = playback.DurationMs });
+                    }
+                    continue;
+                }
+                var root = container.RootElement.ValueKind == JsonValueKind.Array && container.RootElement.GetArrayLength() > 0 ? container.RootElement[0] : container.RootElement;
                 string name = root.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
                     ? n.GetString() ?? Path.GetFileNameWithoutExtension(f)
                     : Path.GetFileNameWithoutExtension(f);
@@ -109,11 +187,16 @@ public static class SongLibrary
     /// <summary>加载完整曲谱文档(保留全部字段), 音符 ms 按 GCD 精确拍长换算成拍位置。</summary>
     public static SongDocument LoadDocument(SongInfo info)
     {
-        var doc = new SongDocument { FilePath = info.File };
         var node = JsonNode.Parse(ReadText(info.File));
         JsonObject obj = (node is JsonArray a && a.Count > 0 ? a[0]!.AsObject() : node!.AsObject());
+        return LoadDocument(obj, info.File);
+    }
+
+    internal static SongDocument LoadDocument(JsonObject obj, string filePath)
+    {
+        var doc = new SongDocument { FilePath = filePath };
         doc.Root = obj;
-        doc.Name = (string?)obj["name"] ?? Path.GetFileNameWithoutExtension(info.File);
+        doc.Name = (string?)obj["name"] ?? Path.GetFileNameWithoutExtension(filePath);
         doc.Author = (string?)obj["author"] ?? "";
         doc.TranscribedBy = (string?)obj["transcribedBy"] ?? "";
 
@@ -193,6 +276,27 @@ public static class SongLibrary
         return path;
     }
 
+    public static string WriteNative(SmapProject project)
+    {
+        ProjectValidation.Validate(project);
+        Directory.CreateDirectory(SongsDir);
+        string safe = NativeFileStem(project.Metadata.Name);
+        string path = Path.Combine(SongsDir, safe + ".smap");
+        for (int i = 2; File.Exists(path); i++) path = Path.Combine(SongsDir, $"{safe} ({i}).smap");
+        SmapFile.Save(project, path); return path;
+    }
+
+    internal static string NativeFileStem(string name)
+    {
+        string safe = string.Concat(name.Where(c => !Path.GetInvalidFileNameChars().Contains(c))).Trim().TrimEnd('.');
+        if (safe.Length == 0) safe = "Untitled";
+        if (safe.Length > 120) safe = safe[..120];
+        if (char.IsHighSurrogate(safe[^1])) safe = safe[..^1];
+        string stem = safe.Split('.')[0].ToUpperInvariant();
+        if (new[] { "CON", "PRN", "AUX", "NUL" }.Contains(stem) || (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) && stem[3] is >= '1' and <= '9')) safe = "_" + safe;
+        return safe;
+    }
+
     // songs 目录下按曲名生成不冲突的 .txt 路径
     static string UniquePath(string name)
     {
@@ -259,7 +363,7 @@ public static class SongLibrary
     }
 
     // 兼容 UTF-8 / UTF-8 BOM / UTF-16 LE/BE BOM (Sky 曲谱来源编码不一)
-    static string ReadText(string path)
+    internal static string ReadText(string path)
     {
         var b = File.ReadAllBytes(path);
         if (b.Length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) return Encoding.UTF8.GetString(b, 3, b.Length - 3);

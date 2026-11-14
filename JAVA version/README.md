@@ -78,7 +78,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/LangHingA/Sky-Automatic-Piano-Assistant.git
+git clone https://github.com/langhinga/Sky-Automatic-Piano-Assistant.git
 cd Sky-Automatic-Piano-Assistant
 ```
 
@@ -164,4 +164,4 @@ cd Sky-Automatic-Piano-Assistant
 
 ---
 
-**Author**: [LANGHINGA](https://github.com/LangHingA)
+**Author**: [langhinga](https://github.com/langhinga)

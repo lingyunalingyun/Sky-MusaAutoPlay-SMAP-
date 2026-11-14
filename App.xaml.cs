@@ -6,6 +6,23 @@ namespace SMAP_WPF;
 
 public partial class App : Application
 {
+    System.IO.FileStream? _updateRunLock;
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        try
+        {
+            _updateRunLock = UpdateStartupGuard.Enter(AppContext.BaseDirectory);
+            if (_updateRunLock == null) { Shutdown(); return; }
+        }
+        catch (Exception error) when (error is System.IO.IOException or System.IO.InvalidDataException or UnauthorizedAccessException or FormatException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException)
+        {
+            Theme.Apply(Theme.Load(), persist: false); Lang.Load();
+            MsgBox.Info(null, Lang.Update("startupBusy"), Lang.Update("title"));
+            Shutdown(); return;
+        }
+        base.OnStartup(e);
+    }
+    protected override void OnExit(ExitEventArgs e) { _updateRunLock?.Dispose(); base.OnExit(e); }
     public App()
     {
         Logger.Info($"===== SMAP v{UpdateChecker.AppVersion} 启动 =====");

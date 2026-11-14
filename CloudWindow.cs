@@ -1,3 +1,4 @@
+using Border = SMAP_WPF.G2Border;
 using System;
 using System.Linq;
 using System.Windows;
@@ -23,6 +24,7 @@ public class CloudWindow : Window
 
     int _sortMode = 1;          // 0=A-Z 1=上传时间 2=点赞 3=下载量
     int _page = 1, _pages = 1;
+    int _loadGeneration;
 
     Brush B(string k) => (Brush)Application.Current.Resources[k];
 
@@ -144,6 +146,17 @@ public class CloudWindow : Window
             _download.Foreground = sel ? Brushes.White : B("SubTextFg");
         };
         _list.MouseDoubleClick += (_, __) => DoDownload();
+        _list.PreviewMouseRightButtonUp += (_, e) =>
+        {
+            var row = ItemsControl.ContainerFromElement(_list, e.OriginalSource as DependencyObject) as ListViewItem;
+            if (row?.DataContext is not CloudSheet sheet || !CloudApi.LoggedIn) return;
+            var menu = new ContextMenu();
+            foreach (var type in new[] { typeof(ContextMenu), typeof(MenuItem) })
+                if (Owner.TryFindResource(type) is Style style) menu.Resources[type] = style;
+            var edit = new MenuItem { Header = Lang.Sharing("metadataEdit") }; menu.Items.Add(edit);
+            edit.Click += (_, _) => { var window = new NativeSharingWindow(this, metadataTarget: sheet.MetadataTarget); window.ShowDialog(); if (window.MetadataSaved) Load(); };
+            menu.PlacementTarget = row; menu.IsOpen = true; e.Handled = true;
+        };
 
         border.Child = _list;
         return border;
@@ -203,10 +216,12 @@ public class CloudWindow : Window
 
     async void Load()
     {
+        int generation = ++_loadGeneration;
         _totalLbl.Text = "/… 加载中";
         string sort = _sortMode switch { 2 => "hot", 3 => "downloads", _ => "newest" };  // A-Z/上传时间 都取 newest
         int diff = _diff.SelectedIndex;   // 0=全部, 1..5
         var r = await CloudApi.ListAsync(_search.Text, sort, diff, _page, PerPage);
+        if (generation != _loadGeneration) return;
         if (!r.Ok) { _totalLbl.Text = r.Err ?? "加载失败"; return; }
 
         var items = r.Items;
@@ -214,7 +229,7 @@ public class CloudWindow : Window
         _pages = r.Pages;
         _list.ItemsSource = items;
         _pageBox.Text = _page.ToString();
-        _totalLbl.Text = $"/{_pages}页";
+        _totalLbl.Text = $"/{_pages}页" + (r.IncludesNative ? "" : " · " + Lang.Sharing("catalogLegacyOnly"));
         _prev.IsEnabled = _page > 1;
         _next.IsEnabled = _page < _pages;
     }
@@ -251,10 +266,10 @@ public class CloudWindow : Window
         var st = new Style(typeof(GridViewColumnHeader));
         st.Setters.Add(new Setter(FrameworkElement.HeightProperty, 32.0));
         st.Setters.Add(new Setter(Control.TemplateProperty, (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-@"<ControlTemplate TargetType='GridViewColumnHeader' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
-  <Border x:Name='bd' Background='{DynamicResource PanelBg}' BorderBrush='{DynamicResource ListBorder}' BorderThickness='0,0,1,0'>
+@"<ControlTemplate TargetType='GridViewColumnHeader' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <g2:G2Border x:Name='bd' Background='{DynamicResource PanelBg}' BorderBrush='{DynamicResource ListBorder}' BorderThickness='0,0,1,0'>
     <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextElement.Foreground='{DynamicResource TextFg}'/>
-  </Border>
+  </g2:G2Border>
   <ControlTemplate.Triggers>
     <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Background' Value='#3a3a46'/></Trigger>
   </ControlTemplate.Triggers>
@@ -291,35 +306,35 @@ public class CloudWindow : Window
     void StyleCombo(ComboBox cb)
     {
         cb.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-@"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+@"<ControlTemplate TargetType='ComboBox' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Grid>
     <ToggleButton Focusable='False' ClickMode='Press' Background='{DynamicResource ComboBg}' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
       <ToggleButton.Template>
         <ControlTemplate TargetType='ToggleButton'>
-          <Border Background='{TemplateBinding Background}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
+          <g2:G2Border Background='{TemplateBinding Background}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8'>
             <Grid TextElement.Foreground='{DynamicResource TextFg}'>
               <ContentPresenter Margin='10,0,24,0' HorizontalAlignment='Left' VerticalAlignment='Center' Content='{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}'/>
               <Path Data='M0,0 L4,4 L8,0 Z' Fill='#999' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0'/>
             </Grid>
-          </Border>
+          </g2:G2Border>
         </ControlTemplate>
       </ToggleButton.Template>
     </ToggleButton>
     <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'>
-      <Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
+      <g2:G2Border Background='{DynamicResource ComboBg}' BorderBrush='{DynamicResource BoxBorder}' BorderThickness='1' CornerRadius='8' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
         <StackPanel IsItemsHost='True' Margin='2'/>
-      </Border>
+      </g2:G2Border>
     </Popup>
   </Grid>
 </ControlTemplate>");
         cb.ItemContainerStyle = (Style)System.Windows.Markup.XamlReader.Parse(
-@"<Style TargetType='ComboBoxItem' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+@"<Style TargetType='ComboBoxItem' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Setter Property='Foreground' Value='{DynamicResource TextFg}'/>
   <Setter Property='Padding' Value='10,6'/>
   <Setter Property='Template'>
     <Setter.Value>
       <ControlTemplate TargetType='ComboBoxItem'>
-        <Border x:Name='bd' Background='Transparent' CornerRadius='5' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border>
+        <g2:G2Border x:Name='bd' Background='Transparent' CornerRadius='5' Padding='{TemplateBinding Padding}'><ContentPresenter/></g2:G2Border>
         <ControlTemplate.Triggers>
           <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='bd' Property='Background' Value='#2d5a88'/><Setter Property='Foreground' Value='White'/></Trigger>
         </ControlTemplate.Triggers>
@@ -329,12 +344,12 @@ public class CloudWindow : Window
 </Style>");
     }
 
-    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
+    const string XmlNs = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:g2='clr-namespace:SMAP_WPF;assembly=SMAP' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'";
     static ControlTemplate BtnTpl() => (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
         $@"<ControlTemplate TargetType='Button' {XmlNs}>
-            <Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8' Padding='{{TemplateBinding Padding}}'>
+            <g2:G2Border x:Name='bd' Background='{{TemplateBinding Background}}' BorderBrush='{{TemplateBinding BorderBrush}}' BorderThickness='{{TemplateBinding BorderThickness}}' CornerRadius='8' Padding='{{TemplateBinding Padding}}'>
               <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
-            </Border>
+            </g2:G2Border>
             <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='Opacity' Value='0.85'/></Trigger></ControlTemplate.Triggers>
           </ControlTemplate>");
 }
