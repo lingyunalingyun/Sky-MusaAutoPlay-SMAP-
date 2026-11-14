@@ -31,7 +31,18 @@ static partial class Program
             void State(DeltaUpdateState state) { typeof(DeltaUpdateService).GetProperty(nameof(DeltaUpdateService.State))!.SetValue(service, state); pane.Refresh(service); Pump(); }
             var settings = (Grid)main.FindName("SettingsPanel");
             Check("UPDATE-EMBEDDED-IN-SETTINGS-" + id, settings.IsAncestorOf(pane) && Window.GetWindow(pane) == main && app.Windows.Count == 1);
+            foreach (var idle in new[] { DeltaUpdateState.Idle, DeltaUpdateState.Current })
+            {
+                State(idle);
+                var actions = Descendants<Button>(pane).Where(b => b.IsVisible).ToArray();
+                Check("UPDATE-ONLY-CHECK-BUTTON-" + idle + "-" + id,
+                    actions.Length == 1 && actions[0].IsEnabled && Equals(actions[0].Content, Lang.Update("check"))
+                    && !Descendants<TextBlock>(pane).Any(t => t.IsVisible && !actions[0].IsAncestorOf(t))
+                    && pane.ActualHeight <= 40 && pane.Padding == default);
+            }
+            CaptureMetadata(main, Path.Combine(images, id + "-current.png"));
             State(DeltaUpdateState.Downloading);
+            Check("UPDATE-DETAILS-RESTORED-" + id, pane.ActualHeight > 100 && Descendants<TextBlock>(pane).Any(t => t.IsVisible && t.Text == Lang.Update("title")));
             Check("UPDATE-CONTINUE-USING-MAIN-" + id, main.IsEnabled && pane.IsVisible && Descendants<Button>(pane).Any(b => Equals(b.Content, Lang.Update("pause"))));
             Check("UPDATE-LOCALIZATION-" + id, new[] { "title", "ready", "restart", "found", "continueUse", "preserved" }.All(k => Lang.Update(k) != k));
             Check("UPDATE-G2-" + id, Descendants<System.Windows.Controls.Border>(pane).Where(b => b.CornerRadius != default).All(b => b is G2Border));

@@ -14,6 +14,7 @@ public sealed class UpdateSettingsPane : G2Border
     readonly Grid _download = new() { Height = 7 }, _local = new() { Height = 5 };
     readonly Button _action = new() { MinWidth = 112, Height = 36, Padding = new Thickness(14, 0, 14, 0), Template = ChromeWindow.BtnTpl("0") };
     readonly SpeedGraph _graph = new() { Height = 44, Margin = new Thickness(0, 8, 0, 8) };
+    readonly StackPanel _details = new();
     DeltaUpdateState _currentState;
     double _downloadRatio, _localRatio;
     static TextBlock Label(int size) => new() { FontSize = size, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
@@ -21,18 +22,19 @@ public sealed class UpdateSettingsPane : G2Border
     {
         CornerRadius = new(12); Padding = new(16); SetResourceReference(BackgroundProperty, "PanelBg");
         var content = new StackPanel(); Child = content;
-        foreach (var item in new[] { _title, _state }) { item.SetResourceReference(TextBlock.ForegroundProperty, "TextFg"); content.Children.Add(item); }
-        _hint.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _hint.Text = Lang.Update("continueUse"); content.Children.Add(_hint);
+        content.Children.Add(_details);
+        foreach (var item in new[] { _title, _state }) { item.SetResourceReference(TextBlock.ForegroundProperty, "TextFg"); _details.Children.Add(item); }
+        _hint.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _hint.Text = Lang.Update("continueUse"); _details.Children.Add(_hint);
         void Bar(Grid host, G2Border fill)
         {
             var background = new G2Border { CornerRadius = new(3) }; background.SetResourceReference(BackgroundProperty, "BoxBg"); host.Children.Add(background);
             fill.CornerRadius = new(3); fill.SetResourceReference(BackgroundProperty, "Accent"); host.Children.Add(fill);
         }
         Bar(_download, _downloadFill); Bar(_local, _localFill);
-        _downloadLabel.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); content.Children.Add(_downloadLabel); content.Children.Add(_download); content.Children.Add(_graph);
-        _stats.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); content.Children.Add(_stats);
-        _localLabel.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); content.Children.Add(_localLabel); content.Children.Add(_local);
-        var footer = Label(12); footer.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); footer.Margin = new(0, 12, 0, 12); footer.Text = Lang.Update("preserved"); content.Children.Add(footer);
+        _downloadLabel.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _details.Children.Add(_downloadLabel); _details.Children.Add(_download); _details.Children.Add(_graph);
+        _stats.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _details.Children.Add(_stats);
+        _localLabel.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _details.Children.Add(_localLabel); _details.Children.Add(_local);
+        var footer = Label(12); footer.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); footer.Margin = new(0, 12, 0, 12); footer.Text = Lang.Update("preserved"); _details.Children.Add(footer);
         _footer = footer;
         _action.HorizontalAlignment = HorizontalAlignment.Right; _action.SetResourceReference(Control.BackgroundProperty, "NeutralBtnBg"); _action.SetResourceReference(Control.ForegroundProperty, "NeutralBtnFg");
         _action.Click += (_, _) => { if (_currentState == DeltaUpdateState.Ready) RestartRequested?.Invoke(); else ActionRequested?.Invoke(); }; content.Children.Add(_action);
@@ -43,6 +45,10 @@ public sealed class UpdateSettingsPane : G2Border
     public void Refresh(DeltaUpdateService? service)
     {
         _currentState = service?.State ?? DeltaUpdateState.Idle; _title.Text = Lang.Update("title");
+        bool compact = _currentState is DeltaUpdateState.Idle or DeltaUpdateState.Current;
+        _details.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        Padding = compact ? new Thickness(0) : new Thickness(16);
+        if (compact) Background = Brushes.Transparent; else SetResourceReference(BackgroundProperty, "PanelBg");
         string key = _currentState switch { DeltaUpdateState.Checking => "checking", DeltaUpdateState.Planning => "planning", DeltaUpdateState.Downloading => "downloading", DeltaUpdateState.Paused => "paused", DeltaUpdateState.Reconstructing => "reconstructing", DeltaUpdateState.Ready => "ready", DeltaUpdateState.Current => "current", DeltaUpdateState.Error => "error", _ => "idle" };
         _state.Text = Lang.Update(key) + (service?.Version is { } version ? " · " + version : "");
         _hint.Text = Lang.Update("continueUse"); _footer.Text = Lang.Update("preserved");
