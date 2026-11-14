@@ -23,6 +23,7 @@ public partial class MainWindow
     void InitializeDeltaUpdates()
     {
         _deltaUpdates = new(); UpdatePane.Visibility = _deltaUpdates.Supported ? Visibility.Visible : Visibility.Collapsed;
+        SetUpdateRow.Visibility = _deltaUpdates.Supported ? Visibility.Collapsed : Visibility.Visible;
         UpdatePane.ActionRequested += async () =>
         {
             if (_deltaUpdates.State is DeltaUpdateState.Downloading or DeltaUpdateState.Reconstructing) _deltaUpdates.Pause();

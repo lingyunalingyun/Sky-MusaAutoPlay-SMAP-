@@ -36,7 +36,7 @@ public sealed class UpdateSettingsPane : G2Border
         _localLabel.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); _details.Children.Add(_localLabel); _details.Children.Add(_local);
         var footer = Label(12); footer.SetResourceReference(TextBlock.ForegroundProperty, "SubTextFg"); footer.Margin = new(0, 12, 0, 12); footer.Text = Lang.Update("preserved"); _details.Children.Add(footer);
         _footer = footer;
-        _action.HorizontalAlignment = HorizontalAlignment.Right; _action.SetResourceReference(Control.BackgroundProperty, "NeutralBtnBg"); _action.SetResourceReference(Control.ForegroundProperty, "NeutralBtnFg");
+        _action.HorizontalAlignment = HorizontalAlignment.Stretch; _action.SetResourceReference(Control.BackgroundProperty, "NeutralBtnBg"); _action.SetResourceReference(Control.ForegroundProperty, "NeutralBtnFg");
         _action.Click += (_, _) => { if (_currentState == DeltaUpdateState.Ready) RestartRequested?.Invoke(); else ActionRequested?.Invoke(); }; content.Children.Add(_action);
         SizeChanged += (_, _) => Fill(); Refresh(null);
     }

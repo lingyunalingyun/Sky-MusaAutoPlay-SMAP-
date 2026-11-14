@@ -26,10 +26,17 @@ static partial class Program
             main.ShowActivated = false; main.ShowInTaskbar = false; main.Width = 1280; main.Height = 860; main.Show(); Pump();
             typeof(MainWindow).GetMethod("Settings_Click", flags)!.Invoke(main, [main, new RoutedEventArgs()]);
             var until = System.Diagnostics.Stopwatch.StartNew(); while (until.ElapsedMilliseconds < 500) Pump();
-            var pane = (UpdateSettingsPane)main.FindName("UpdatePane"); pane.Visibility = Visibility.Visible;
+            var pane = (UpdateSettingsPane)main.FindName("UpdatePane");
             var service = (DeltaUpdateService)typeof(MainWindow).GetField("_deltaUpdates", flags)!.GetValue(main)!;
             void State(DeltaUpdateState state) { typeof(DeltaUpdateService).GetProperty(nameof(DeltaUpdateService.State))!.SetValue(service, state); pane.Refresh(service); Pump(); }
             var settings = (Grid)main.FindName("SettingsPanel");
+            var shortcuts = (Button)main.FindName("SetShortcutsBtn");
+            var fallback = (Grid)main.FindName("SetUpdateRow");
+            var column = Descendants<ScrollViewer>(settings).Single(s => s.Content is StackPanel p && p.IsAncestorOf(pane));
+            Check("UPDATE-ONE-SETTINGS-ENTRY-" + id, pane.IsVisible == service.Supported && fallback.IsVisible != service.Supported);
+            Check("UPDATE-ACTIONS-LEFT-COLUMN-" + id, Grid.GetColumn(column) == 0 && column.IsAncestorOf(shortcuts)
+                && Equals(shortcuts.Content, Lang.S("map.shortcuts")));
+            fallback.Visibility = Visibility.Collapsed; pane.Visibility = Visibility.Visible; Pump();
             Check("UPDATE-EMBEDDED-IN-SETTINGS-" + id, settings.IsAncestorOf(pane) && Window.GetWindow(pane) == main && app.Windows.Count == 1);
             foreach (var idle in new[] { DeltaUpdateState.Idle, DeltaUpdateState.Current })
             {
@@ -40,8 +47,16 @@ static partial class Program
                     && !Descendants<TextBlock>(pane).Any(t => t.IsVisible && !actions[0].IsAncestorOf(t))
                     && pane.ActualHeight <= 40 && pane.Padding == default);
             }
+            var checkButton = Descendants<Button>(pane).Single(b => b.IsVisible);
+            var pitch = (Button)main.FindName("SetPitchResetBtn");
+            Point Position(FrameworkElement control) => control.TranslatePoint(new Point(), settings);
+            Check("UPDATE-ACTIONS-ORDER-AND-ALIGNMENT-" + id,
+                Position(pitch).Y < Position(shortcuts).Y && Position(shortcuts).Y < Position(checkButton).Y
+                && Math.Abs(Position(pitch).X - Position(checkButton).X) < 1
+                && Math.Abs(pitch.ActualWidth - checkButton.ActualWidth) < 1);
             CaptureMetadata(main, Path.Combine(images, id + "-current.png"));
             State(DeltaUpdateState.Downloading);
+            pane.BringIntoView(); Pump();
             Check("UPDATE-DETAILS-RESTORED-" + id, pane.ActualHeight > 100 && Descendants<TextBlock>(pane).Any(t => t.IsVisible && t.Text == Lang.Update("title")));
             Check("UPDATE-CONTINUE-USING-MAIN-" + id, main.IsEnabled && pane.IsVisible && Descendants<Button>(pane).Any(b => Equals(b.Content, Lang.Update("pause"))));
             Check("UPDATE-LOCALIZATION-" + id, new[] { "title", "ready", "restart", "found", "continueUse", "preserved" }.All(k => Lang.Update(k) != k));

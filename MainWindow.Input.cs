@@ -87,13 +87,11 @@ public partial class MainWindow
         var settings=new MenuItem{Header=Lang.S("map.shortcuts")};settings.Click+=(_,_)=>OpenInputSettings();menu.Items.Add(settings);
         var mapping=MappingMenuItem();menu.Items.Add(mapping);
         KeyEditBtn.ContextMenu=menu;
-        var button=new Button{Content=Lang.S("map.shortcuts"),Margin=new Thickness(0,8,0,0),HorizontalAlignment=HorizontalAlignment.Left,MinHeight=34};
-        button.Click+=(_,_)=>OpenInputSettings();
-        if(SettingsBindArea.Parent is Panel panel)panel.Children.Insert(panel.Children.IndexOf(SettingsBindArea),button);
         var mapMenu=new ContextMenu();mapMenu.Items.Add(MappingMenuItem());PracticeBtn.ContextMenu=mapMenu;
         RefreshPreviewLayout();
         InputManager.Current.PostProcessInput+=UpdateInputFocus;
     }
+    void SetShortcuts_Click(object sender,RoutedEventArgs e)=>OpenInputSettings();
     MenuItem MappingMenuItem()
     {
         var item=new MenuItem{Header=Lang.S(FeatureAvailability.SheetMappingEnabled?"map.title":"map.deferredTitle"),IsEnabled=FeatureAvailability.SheetMappingEnabled};

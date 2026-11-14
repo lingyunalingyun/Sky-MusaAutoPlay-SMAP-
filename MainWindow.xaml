@@ -901,7 +901,8 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
 
                     <!-- 设置列 -->
-                    <StackPanel Grid.Column="0" Margin="0,0,24,0">
+                    <ScrollViewer Grid.Column="0" Margin="0,0,24,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
                         <TextBlock x:Name="SetTitleTx" Text="设置" FontSize="34" FontWeight="Bold" Margin="0,0,0,20"/>
                         <Grid Margin="0,0,0,10" Panel.ZIndex="4"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetLangLbl" Grid.Column="0" Text="语言:" VerticalAlignment="Center" FontSize="15"/>
@@ -911,9 +912,6 @@
                             <TextBlock x:Name="SetThemeLbl" Grid.Column="0" Text="主题:" VerticalAlignment="Center" FontSize="15"/>
                             <ComboBox x:Name="SetThemeCombo" Visibility="Collapsed" SelectionChanged="SetThemeCombo_Changed"/>
                             <local:JoinedChoiceButton Grid.Column="1" x:Name="SetThemeChoice" Height="40" Content="{Binding SelectedItem,ElementName=SetThemeCombo}" Tag="{Binding ElementName=SetThemeCombo}" Click="SettingsChoice_Click"/></Grid>
-                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="SetUpdateLbl" Grid.Column="0" Text="更新:" VerticalAlignment="Center" FontSize="15"/>
-                            <Button x:Name="SetUpdateBtn" Grid.Column="1" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/></Grid>
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetLogLbl" Grid.Column="0" Text="日志:" VerticalAlignment="Center" FontSize="15"/>
                             <Button x:Name="SetLogBtn" Grid.Column="1" Content="上传日志" Style="{StaticResource NeutralBtn}" Click="SetLog_Click"/></Grid>
@@ -934,7 +932,14 @@
                         <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock x:Name="SetPitchLbl" Grid.Column="0" Text="音调:" VerticalAlignment="Center" FontSize="15"/>
                             <Button Grid.Column="1" x:Name="SetPitchResetBtn" Content="恢复默认音调" Style="{StaticResource NeutralBtn}" Click="SetPitchReset_Click"/></Grid>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button Grid.Column="1" x:Name="SetShortcutsBtn" Content="功能快捷键" Style="{StaticResource NeutralBtn}" Click="SetShortcuts_Click"/></Grid>
+                        <Grid x:Name="SetUpdateRow" Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SetUpdateLbl" Grid.Column="0" Text="更新:" VerticalAlignment="Center" FontSize="15"/>
+                            <Button x:Name="SetUpdateBtn" Grid.Column="1" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/></Grid>
+                        <local:UpdateSettingsPane x:Name="UpdatePane" Margin="82,0,0,10"/>
                     </StackPanel>
+                    </ScrollViewer>
 
                     <!-- 软件信息列 -->
                     <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -947,7 +952,6 @@
                         <TextBlock FontSize="14" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="0,0,0,10">
                             <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
                         </TextBlock>
-                        <local:UpdateSettingsPane x:Name="UpdatePane" Margin="0,10,0,14"/>
                         <!-- 按键绑定网格: 仅点"绑定"后显示 -->
                         <StackPanel x:Name="SettingsBindArea" Visibility="Collapsed">
                             <g2:G2Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="10" Padding="14" HorizontalAlignment="Left">

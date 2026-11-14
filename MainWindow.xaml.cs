@@ -215,6 +215,7 @@ public partial class MainWindow : Window
         SetThemeLbl.Text = Lang.S("set.theme");
         SetUpdateLbl.Text = Lang.S("set.update");
         SetUpdateBtn.Content = Lang.S("set.checkupd");
+        SetShortcutsBtn.Content = Lang.S("map.shortcuts");
         SetLogLbl.Text = Lang.S("set.log");
         SetLogBtn.Content = Lang.S("set.uplog");
         SetUiLbl.Text = Lang.S("set.ui");
