@@ -1,4 +1,4 @@
-<Window x:Class="SMAP_WPF.MainWindow"
+﻿<Window x:Class="SMAP_WPF.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:g2="clr-namespace:SMAP_WPF"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SMAP_WPF"
