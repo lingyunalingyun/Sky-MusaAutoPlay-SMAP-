@@ -67,6 +67,7 @@ static partial class Program
             typeof(AnnouncementService).GetField("_client", flags)!.SetValue(service, new AnnouncementClient(CloudTransport.ApiOrigin, network));
             typeof(AnnouncementService).GetField("_store", flags)!.SetValue(service, store);
             Await(service.Refresh());
+            typeof(MainWindow).GetMethod("Settings_Click", flags)!.Invoke(main, [main, new RoutedEventArgs()]); Pump(); main.UpdateLayout();
             Check("ANNOUNCEMENT-ENTRY-AND-UNREAD-" + key, ((TextBlock)main.FindName("AnnouncementsLabel")).Text == Lang.Announcement("title") && ((G2Border)main.FindName("AnnouncementUnreadDot")).Visibility == Visibility.Visible
                 && ((Grid)main.FindName("SettingsPanel")).IsAncestorOf((Button)main.FindName("AnnouncementsBtn")));
             var window = new AnnouncementWindow(main, service) { WindowStartupLocation = WindowStartupLocation.Manual, Left = -12000, Top = -12000, ShowActivated = false, ShowInTaskbar = false };
