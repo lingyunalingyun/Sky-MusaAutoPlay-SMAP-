@@ -95,6 +95,7 @@ public partial class MainWindow : Window
         _rootShadow = WindowRoot.Effect;   // 练习转场期间临时摘除, 免整窗子树每帧重渲染进阴影 Effect 拖垮帧率
         BuildSettingsGrid();
         InitializeDeltaUpdates();
+        InitializeAnnouncements();
         System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
         SortCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
         FilterCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
@@ -136,6 +137,7 @@ public partial class MainWindow : Window
     {
         UpdatePane.Refresh(_deltaUpdates);
         RefreshUpdateControls();
+        AnnouncementsLabel.Text = Lang.Announcement("title");
         AppTitleText.Text = Lang.S("app.title");
         CountdownLabel.Text = Lang.S("countdown");
         RefreshShortcutHints();
@@ -3087,6 +3089,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _deltaUpdates?.Dispose();
+        CloseAnnouncements();
         StopLibraryWatcher();
         FinishWorkspaceTransition(_workspaceTransitionGen);
         StopGamePractice();

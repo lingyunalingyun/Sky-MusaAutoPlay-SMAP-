@@ -31,7 +31,10 @@ static partial class Program
         try
         {
             Output = Path.GetFullPath(args[0]);
-            if (args.Contains("--updater-row")) { ResultFile = "updater-row-results.json"; UpdaterRowReview(); }
+            if (args.Contains("--announcements-demo")) AnnouncementsDemo();
+            else if (args.Contains("--announcements-ui")) { ResultFile = "announcement-ui-results.json"; AnnouncementsUiReview(); }
+            else if (args.Contains("--announcements-network")) { ResultFile = "announcement-network-results.json"; AnnouncementsNetworkReview().GetAwaiter().GetResult(); }
+            else if (args.Contains("--updater-row")) { ResultFile = "updater-row-results.json"; UpdaterRowReview(); }
             else if (args.Contains("--updater-ui")) { ResultFile = "updater-ui-results.json"; UpdaterUiReview(); }
             else if (args.Contains("--cloud-catalog-queue")) { ResultFile = "catalog-ui-queue-results.json"; CloudCatalogQueueReview(); }
             else if (args.Contains("--cloud-catalog")) { ResultFile = "catalog-client-network-results.json"; CloudCatalogReview().GetAwaiter().GetResult(); }
