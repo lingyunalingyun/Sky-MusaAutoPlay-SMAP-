@@ -94,6 +94,7 @@ public partial class MainWindow : Window
         };
         _rootShadow = WindowRoot.Effect;   // 练习转场期间临时摘除, 免整窗子树每帧重渲染进阴影 Effect 拖垮帧率
         BuildSettingsGrid();
+        InitializeDeltaUpdates();
         System.Windows.Input.InputMethod.SetIsInputMethodEnabled(this, false);   // 锁定输入法: 物理键弹琴不弹中文候选
         SortCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
         FilterCombo.SelectionChanged += (_, __) => { if (!_cloudMode) ApplyFilter(); };
@@ -127,12 +128,13 @@ public partial class MainWindow : Window
         LoadPrefs();   // 恢复音色/洞穴/演奏/倍速
 
         Title = Lang.S("app.title") + $"  v{UpdateChecker.AppVersion}";
-        _ = CheckUpdateAsync();
+        Loaded += async (_, _) => { ConfirmDeltaUpdateLaunch(); await CheckUpdateAsync(); };
     }
 
     // 应用当前语言到主界面全部静态文字 + 下拉/菜单
     public void ApplyLanguage()
     {
+        UpdatePane.Refresh(_deltaUpdates);
         AppTitleText.Text = Lang.S("app.title");
         CountdownLabel.Text = Lang.S("countdown");
         RefreshShortcutHints();
@@ -597,6 +599,7 @@ public partial class MainWindow : Window
 
     void SaveNowPlaying()
     {
+        if (_verificationMode) return;
         try
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(NowPlayingFile)!);
@@ -669,6 +672,7 @@ public partial class MainWindow : Window
 
     async System.Threading.Tasks.Task CheckUpdateAsync()
     {
+        if (_deltaUpdates?.Supported == true) { await Task.Delay(3000); await _deltaUpdates.Start(); return; }
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) return;
         OfferUpdate(rel);
@@ -2067,8 +2071,9 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    async System.Threading.Tasks.Task CheckUpdateManual()
+    internal async System.Threading.Tasks.Task CheckUpdateManual()
     {
+        if (_deltaUpdates?.Supported == true) { await _deltaUpdates.Start(manual: true); return; }
         var r = await UpdateChecker.CheckAsync();
         if (r is not { } rel) { ShowToast(Lang.S("t.latest")); return; }
         OfferUpdate(rel);
@@ -3077,6 +3082,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _deltaUpdates?.Dispose();
         StopLibraryWatcher();
         FinishWorkspaceTransition(_workspaceTransitionGen);
         StopGamePractice();

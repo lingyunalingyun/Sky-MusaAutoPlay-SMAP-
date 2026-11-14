@@ -10,8 +10,9 @@ namespace SMAP_WPF;
 /// <summary>启动时查 GitHub Releases, 有更高版本则返回信息。</summary>
 public static class UpdateChecker
 {
-    public const string AppVersion = "3.0.0-rc.2";
-    const string Repo = "lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
+    public static readonly string AppVersion = typeof(UpdateChecker).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
+    const string Repo = Updates.GitHubUpdates.Repository;
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     static readonly HttpClient DownloadHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
 
@@ -35,6 +36,7 @@ public static class UpdateChecker
             foreach (var rel in doc.RootElement.EnumerateArray())
             {
                 if (rel.TryGetProperty("draft", out var dr) && dr.ValueKind == JsonValueKind.True) continue;
+                if (!AppVersion.Contains("-alpha.", StringComparison.Ordinal) && rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True) continue;
                 var tag = (rel.TryGetProperty("tag_name", out var t) ? t.GetString() : "")?.TrimStart('v', 'V') ?? "";
                 if (tag.Length == 0) continue;
                 if (bestTag.Length == 0 || Compare(tag, bestTag) > 0)
@@ -77,7 +79,8 @@ public static class UpdateChecker
         if (string.IsNullOrEmpty(release.Tag) || release.Tag.Length > 80 || release.Tag.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-'))
             || release.AssetSize is < 0 or > limit || !Uri.TryCreate(release.AssetUrl, UriKind.Absolute, out var source)
             || source.Scheme != Uri.UriSchemeHttps || !source.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-            || !source.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.Ordinal))
+            || !(source.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.Ordinal)
+                || source.AbsolutePath.StartsWith("/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases/download/", StringComparison.Ordinal)))
             throw new IOException("安装包地址或版本无效。");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"SMAP-Setup-v{release.Tag}.exe");
@@ -136,7 +139,7 @@ public static class UpdateChecker
     }
 
     // 数值化逐段比较版本号: >0 表示 a 更新。每段只取前导数字, 容忍 "1.1-wpf" 这类后缀
-    static int Compare(string a, string b)
+    internal static int Compare(string a, string b)
     {
         var aa = a.Split('-', 2); var bb = b.Split('-', 2);
         var pa = aa[0].Split('.');

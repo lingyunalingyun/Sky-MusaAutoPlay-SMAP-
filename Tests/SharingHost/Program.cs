@@ -31,7 +31,8 @@ static partial class Program
         try
         {
             Output = Path.GetFullPath(args[0]);
-            if (args.Contains("--cloud-catalog-queue")) { ResultFile = "catalog-ui-queue-results.json"; CloudCatalogQueueReview(); }
+            if (args.Contains("--updater-ui")) { ResultFile = "updater-ui-results.json"; UpdaterUiReview(); }
+            else if (args.Contains("--cloud-catalog-queue")) { ResultFile = "catalog-ui-queue-results.json"; CloudCatalogQueueReview(); }
             else if (args.Contains("--cloud-catalog")) { ResultFile = "catalog-client-network-results.json"; CloudCatalogReview().GetAwaiter().GetResult(); }
             else if (args.Contains("--library-refresh")) { ResultFile = "library-refresh-results.json"; LibraryRefreshReview(); }
             else if (args.Contains("--metadata-edit-ui")) { ResultFile = "metadata-edit-ui-results.json"; MetadataEditingReview(); }

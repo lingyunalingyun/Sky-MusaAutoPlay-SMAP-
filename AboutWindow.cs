@@ -141,6 +141,8 @@ public class AboutWindow : Window
 
     async void CheckUpdate(Button btn)
     {
+        if (Owner is MainWindow backgroundOwner && backgroundOwner.BackgroundUpdatesEnabled)
+        { Close(); await backgroundOwner.CheckUpdateManual(); return; }
         btn.IsEnabled = false;
         var r = await UpdateChecker.CheckAsync();
         var now = DateTime.Now.ToString("yyyy-MM-dd");

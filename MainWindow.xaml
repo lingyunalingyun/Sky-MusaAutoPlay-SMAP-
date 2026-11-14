@@ -937,7 +937,8 @@
                     </StackPanel>
 
                     <!-- 软件信息列 -->
-                    <StackPanel Grid.Column="1">
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
                         <TextBlock x:Name="SetSoftInfoTitle" Text="软件信息" FontSize="34" FontWeight="Bold" Margin="0,0,0,16"/>
                         <TextBlock x:Name="AboutNameTx" Text="光遇-Musa 自动弹琴" FontSize="15" Margin="0,0,0,2"/>
                         <TextBlock Text="Sky-MusaAutoPlay (SMAP)" FontSize="15" Foreground="{DynamicResource SubTextFg}" Margin="0,0,0,12"/>
@@ -946,6 +947,7 @@
                         <TextBlock FontSize="14" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="0,0,0,10">
                             <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
                         </TextBlock>
+                        <local:UpdateSettingsPane x:Name="UpdatePane" Margin="0,10,0,14"/>
                         <!-- 按键绑定网格: 仅点"绑定"后显示 -->
                         <StackPanel x:Name="SettingsBindArea" Visibility="Collapsed">
                             <g2:G2Border Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource ListBorder}" BorderThickness="1" CornerRadius="10" Padding="14" HorizontalAlignment="Left">
@@ -954,6 +956,7 @@
                             <TextBlock x:Name="SettingsBindHint" Text="点上方琴键格 → 按物理键完成重映射" FontSize="12" Foreground="{DynamicResource SubTextFg}" Margin="2,10,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
 
