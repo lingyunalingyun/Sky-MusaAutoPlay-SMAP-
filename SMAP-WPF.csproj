@@ -15,7 +15,7 @@
     <AssemblyVersion>3.0.0.0</AssemblyVersion>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- 合并后仓库里有 JAVA version/ 旧 Java 源码, 不让 .NET SDK 扫描/编译它 -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**;Installer\**;Tests\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);JAVA version\**;Installer\**;Tests\**;Updater\**;Tools\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'MappingDevelopment'">
