@@ -12,7 +12,7 @@ public sealed class UpdateSettingsPane : G2Border
     readonly TextBlock _title = Label(19), _state = Label(16), _hint = Label(12), _stats = Label(12), _downloadLabel = Label(12), _localLabel = Label(12);
     readonly G2Border _downloadFill = new() { HorizontalAlignment = HorizontalAlignment.Left }, _localFill = new() { HorizontalAlignment = HorizontalAlignment.Left };
     readonly Grid _download = new() { Height = 7 }, _local = new() { Height = 5 };
-    readonly Button _action = new() { MinWidth = 112, Height = 36, Padding = new Thickness(14, 0, 14, 0), Template = ChromeWindow.BtnTpl("0") };
+    readonly Button _action = new() { MinWidth = 112 };
     internal Button ActionButton => _action;
     readonly SpeedGraph _graph = new() { Height = 44, Margin = new Thickness(0, 8, 0, 8) };
     readonly StackPanel _details = new();

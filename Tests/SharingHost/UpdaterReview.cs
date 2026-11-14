@@ -11,6 +11,45 @@ using SMAP_WPF.Updates;
 
 static partial class Program
 {
+    static void UpdaterRowReview()
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        string images = Path.Combine(Output, "row-ui"); Directory.CreateDirectory(images);
+        var measurements = new List<object>();
+        foreach (var theme in Enum.GetValues<AppTheme>()) foreach (var language in Enum.GetValues<AppLang>())
+        {
+            Palette(theme); Language(language); string id = theme + "-" + language;
+            var main = (MainWindow)typeof(MainWindow).GetConstructor(flags, null, [typeof(bool)], null)!.Invoke([true]);
+            main.WindowStartupLocation = WindowStartupLocation.Manual; main.Left = -12000; main.Top = -12000;
+            main.ShowActivated = false; main.ShowInTaskbar = false; main.Width = 1280; main.Height = 860; main.Show(); Pump();
+            typeof(MainWindow).GetMethod("Settings_Click", flags)!.Invoke(main, [main, new RoutedEventArgs()]);
+            var until = System.Diagnostics.Stopwatch.StartNew(); while (until.ElapsedMilliseconds < 450) Pump();
+            var combo = (ComboBox)main.FindName("SetUpdateChannelCombo");
+            var choice = (JoinedChoiceButton)main.FindName("SetUpdateChannelChoice");
+            var fallback = (Button)main.FindName("SetUpdateBtn");
+            var host = (ContentControl)main.FindName("UpdateActionHost");
+            var delta = (Button)host.Content;
+            Size? previous = null;
+            foreach (int channel in new[] { 0, 1 })
+            {
+                combo.SelectedIndex = channel; Pump(); main.UpdateLayout();
+                var button = host.IsVisible ? delta : fallback;
+                Point top = button.TranslatePoint(new Point(), main), selectorTop = choice.TranslatePoint(new Point(), main);
+                measurements.Add(new { id, channel, button.ActualWidth, button.ActualHeight, selectorHeight = choice.ActualHeight, top = top.Y, selectorTop = selectorTop.Y });
+                File.WriteAllText(Path.Combine(Output, "row-measurements.json"), System.Text.Json.JsonSerializer.Serialize(measurements));
+                CaptureMetadata(main, Path.Combine(images, id + "-" + channel + ".png"));
+                Check("UPDATE-ROW-EQUAL-HEIGHT-" + id + "-" + channel, Math.Abs(button.ActualHeight - choice.ActualHeight) < .1 && Math.Abs(top.Y - selectorTop.Y) < .1);
+                Check("UPDATE-ROW-SHARED-STYLE-" + id + "-" + channel, ReferenceEquals(delta.Style, fallback.Style)
+                    && delta.BorderThickness == fallback.BorderThickness && delta.FontSize == fallback.FontSize && delta.Padding == fallback.Padding
+                    && ReferenceEquals(delta.Template, fallback.Template));
+                if (previous is { } size) Check("UPDATE-ROW-NO-SIZE-JUMP-" + id, Math.Abs(size.Width - button.ActualWidth) < .1 && Math.Abs(size.Height - button.ActualHeight) < .1);
+                previous = button.RenderSize;
+            }
+            main.Close();
+        }
+        app.Shutdown();
+    }
     static void UpdaterUiReview()
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };

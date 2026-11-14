@@ -25,6 +25,8 @@ public partial class MainWindow
     {
         _deltaUpdates = new(_verificationMode ? Updates.UpdateChannelSettings.DefaultFor(UpdateChecker.AppVersion) : null);
         UpdatePane.Refresh(_deltaUpdates);
+        UpdatePane.ActionButton.Style = SetUpdateBtn.Style;
+        UpdatePane.ActionButton.SetBinding(FrameworkElement.HeightProperty, new System.Windows.Data.Binding(nameof(Height)) { Source = SetUpdateChannelChoice });
         UpdateActionHost.Content = UpdatePane.ActionButton;
         RefreshUpdateControls();
         UpdatePane.ActionRequested += async () =>

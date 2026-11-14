@@ -938,7 +938,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="132"/></Grid.ColumnDefinitions>
                             <Grid x:Name="SetUpdateRow">
                                 <TextBlock x:Name="SetUpdateLbl" Text="更新:" Visibility="Collapsed"/>
-                                <Button x:Name="SetUpdateBtn" Content="检查更新" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/>
+                                <Button x:Name="SetUpdateBtn" Content="检查更新" MinWidth="112" Height="{Binding Height,ElementName=SetUpdateChannelChoice}" Style="{StaticResource NeutralBtn}" Click="SetUpdate_Click"/>
                             </Grid>
                             <ContentControl x:Name="UpdateActionHost" VerticalAlignment="Center" HorizontalContentAlignment="Stretch"/>
                             <ComboBox x:Name="SetUpdateChannelCombo" Visibility="Collapsed" SelectionChanged="SetUpdateChannel_Changed"/>
