@@ -64,7 +64,7 @@ public sealed class GitHubUpdates : IDisposable
             if (!candidate.StartsWith('v')) continue;
             string value = candidate[1..];
             if (!UpdateFormat.IsVersion(value)) continue;
-            if (channel == "stable" ? pre || value.Contains('-') : !pre || !value.Contains("-alpha.", StringComparison.Ordinal)) continue;
+            if (channel == "stable" ? pre || value.Contains('-') : !pre || !value.Contains('-')) continue;
             if (compare(value, currentVersion) <= 0 || version != null && compare(value, version) <= 0) continue;
             if (!release.GetProperty("assets").EnumerateArray().Any(a => a.GetProperty("name").GetString() == $"SMAP-{channel}-manifest.json")) continue;
             tag = candidate; version = value;

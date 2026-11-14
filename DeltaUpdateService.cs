@@ -16,24 +16,39 @@ public sealed class DeltaUpdateService : IDisposable
     public UpdateProgress? Progress { get; private set; }
     public string? Version => Plan?.Manifest.Version;
     public double BytesPerSecond { get; private set; }
-    public string Channel => UpdateChecker.AppVersion.Contains("-alpha.", StringComparison.Ordinal) ? "alpha" : "stable";
+    public string Channel { get; private set; }
+    public bool CanChangeChannel => !_running && !_handoffPreparing;
     public bool Supported => UpdateTrust.Keys.Any(k => k.Channel == Channel);
     readonly GitHubUpdates _remote = new();
     readonly string _root = AppContext.BaseDirectory;
     readonly string _working = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SMAP", "updates");
     CancellationTokenSource? _operation;
-    bool _running, _disposed;
+    bool _running, _disposed, _handoffPreparing;
     byte[]? _signed;
     string? _staging, _releaseDirectory;
     readonly Stopwatch _clock = new();
     long _lastWire;
     double _lastTick;
+    public DeltaUpdateService(string? channel = null)
+    {
+        Channel = channel ?? UpdateChannelSettings.Load(UpdateChannelSettings.FilePath, UpdateChannelSettings.DefaultFor(UpdateChecker.AppVersion));
+        UpdateChannelSettings.Validate(Channel);
+    }
+    public void ChangeChannel(string channel)
+    {
+        UpdateChannelSettings.Validate(channel);
+        if (channel == Channel) return;
+        if (!CanChangeChannel) throw new InvalidOperationException("Wait for the current update operation to finish or pause.");
+        Channel = channel; Plan = null; Progress = null; BytesPerSecond = 0;
+        _signed = null; _staging = null; _releaseDirectory = null;
+        Set(DeltaUpdateState.Idle);
+    }
     void Set(DeltaUpdateState state) { State = state; Changed?.Invoke(); }
     public void Pause() => _operation?.Cancel();
 
     public async Task Start(bool manual = false)
     {
-        if (_disposed || !Supported || _running || State == DeltaUpdateState.Ready) return;
+        if (_disposed || !Supported || _running || _handoffPreparing || State == DeltaUpdateState.Ready) return;
         _running = true; _operation?.Dispose(); _operation = new(); var cancellation = _operation.Token;
         try
         {
@@ -76,10 +91,17 @@ public sealed class DeltaUpdateService : IDisposable
         catch (ObjectDisposedException) when (_disposed) { }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or System.Net.Http.HttpRequestException or System.Text.Json.JsonException or FormatException or System.Security.Cryptography.CryptographicException or InvalidOperationException)
         { Logger.Info("Background update failed: " + error.GetType().Name); if (!_disposed) Set(DeltaUpdateState.Error); }
-        finally { _running = false; }
+        finally { _running = false; if (!_disposed) Changed?.Invoke(); }
     }
 
     public async Task<Process> PrepareRestart()
+    {
+        if (!CanChangeChannel) throw new InvalidOperationException("An update operation is already in progress.");
+        _handoffPreparing = true; Changed?.Invoke();
+        try { return await PrepareRestartCore(); }
+        finally { _handoffPreparing = false; if (!_disposed) Changed?.Invoke(); }
+    }
+    async Task<Process> PrepareRestartCore()
     {
         if (State != DeltaUpdateState.Ready || Plan == null || _signed == null || _staging == null || _releaseDirectory == null)
             throw new InvalidOperationException("Update is not ready.");
@@ -100,7 +122,7 @@ public sealed class DeltaUpdateService : IDisposable
             if (!UpdatePlanning.Matches(path, helper.Size, helper.Sha256)) throw new InvalidDataException("Updater copy verification failed."); return path;
         });
         var info = new ProcessStartInfo(worker) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = directory };
-        foreach (var arg in new[] { _root, _staging, Channel, Plan.Manifest.Tag, Path.Combine(_releaseDirectory, "manifest.json"), Environment.ProcessId.ToString(), nonce }) info.ArgumentList.Add(arg);
+        foreach (var arg in new[] { _root, _staging, Plan.Manifest.Channel, Plan.Manifest.Tag, Path.Combine(_releaseDirectory, "manifest.json"), Environment.ProcessId.ToString(), nonce }) info.ArgumentList.Add(arg);
         var process = Process.Start(info) ?? throw new IOException("Updater could not start.");
         string ready = Path.Combine(_staging, "handoff-" + nonce + ".ready");
         for (int i = 0; i < 300 && !process.HasExited; i++)

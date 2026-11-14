@@ -19,7 +19,8 @@ public static class UpdateChecker
     public readonly record struct Release(string Tag, string Name, string Url, string AssetUrl, long AssetSize);
 
     /// <summary>有新版返回 Release; 无新版/网络失败返回 null。</summary>
-    public static async Task<Release?> CheckAsync()
+    public static Task<Release?> CheckAsync(bool reportErrors = false) => CheckAsync(Http, reportErrors);
+    internal static async Task<Release?> CheckAsync(HttpClient http, bool reportErrors = false)
     {
         try
         {
@@ -27,8 +28,8 @@ public static class UpdateChecker
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases?per_page=50");
             req.Headers.Add("Accept", "application/vnd.github+json");
             req.Headers.Add("User-Agent", "SMAP-Updater");   // GitHub API 必须带 UA, 否则 403
-            using var resp = await Http.SendAsync(req);
-            if (!resp.IsSuccessStatusCode) return null;
+            using var resp = await http.SendAsync(req);
+            resp.EnsureSuccessStatusCode();
 
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
             string bestTag = "", bestName = "", bestUrl = "", bestAssetUrl = "";
@@ -36,9 +37,9 @@ public static class UpdateChecker
             foreach (var rel in doc.RootElement.EnumerateArray())
             {
                 if (rel.TryGetProperty("draft", out var dr) && dr.ValueKind == JsonValueKind.True) continue;
-                if (!AppVersion.Contains("-alpha.", StringComparison.Ordinal) && rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True) continue;
+                if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True) continue;
                 var tag = (rel.TryGetProperty("tag_name", out var t) ? t.GetString() : "")?.TrimStart('v', 'V') ?? "";
-                if (tag.Length == 0) continue;
+                if (tag.Length == 0 || tag.Contains('-')) continue;
                 if (bestTag.Length == 0 || Compare(tag, bestTag) > 0)
                 {
                     string assetUrl = "";
@@ -65,7 +66,7 @@ public static class UpdateChecker
             if (bestTag.Length == 0 || Compare(bestTag, AppVersion) <= 0) return null;
             return new Release(bestTag, bestName, bestUrl, bestAssetUrl, bestAssetSize);
         }
-        catch { return null; }
+        catch when (!reportErrors) { return null; }
     }
 
     public static bool IsMajorUpdate(string tag) => Num(tag.TrimStart('v', 'V').Split('.')[0]) > Num(AppVersion.Split('.')[0]);
