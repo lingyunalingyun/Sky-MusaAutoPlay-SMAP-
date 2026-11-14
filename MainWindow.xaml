@@ -948,9 +948,9 @@
                         <TextBlock x:Name="AboutNameTx" Text="光遇-Musa 自动弹琴" FontSize="15" Margin="0,0,0,2"/>
                         <TextBlock Text="Sky-MusaAutoPlay (SMAP)" FontSize="15" Foreground="{DynamicResource SubTextFg}" Margin="0,0,0,12"/>
                         <TextBlock x:Name="AboutVersion" Text="软件版本: v2.0-WPF" FontSize="14" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="AboutAuthorTx" Text="软件作者: LingYunALingYun" FontSize="14" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="AboutAuthorTx" Text="软件作者: langhinga" FontSize="14" Margin="0,0,0,4"/>
                         <TextBlock FontSize="14" Foreground="{DynamicResource SubTextFg}" TextWrapping="Wrap" Margin="0,0,0,10">
-                            <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
+                            <Run x:Name="AboutRepoRun" Text="软件仓库: "/><Hyperlink NavigateUri="https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-" RequestNavigate="Repo_Nav"><Run Text="github.com/langhinga/Sky-MusaAutoPlay-SMAP-"/></Hyperlink>
                         </TextBlock>
                         <!-- 按键绑定网格: 仅点"绑定"后显示 -->
                         <StackPanel x:Name="SettingsBindArea" Visibility="Collapsed">

@@ -229,7 +229,7 @@ public partial class MainWindow : Window
         SetSoftInfoTitle.Text = Lang.S("set.softinfo");
         AboutNameTx.Text = Lang.S("about.name");
         AboutVersion.Text = $"{Lang.S("about.version")}: v{UpdateChecker.AppVersion}-WPF";
-        AboutAuthorTx.Text = $"{Lang.S("about.author")}: LingYunALingYun";
+        AboutAuthorTx.Text = $"{Lang.S("about.author")}: langhinga";
         AboutRepoRun.Text = $"{Lang.S("about.repo")}: ";
 
         // 刷新绑定文本(未知作者/创谱者、收藏夹曲数等随语言变)

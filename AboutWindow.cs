@@ -12,7 +12,7 @@ namespace SMAP_WPF;
 /// <summary>软件信息窗口: 自定义圆角标题栏 + 名称/版本/作者/仓库 + 检查更新/语言/上传日志。跟随主题与语言。</summary>
 public class AboutWindow : Window
 {
-    const string Repo = "https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-";
+    const string Repo = "https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-";
     static readonly string LastCheckFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SMAP", "lastcheck.txt");
 
@@ -113,7 +113,7 @@ public class AboutWindow : Window
         _titleText.Text = Lang.S("about");
         _nameLine.Text = Lang.S("about.name");
         _verLine.Text = $"{Lang.S("about.version")}: v{UpdateChecker.AppVersion}-WPF";
-        _authorLine.Text = $"{Lang.S("about.author")}: LingYunALingYun";
+        _authorLine.Text = $"{Lang.S("about.author")}: langhinga";
         _repoPrefix.Text = $"{Lang.S("about.repo")}: ";
         _checkMain.Text = Lang.S("about.check");
         _checkSub.Text = $"  ({Lang.S("about.lastcheck")}: {LoadLastCheck()})";

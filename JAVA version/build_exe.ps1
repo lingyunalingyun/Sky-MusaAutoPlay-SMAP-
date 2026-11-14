@@ -62,7 +62,7 @@ Write-Host "`n=== 5/7 jpackage app-image ===" -ForegroundColor Cyan
     --main-class $MainClass `
     --icon $IconPath `
     --app-version $AppVersion `
-    --vendor "lingyunalingyun" `
+    --vendor "langhinga" `
     --description "Sky-MusaAutoPlay" `
     --java-options "-Xmx512m" `
     --java-options "--enable-native-access=ALL-UNNAMED"
@@ -78,7 +78,7 @@ Write-Host "`n=== 6/7 jpackage EXE installer ===" -ForegroundColor Cyan
     --name $AppName `
     --icon $IconPath `
     --app-version $AppVersion `
-    --vendor "lingyunalingyun" `
+    --vendor "langhinga" `
     --description "Sky-MusaAutoPlay" `
     --win-dir-chooser `
     --win-shortcut `

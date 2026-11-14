@@ -67,14 +67,14 @@ A JavaFX desktop assistant for the game *Sky: Children of the Light*, modeled af
 
 ### Option 1: Pre-built Windows binary
 
-Grab `SMAP-vX.Y-win64.zip` from the [Releases page](https://github.com/lingyunalingyun/Sky-Automatic-Piano-Assistant/releases), extract anywhere writable (Desktop, Documents…), and double-click `SMAP.exe`. The bundled JRE means you do not need to install Java.
+Grab `SMAP-vX.Y-win64.zip` from the [Releases page](https://github.com/langhinga/Sky-Automatic-Piano-Assistant/releases), extract anywhere writable (Desktop, Documents…), and double-click `SMAP.exe`. The bundled JRE means you do not need to install Java.
 
 On first launch, the app unpacks `songs/` next to the `.exe` and creates `key_config.json` / `settings.json` etc. there. The whole folder is portable — move it freely, your config and library follow.
 
 ### Option 2: Build from source
 
 ```bash
-git clone https://github.com/lingyunalingyun/Sky-Automatic-Piano-Assistant.git
+git clone https://github.com/langhinga/Sky-Automatic-Piano-Assistant.git
 cd Sky-Automatic-Piano-Assistant
 ./mvnw javafx:run        # macOS / Linux
 .\mvnw.cmd javafx:run    # Windows
@@ -151,4 +151,4 @@ Drop `.json` or `.txt` Sky Music score files into `songs/` and they appear in th
 
 ---
 
-**Author**: [lingyunalingyun](https://github.com/lingyunalingyun)
+**Author**: [langhinga](https://github.com/langhinga)

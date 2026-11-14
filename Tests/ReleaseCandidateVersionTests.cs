@@ -16,7 +16,7 @@ public sealed class ReleaseCandidateVersionTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         { Requests++; return Task.FromResult(response(request)); }
     }
-    const string Asset = "https://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe";
+    const string Asset = "https://github.com/langhinga/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe";
     [Theory]
     [InlineData("3.0.0", "3.0.0-rc.1", 1)]
     [InlineData("3.0.0-rc.2", "3.0.0-rc.1", 1)]
@@ -30,17 +30,21 @@ public sealed class ReleaseCandidateVersionTests
         Assert.Equal(sign, Math.Sign((int)method.Invoke(null, [left, right])!));
     }
 
-    [Fact]
-    public async Task ValidInstallerDownloadClosesOutputBeforePublishingFile()
+    [Theory]
+    [InlineData(Asset)]
+    [InlineData("https://github.com/LangHingA/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe")]
+    public async Task ValidInstallerDownloadClosesOutputBeforePublishingFile(string asset)
     {
         using var files = new TestProject();byte[] data=Encoding.ASCII.GetBytes("MZ-synthetic-installer");
         var reply=new AssetReply(_=>new(HttpStatusCode.OK){Content=new ByteArrayContent(data)});using var http=new HttpClient(reply);
-        string path=await UpdateChecker.DownloadToAsync(new("3.0.0","stable","",Asset,data.Length),http,files.DirectoryPath);
+        string path=await UpdateChecker.DownloadToAsync(new("3.0.0","stable","",asset,data.Length),http,files.DirectoryPath);
         Assert.Equal(data,File.ReadAllBytes(path));Assert.False(File.Exists(path+".download"));Assert.Equal(1,reply.Requests);
     }
     [Theory]
-    [InlineData("http://github.com/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe")]
+    [InlineData("http://github.com/langhinga/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe")]
     [InlineData("https://foreign.invalid/SMAP-Setup.exe")]
+    [InlineData("https://github.com/other-owner/Sky-MusaAutoPlay-SMAP-/releases/download/v3.0.0/SMAP-Setup.exe")]
+    [InlineData("https://github.com/langhinga/other-repository/releases/download/v3.0.0/SMAP-Setup.exe")]
     public async Task UntrustedInitialAddressIsRejectedBeforeNetwork(string asset)
     {
         using var files=new TestProject();var reply=new AssetReply(_=>new(HttpStatusCode.OK));using var http=new HttpClient(reply);

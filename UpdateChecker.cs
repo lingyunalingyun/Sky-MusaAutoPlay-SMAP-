@@ -79,8 +79,7 @@ public static class UpdateChecker
         if (string.IsNullOrEmpty(release.Tag) || release.Tag.Length > 80 || release.Tag.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-'))
             || release.AssetSize is < 0 or > limit || !Uri.TryCreate(release.AssetUrl, UriKind.Absolute, out var source)
             || source.Scheme != Uri.UriSchemeHttps || !source.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-            || !(source.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.Ordinal)
-                || source.AbsolutePath.StartsWith("/lingyunalingyun/Sky-MusaAutoPlay-SMAP-/releases/download/", StringComparison.Ordinal)))
+            || !source.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase))
             throw new IOException("安装包地址或版本无效。");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"SMAP-Setup-v{release.Tag}.exe");
